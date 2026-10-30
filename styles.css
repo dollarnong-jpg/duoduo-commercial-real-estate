@@ -49,7 +49,8 @@ a { color: inherit; }
   color: #fff;
 }
 .boot-mark { font-size: 42px; font-weight: 700; letter-spacing: 0.2em; padding-left: 0.2em; }
-.boot-line { width: 64px; height: 2px; background: var(--gold); margin: 24px 0; }
+.boot-line { width: 64px; height: 2px; background: var(--gold); margin: 24px 0; transform-origin: left center; animation: bootProgress 1.6s ease-in-out infinite alternate; }
+@keyframes bootProgress { from { transform: scaleX(.35); opacity: .65; } to { transform: scaleX(1); opacity: 1; } }
 .boot-text { color: #b8cec8; font-size: 13px; letter-spacing: 0.08em; }
 
 .auth-page {
