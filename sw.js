@@ -1,7 +1,7 @@
-const CACHE_NAME = 'duoduo-cre-v8-20261030';
+const CACHE_NAME = 'duoduo-cre-v9-20261030';
 const CORE = [
-  './', './index.html', './styles.css?v=20261031-static6', './app.js?v=20261031-static6',
-  './backend.js', './pyodide-loader.js?v=20261031-static6', './engine.py',
+  './', './index.html', './styles.css?v=20261031-static7', './app.js?v=20261031-static7',
+  './backend.js', './pyodide-loader.js?v=20261031-static7', './engine.py',
   './pyodide/pyodide.mjs', './pyodide/pyodide.asm.js', './pyodide/pyodide-lock.json', './pyodide/chunk-manifest.json',
   './vendor/xlsx.full.min.js', './vendor/pptxgen.bundle.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'
@@ -49,6 +49,13 @@ async function loadRuntimeBundle() {
         const tarBuffer = await new Response(decompressed).arrayBuffer();
         const wasm = parseTarFile(tarBuffer, 'package/pyodide.asm.wasm');
         const stdlib = parseTarFile(tarBuffer, 'package/python_stdlib.zip');
+        const cache = await caches.open(CACHE_NAME);
+        await Promise.all([
+          cache.put(new URL('./pyodide/pyodide.asm.wasm', self.registration.scope).href,
+            new Response(wasm, { headers: { 'Content-Type': 'application/wasm' } })),
+          cache.put(new URL('./pyodide/python_stdlib.zip', self.registration.scope).href,
+            new Response(stdlib, { headers: { 'Content-Type': 'application/zip' } }))
+        ]);
         return { wasm, stdlib };
       } finally {
         clearTimeout(timer);
@@ -100,25 +107,35 @@ self.addEventListener('fetch', event => {
   const requestUrl = new URL(event.request.url);
   if (requestUrl.pathname.endsWith('/pyodide/pyodide.asm.wasm')) {
     event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      let response;
       try {
         const bundle = await loadRuntimeBundle();
-        return new Response(bundle.wasm, { status: 200, headers: { 'Content-Type': 'application/wasm' } });
+        response = new Response(bundle.wasm, { status: 200, headers: { 'Content-Type': 'application/wasm' } });
       } catch {
-        const cache = await caches.open(CACHE_NAME);
-        return compressedWasmResponse(cache, event.request.url);
+        response = await compressedWasmResponse(cache, event.request.url);
       }
+      await cache.put(event.request, response.clone());
+      return response;
     })());
     return;
   }
   if (requestUrl.pathname.endsWith('/pyodide/python_stdlib.zip')) {
     event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      let response;
       try {
         const bundle = await loadRuntimeBundle();
-        return new Response(bundle.stdlib, { status: 200, headers: { 'Content-Type': 'application/zip' } });
+        response = new Response(bundle.stdlib, { status: 200, headers: { 'Content-Type': 'application/zip' } });
       } catch {
-        const cache = await caches.open(CACHE_NAME);
-        return chunkedResponse(cache, event.request.url, 6, 'application/zip');
+        response = await chunkedResponse(cache, event.request.url, 6, 'application/zip');
       }
+      await cache.put(event.request, response.clone());
+      return response;
     })());
     return;
   }
