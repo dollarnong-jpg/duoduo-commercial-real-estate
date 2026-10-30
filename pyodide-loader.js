@@ -3,6 +3,20 @@
     window.__duoduoSWReady = Promise.reject(new Error('当前浏览器不支持离线运行组件，请使用最新版 Safari、Chrome 或 Edge'));
     return;
   }
+
+  const messages = [
+    [0, '首次打开正在准备计算引擎…'],
+    [3500, '正在下载并校验计算内核（首次约需10秒）…'],
+    [8000, '正在启动投资测算公式…'],
+    [14000, '即将完成，请保持网络连接…']
+  ];
+  for (const [delay, text] of messages) {
+    setTimeout(() => {
+      const node = document.querySelector('.boot-text');
+      if (node && node.textContent.includes('计算')) node.textContent = text;
+    }, delay);
+  }
+
   window.__duoduoSWReady = navigator.serviceWorker.register('./sw.js', { scope: './' })
     .then(() => navigator.serviceWorker.ready)
     .then(() => new Promise((resolve, reject) => {
