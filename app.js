@@ -1,4 +1,4 @@
-import './backend.js?v=20261031-static6';
+import './backend.js?v=20261031-static7';
 await window.__duoduoBackendReady;
 
 const app = document.getElementById('app');
