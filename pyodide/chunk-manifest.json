@@ -1,0 +1,13 @@
+{
+  "wasm_gzip": {
+    "parts": 3,
+    "mime": "application/wasm",
+    "sha256": "a50dd1843f805a0b7c45b61037ee0d7b26dfe85efe0e18ef95a34ad24e401f5f"
+  },
+  "stdlib": {
+    "parts": 6,
+    "mime": "application/zip",
+    "sha256": "16611534726e5d8ac2bd8f926410b2dcb8d6f49aa24913463533b457a2115c16"
+  },
+  "mirrorTarball": "https://registry.npmmirror.com/pyodide/-/pyodide-0.27.7.tgz"
+}
