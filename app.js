@@ -1,4 +1,4 @@
-import './backend.js?v=20261031-static7';
+import './backend.js?v=20261031-static8';
 await window.__duoduoBackendReady;
 
 const app = document.getElementById('app');
@@ -13,6 +13,112 @@ const STEPS = [
   { key: 'market', label: '周边市场', desc: '3–5公里供需与竞品租金' },
   { key: 'results', label: '分析结果', desc: '指标、图表与报告导出' },
 ];
+
+const DEFAULT_FORMULAS = {
+  rentGrowthMode: 'compound',
+  buildingDepreciationYears: 20,
+  fitoutDepreciationYears: 5,
+  equipmentDepreciationYears: 10,
+  taxLossCarryforwardYears: 5,
+  loanRepaymentMethod: 'equal_principal',
+  exitValueMethod: 'noi_cap',
+  exitRevenueMultiple: 1.0,
+  sensitivityRentMin: 0.90,
+  sensitivityRentMax: 1.10,
+  sensitivityRentStep: 0.05,
+  sensitivityCapexMin: 0.90,
+  sensitivityCapexMax: 1.10,
+  sensitivityCapexStep: 0.05,
+};
+
+const FIELD_FORMULAS = {
+  'project.gbaOverride': { title: '总建筑面积', formula: '总建筑面积 = 手动总建筑面积；若为0，则 = 商铺建筑面积 ×（1 + 公区系数）', functions: ['IF', 'SUM'], role: '作为建安、装修、设备、预备费和单位投资指标的计算基数。' },
+  'project.commonAreaFactor': { title: '公区分摊系数', formula: '总建筑面积 = 商铺建筑面积合计 ×（1 + 公共部位及设备房分摊系数）', functions: ['SUM'], role: '提高该系数会增加总建筑面积，进而增加按面积计取的建设投资。' },
+  'project.landArea': { title: '占地面积与土地使用税', formula: '城镇土地使用税 = 占地面积 × 单位土地税额 ÷ 10000', functions: ['ROUND'], role: '仅影响城镇土地使用税，不影响土地价款。' },
+  'project.landPrice': { title: '土地价款与契税', formula: '土地取得成本 = 土地价款 + 土地价款 × 契税率', functions: ['SUM'], role: '土地价款同时进入项目总投资和融资基数。' },
+  'project.otherPreOpening': { title: '其他前期及开办费用', formula: '项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金', functions: ['SUM'], role: '该金额直接计入招商及开办投资。' },
+  'project.preOpeningMarketing': { title: '筹备期营销费用', formula: '招商及开办 = 招商佣金 + 筹备期营销费用 + 其他前期费用', functions: ['SUM'], role: '该金额直接计入项目总投资。' },
+  'project.contingencyRate': { title: '预备费', formula: '预备费 = 直接工程费 × 预备费费率', functions: ['SUM', 'ROUND'], role: '直接工程费包括前期、建安、公共配套、装修、设备和其他工程。' },
+  'project.constructionYears': { title: '建设期与贷款提款', formula: '总测算期 = 建设期 + 运营期；建设期按0.55、0.45比例提款', functions: ['SUM', 'INDEX'], role: '建设期影响首笔经营年度、利息资本化与现金流时点。' },
+  'project.operationYears': { title: '运营期与NPV', formula: '总测算期 = 建设期 + 运营期；NPV = Σ[CFt ÷（1+r）^t]', functions: ['SUM', 'POWER', 'NPV'], role: '延长运营期会改变累计现金流和退出价值时点。' },
+  'project.revenueModel': { title: '项目计租方式', formula: '纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', functions: ['IF', 'MAX'], role: '该选择是项目默认结算方式，各业态可单独覆盖。' },
+  'costs.preconstructionRate': { title: '前期工程费', formula: '前期工程费 = 总建筑面积 × 前期工程单价 ÷ 10000', functions: ['SUM', 'ROUND'], role: '金额单位为万元，计入直接工程费和折旧基数。' },
+  'costs.constructionRate': { title: '建安工程费', formula: '建安工程费 = 总建筑面积 × 建安工程单价 ÷ 10000', functions: ['SUM', 'ROUND'], role: '计入直接工程费、预备费、维修费、保险和折旧基数。' },
+  'costs.otherEngineeringRate': { title: '其他工程费', formula: '其他工程费 = 总建筑面积 × 其他工程单价 ÷ 10000', functions: ['SUM'], role: '并入前期及建安工程和折旧基数。' },
+  'costs.fitoutRate': { title: '公共区域精装', formula: '装修工程费 = 总建筑面积 × 精装单价 ÷ 10000', functions: ['SUM'], role: '进入装修投资、装修折旧和维修改造基数。' },
+  'costs.equipmentRate': { title: '设施设备', formula: '设备工程费 = 总建筑面积 × 设备单价 ÷ 10000', functions: ['SUM'], role: '进入设备投资、设备折旧和维修改造基数。' },
+  'costs.workingCapitalRate': { title: '铺底流动资金', formula: '铺底流动资金 = 稳定运营成本估算 × 铺底流动资金率', functions: ['SUM', 'MAX'], role: '运营成本估算包含物业、能耗、商管、行政及维修成本。' },
+  'costs.municipalFeeRate': { title: '市政基础设施配套费', formula: '市政配套费 = 总建筑面积 × 属地配套费单价 ÷ 10000', functions: ['SUM'], role: '默认0，应按项目属地最新政策填写。' },
+  'costs.civilDefenseFeeRate': { title: '人防易地建设费', formula: '人防易地建设费 = 总建筑面积 × 属地人防单价 ÷ 10000', functions: ['SUM'], role: '默认0，应按规划条件和属地政策填写。' },
+  'costs.otherPublicFeeRate': { title: '其他公共规费', formula: '其他公共规费 = 总建筑面积 × 其他规费单价 ÷ 10000', functions: ['SUM'], role: '用于水电气增容、报建等未单列公共费用。' },
+  'operations.occupancyY1': { title: '首年有效出租率', formula: '首年出租率 = 输入值；首年免租系数 = 1 - 免租月数 ÷ 12', functions: ['IF', 'POWER'], role: '首年出租率同时影响租金、物业费、停车和多经收入。' },
+  'operations.occupancyY2': { title: '第二年出租率', formula: '第二年出租率 = 输入值；稳定年前各年按该出租率计算', functions: ['IF'], role: '稳定期前的过渡出租率。' },
+  'operations.stableOccupancy': { title: '稳定期出租率', formula: '稳定期出租率 = 输入值；运营年 ≥ 稳定起始年时启用', functions: ['IF'], role: '决定稳定期NOI和退出价值。' },
+  'operations.stableYear': { title: '稳定期起始年', formula: 'IF(运营年 < 稳定期起始年, 第二年出租率, 稳定期出租率)', functions: ['IF'], role: '控制出租率爬坡持续时间。' },
+  'operations.rentFreeMonths': { title: '首年免租', formula: '首年有效租金 = 满租租金 × 出租率 ×（1 - 免租月数 ÷ 12）', functions: ['IF'], role: '仅影响首个运营年，不改变合同租金单价。' },
+  'operations.rentGrowth': { title: '租金增长', formula: '复利：租金 ×（1 + 增长率）^（运营年 - 1）；单利：租金 ×［1 + 增长率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '增长方式可在“公式参数”中选择复利或单利。' },
+  'operations.salesGrowth': { title: '联营销售额增长', formula: '联营扣点收入 = 销售基数 × 扣点率 × 销售额增长因子', functions: ['POWER', 'MAX'], role: '仅影响联营扣点收入；纯租金模式不产生此项。' },
+  'operations.collectionRate': { title: '租金收缴率', formula: '坏账损失 = 不含税营业收入 ×（1 - 租金收缴率）', functions: ['SUM'], role: '收缴率越低，运营成本和现金流压力越大。' },
+  'operations.renewalCycle': { title: '续租周期', formula: '续租佣金年度 = 运营年 MOD 续租周期 = 0', functions: ['MOD', 'IF'], role: '用于测算续租佣金和招商费用发生时点。' },
+  'operations.commissionMonths': { title: '首开招商佣金', formula: '首开招商佣金 = 月租金 × 招商佣金月数 × 首年出租率', functions: ['SUM'], role: '该费用计入项目总投资中的招商及开办。' },
+  'operations.renewalCommissionMonths': { title: '续租佣金', formula: '续租佣金 = 月租金 × 续租佣金月数 × 当年出租率', functions: ['MOD', 'IF'], role: '按续租周期进入运营期现金流。' },
+  'operations.depositMonths': { title: '租赁保证金', formula: '租赁保证金 = 月租金 × 保证金月数', functions: ['SUM'], role: '作为招商期现金流入和期末退还的参考。' },
+  'revenues.propertyFee': { title: '物业管理费收入', formula: '物业费收入 = 可租赁面积 × 物业费单价 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '按可租赁面积计取，并计算物业费增值税。' },
+  'revenues.otherIncomeRatio': { title: '多经收入', formula: '多经收入 = 租金收入 × 多经收入占比', functions: ['SUM'], role: '包含广告、场地、多经点位等收入。' },
+  'revenues.parkingSpaces': { title: '停车收入', formula: '停车收入 = 车位数 × 停车月租 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '与停车月租共同决定停车收入。' },
+  'revenues.parkingMonthly': { title: '停车月租', formula: '停车收入 = 车位数 × 停车月租 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '与停车位数量共同决定停车收入。' },
+  'operations.propertyOpsCost': { title: '物业运营成本', formula: '物业运营成本 = 总建筑面积 × 单价 × 12 × 运营爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本、NOI和铺底流动资金估算。' },
+  'operations.energyCost': { title: '公共能耗', formula: '公共能耗 = 总建筑面积 × 能耗单价 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '按出租率联动，空置率越高能耗成本越低。' },
+  'operations.staffCostPerSqm': { title: '商管团队成本', formula: '商管团队成本 = 总建筑面积 × 团队成本单价 × 12 × 爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本和NOI。' },
+  'operations.adminCostPerSqm': { title: '行政办公成本', formula: '行政办公成本 = 总建筑面积 × 行政成本单价 × 12 × 爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本和NOI。' },
+  'operations.marketingRate': { title: '年度营销费用', formula: '营销费用 = 不含税营业收入 × 营销费用率', functions: ['SUM'], role: '与筹备期营销费用分开计算。' },
+  'operations.repairRate': { title: '维修改造费', formula: '维修改造费 =（建安 + 装修 + 设备 + 其他工程 + 预备费）× 维修改造费率 × 爬坡系数', functions: ['SUM'], role: '用于年度运营成本。' },
+  'operations.insuranceRate': { title: '保险费用', formula: '保险费用 =（建安 + 装修 + 设备 + 其他工程）× 保险费率', functions: ['SUM'], role: '用于年度运营成本。' },
+  'operations.capexRate': { title: '资本化改造', formula: '资本化改造 = 不含税租金收入 × 资本化改造率', functions: ['SUM'], role: '作为项目现金流中的年度资本开支扣除项。' },
+  'operations.otherOpexRate': { title: '其他运营费用', formula: '其他运营费用 = 不含税营业收入 × 其他运营费用率', functions: ['SUM'], role: '进入运营成本和NOI。' },
+  'operations.rampY1': { title: '首年运营爬坡', formula: '首年运营成本 = 稳定运营成本 × 首年爬坡系数', functions: ['IF'], role: '降低开业首年物业、商管和行政成本。' },
+  'operations.rampY2': { title: '第二年运营爬坡', formula: '第二年运营成本 = 稳定运营成本 × 第二年爬坡系数', functions: ['IF'], role: '用于第二年的成本过渡。' },
+  'taxes.vatRent': { title: '租金销项税', formula: '租金销项税 = 含税租金 ÷（1 + 租金增值税率）× 租金增值税率', functions: ['SUM', 'ROUND'], role: '现行租金参考税率通常为9%，以税务认定为准。' },
+  'taxes.vatProperty': { title: '物业费销项税', formula: '物业费销项税 = 含税物业费 ÷（1 + 税率）× 税率', functions: ['SUM'], role: '按物业费收入计算销项税。' },
+  'taxes.vatOther': { title: '其他收入销项税', formula: '其他收入销项税 = 含税其他收入 ÷（1 + 税率）× 税率', functions: ['SUM'], role: '用于停车、多经等收入。' },
+  'taxes.vatConcession': { title: '联营扣点销项税', formula: '联营扣点销项税 = 含税扣点收入 ÷（1 + 税率）× 税率', functions: ['SUM'], role: '纯联营或保底取高模式下使用。' },
+  'taxes.inputVatShare': { title: '进项税抵扣比例', formula: '进项税 = MIN(销项税, 可抵扣运营成本 × 抵扣比例 × 进项税率 ÷（1 + 进项税率）)', functions: ['MIN'], role: '控制运营成本对应进项税的抵扣比例。' },
+  'taxes.inputVatRate': { title: '进项税率', formula: '进项税 = MIN(销项税, 可抵扣运营成本 × 抵扣比例 × 进项税率 ÷（1 + 进项税率）)', functions: ['MIN'], role: '用于估算可抵扣进项税。' },
+  'taxes.cityTax': { title: '城建税', formula: '附加税 = MAX(0, 销项税 - 进项税）×（城建税率 + 教育费附加 + 地方教育附加）', functions: ['MAX', 'SUM'], role: '按增值税净额计征。' },
+  'taxes.educationSurcharge': { title: '教育费附加', formula: '教育费附加 = MAX(0, 销项税 - 进项税）× 教育费附加率', functions: ['MAX'], role: '与城建税、地方教育附加合并计算。' },
+  'taxes.localEducationSurcharge': { title: '地方教育附加', formula: '地方教育附加 = MAX(0, 销项税 - 进项税）× 地方教育附加率', functions: ['MAX'], role: '与城建税、教育费附加合并计算。' },
+  'taxes.propertyTaxMethod': { title: '房产税计征方式', formula: '从租：不含税租金 × 12%；从价：房产原值 ×（1 - 扣除比例）× 1.2%', functions: ['IF'], role: '出租物业通常从租计征，最终以税务认定为准。' },
+  'taxes.propertyTaxRateRent': { title: '房产税从租税率', formula: '房产税 = 不含税租金 × 从租税率', functions: ['IF'], role: '从租计征方式下使用。' },
+  'taxes.propertyTaxRateValue': { title: '房产税从价税率', formula: '房产税 = 房产原值 ×（1 - 扣除比例）× 从价税率', functions: ['IF'], role: '从价计征方式下使用。' },
+  'taxes.propertyValueDeduction': { title: '房产原值扣除比例', formula: '房产余值 = 房产原值 ×（1 - 扣除比例）', functions: ['IF'], role: '用于从价计征房产税。' },
+  'taxes.landUseTax': { title: '城镇土地使用税', formula: '土地使用税 = 占地面积 × 单位税额 ÷ 10000', functions: ['ROUND'], role: '不同土地等级税额不同，应按属地政策填写。' },
+  'taxes.stampDuty': { title: '印花税', formula: '印花税 = 不含税租金收入 × 印花税率', functions: ['SUM'], role: '按租金收入估算。' },
+  'taxes.localFundRate': { title: '地方基金及附加', formula: '地方基金 = 不含税营业收入 × 地方基金费率', functions: ['SUM'], role: '默认0，按属地政策填写。' },
+  'taxes.corporateTax': { title: '企业所得税', formula: '所得税 = MAX(0, 税前利润 - 可结转亏损）× 企业所得税率', functions: ['MAX', 'IF'], role: '用于税后净利润和股权现金流。' },
+  'taxes.deedTax': { title: '土地契税', formula: '契税 = 土地价款 × 契税率', functions: ['SUM'], role: '进入土地及契税投资。' },
+  'taxes.exitTaxRate': { title: '退出税费率', formula: '净退出价值 = 退出价值 ×（1 - 退出税费率）', functions: ['SUM'], role: '用于期末退出现金流扣除。' },
+  'finance.debtRatio': { title: '贷款额', formula: '贷款额 = 项目总投资 × 债务融资比例', functions: ['SUM'], role: '影响股权投入、利息和还本现金流。' },
+  'finance.loanRate': { title: '贷款利息', formula: '当年利息 =（期初余额 + 当年提款 ÷ 2）× 年贷款利率', functions: ['SUM'], role: '建设期利息在现金流中体现。' },
+  'finance.loanTerm': { title: '还本期限', formula: '等额本金：年还本额 = 贷款额 ÷ 贷款期限；先息后本：期末一次还本', functions: ['IF', 'MIN'], role: '可在“公式参数”中选择还款方式。' },
+  'finance.graceYears': { title: '还款宽限期', formula: '运营年 > 宽限期 且 运营年 ≤ 宽限期 + 贷款期限时还本', functions: ['IF'], role: '控制开始还本的时间。' },
+  'valuation.discountRate': { title: '折现率与NPV', formula: 'NPV = Σ[CFt ÷（1 + 折现率）^t]', functions: ['SUM', 'POWER', 'NPV'], role: '折现率越高，未来现金流现值越低。' },
+  'valuation.exitCapRate': { title: '资本化率退出法', formula: '退出价值 = 期末NOI ÷ 退出资本化率 ×（1 - 退出税费率）', functions: ['MAX', 'IF'], role: '在“公式参数”中选择NOI资本化率法时使用。' },
+  'valuation.includeExit': { title: '期末退出价值', formula: '项目现金流 = NOI - 资本化改造 - 所得税 + 期末退出价值', functions: ['IF'], role: '关闭后不计算期末退出价值。' },
+  'formulas.rentGrowthMode': { title: '租金增长方式', formula: '复利 = POWER(1+g,n)；单利 = 1 + g×n', functions: ['POWER', 'IF'], role: '决定租金和销售额随运营年份的增长曲线。' },
+  'formulas.buildingDepreciationYears': { title: '建筑折旧年限', formula: '建筑年折旧 = 建筑工程投资 ÷ 建筑折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
+  'formulas.fitoutDepreciationYears': { title: '装修折旧年限', formula: '装修年折旧 = 装修投资 ÷ 装修折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
+  'formulas.equipmentDepreciationYears': { title: '设备折旧年限', formula: '设备年折旧 = 设备投资 ÷ 设备折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
+  'formulas.taxLossCarryforwardYears': { title: '亏损结转年限', formula: '可结转亏损 = Σ[历史亏损中年限 ≤ N的部分]', functions: ['SUM', 'IF'], role: '用于抵减以后年度应纳税所得额。' },
+  'formulas.loanRepaymentMethod': { title: '贷款还款方式', formula: '等额本金：本金=贷款额÷期限；先息后本：期末一次还本', functions: ['IF'], role: '影响运营期本金流出和股权现金流。' },
+  'formulas.exitValueMethod': { title: '退出估值方法', formula: 'NOI资本化率法：NOI÷CapRate；收入倍数法：营业收入×收入倍数', functions: ['IF', 'MAX'], role: '决定期末退出价值公式。' },
+  'formulas.exitRevenueMultiple': { title: '退出收入倍数', formula: '退出价值 = 期末营业收入 × 退出收入倍数', functions: ['SUM'], role: '仅在收入倍数法下启用。' },
+  'formulas.sensitivityRentMin': { title: '敏感性租金下限', formula: '敏感性矩阵租金系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
+  'formulas.sensitivityRentMax': { title: '敏感性租金上限', formula: '敏感性矩阵租金系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
+  'formulas.sensitivityRentStep': { title: '敏感性租金步长', formula: '租金系数序列 = MIN, MIN+STEP, …, MAX', functions: ['SEQUENCE'], role: '步长越小，矩阵越细。' },
+  'formulas.sensitivityCapexMin': { title: '敏感性投资下限', formula: '敏感性矩阵投资系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
+  'formulas.sensitivityCapexMax': { title: '敏感性投资上限', formula: '敏感性矩阵投资系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
+  'formulas.sensitivityCapexStep': { title: '敏感性投资步长', formula: '投资系数序列 = MIN, MIN+STEP, …, MAX', functions: ['SEQUENCE'], role: '步长越小，矩阵越细。' },
+};
 
 const SETTLEMENT_PRESETS = {
   department: {
@@ -560,7 +666,7 @@ function renderWorkspace() {
       </aside>
       <section class="step-panel">
         <div class="panel-head"><h2>${active.label}</h2><p>${stepDescription(state.step)}</p></div>
-        <div class="panel-body">${renderStep()}</div>
+        <div class="panel-body">${state.step < 4 ? `<div class="formula-toolbar"><div><span class="fx-chip">ƒ</span><strong>公式就在对应数据下方</strong><small>点击任一项查看计算式、函数和参数作用</small></div><button class="btn btn-ghost btn-sm" id="toggle-all-formulas">显示全部公式</button></div>` : ''}${renderStep()}</div>
         <div class="panel-foot">
           <button class="btn btn-secondary" id="prev-step" ${state.step === 0 ? 'disabled' : ''}>${ICONS.back}<span>上一步</span></button>
           ${state.step < STEPS.length - 1
@@ -572,6 +678,7 @@ function renderWorkspace() {
   shell(content, 'projects', true);
   bindWorkspace();
   bindStepInputs();
+  bindFormulaToolbar();
   if (state.step === 5) requestAnimationFrame(renderResultCharts);
 }
 
@@ -632,13 +739,15 @@ function textField(label, path, opts = {}) {
   const display = type === 'number' && value !== null && value !== undefined && value !== ''
     ? Number(value) / scale
     : (value ?? '');
+  const formula = FIELD_FORMULAS[path];
   return `<div class="field">
-    <label>${label}${opts.optional ? '<small>可选</small>' : ''}</label>
+    <label><span>${label}${opts.optional ? '<small>可选</small>' : ''}</span>${formula ? '<span class="label-fx" title="查看公式">ƒ</span>' : ''}</label>
     <div class="${unit ? 'input-affix' : ''}">
       <input class="input" data-path="${path}" data-type="${type}" data-scale="${scale}" type="${type === 'number' ? 'number' : 'text'}" step="${opts.step || 'any'}" value="${escapeHtml(display)}" placeholder="${escapeHtml(opts.placeholder || '')}">
       ${unit ? `<span>${unit}</span>` : ''}
     </div>
     ${help ? `<div class="field-help">${help}</div>` : ''}
+    ${formulaHint(path)}
   </div>`;
 }
 
@@ -661,14 +770,42 @@ function locationField() {
 
 function selectField(label, path, options, opts = {}) {
   const value = getPath(state.current.model, path);
+  const formula = FIELD_FORMULAS[path];
   const normalized = options.map(opt => typeof opt === 'object' ? opt : { value: String(opt), label: String(opt) });
   return `<div class="field">
-    <label>${label}</label>
+    <label><span>${label}</span>${formula ? '<span class="label-fx" title="查看公式">ƒ</span>' : ''}</label>
     <select class="select" data-path="${path}" data-type="text">
       ${normalized.map(opt => `<option value="${escapeHtml(opt.value)}" ${String(value) === String(opt.value) ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
     </select>
     ${opts.help ? `<div class="field-help">${opts.help}</div>` : ''}
+    ${formulaHint(path)}
   </div>`;
+}
+
+function formulaHint(path) {
+  const info = FIELD_FORMULAS[path];
+  if (!info) return '';
+  const current = getPath(state.current.model, path);
+  const shown = current === true ? '是' : current === false ? '否' : current === null || current === undefined || current === '' ? '未填写' : (typeof current === 'number' ? fmt(current, Number.isInteger(current) ? 0 : 4) : String(current));
+  return `<details class="inline-formula" data-formula-path="${escapeHtml(path)}">
+    <summary><span class="fx-chip">ƒ</span><span>${escapeHtml(info.title)}公式</span><span class="formula-current">当前：${escapeHtml(shown)}</span></summary>
+    <div class="inline-formula-body">
+      <code>${escapeHtml(info.formula)}</code>
+      <div class="formula-function-row"><span>使用函数</span>${(info.functions || []).map(name => `<b>${escapeHtml(name)}</b>`).join('')}</div>
+      <p>${escapeHtml(info.role || '')}</p>
+    </div>
+  </details>`;
+}
+
+function formulaPanel(title, formula, functions, note = '') {
+  return `<details class="section-formula">
+    <summary><span class="fx-chip">ƒ</span><strong>${escapeHtml(title)}</strong><span>展开公式与函数</span></summary>
+    <div class="inline-formula-body">
+      <code>${escapeHtml(formula)}</code>
+      <div class="formula-function-row"><span>使用函数</span>${(functions || []).map(name => `<b>${escapeHtml(name)}</b>`).join('')}</div>
+      ${note ? `<p>${escapeHtml(note)}</p>` : ''}
+    </div>
+  </details>`;
 }
 
 function renderProjectStep() {
@@ -682,6 +819,7 @@ function renderProjectStep() {
   const preview = state.preview || state.result;
   return `
     <div class="callout">${ICONS.info}<div>不确定“总建筑面积”时可以先留空，系统会按商铺建筑面积 ×（1 + 公共部位分摊系数）自动推算。</div></div>
+    ${formulaPanel('面积、租金与投资基数公式', '总建筑面积 = IF(手动值为0, 商铺建筑面积合计 ×（1 + 公区系数), 手动值)\n有效租金 = 租赁面积 × 基准租金 × 业态系数 ×（1 + 条件溢价）\n项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金', ['IF', 'SUM', 'MAX', 'POWER'], '每个参数下方的ƒ按钮会显示该参数在公式中的具体作用。')}
     <div class="form-section">
       <div class="section-title">项目概况</div>
       <div class="form-grid">
@@ -725,6 +863,7 @@ function renderCostStep() {
   ];
   return `
     <div class="callout">${ICONS.info}<div>系统预填的是参考量级，不代表${escapeHtml(jurisdictionName())}本地实际造价。可先选择项目类型，再根据造价咨询或目标成本调整。</div></div>
+    ${formulaPanel('工程投资与流动资金公式', '分项工程投资 = 总建筑面积 × 分项单价 ÷ 10000\n直接工程费 = 前期 + 建安 + 公共配套 + 装修 + 设备 + 其他工程\n预备费 = 直接工程费 × 预备费率\n铺底流动资金 = 稳定运营成本估算 × 铺底比例', ['SUM', 'ROUND', 'MAX'], '金额单位均为万元；修改任一单价后，投资、折旧、税费和现金流会联动更新。')}
     <div class="preset-row">
       <span style="font-size:10px;color:var(--muted);padding:8px 2px">参考模板：</span>
       ${presets.map((preset, i) => `<button class="preset" data-preset="${i}">${preset.name}</button>`).join('')}
@@ -815,6 +954,7 @@ function renderFloorEditor(m, mode, preview) {
   return `<div class="form-section">
     <div class="section-title">楼层均价与面积</div>
     <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层均价将作为一铺一价的基础：再乘业态系数并叠加铺位条件溢价。'}</div>
+    ${formulaPanel('楼层收益公式', '楼层满租月收益 = 可租赁面积 × 楼层均价\n联营扣点月收益 = 可租赁面积 × 销售基数 × 扣点率\n实际加权收益 = 楼层月收益合计 ÷ 可租赁面积', ['SUM', 'MAX', 'IF'], '调整楼层均价、面积、销售基数或扣点率后，系统会实时更新。')}
     <div class="data-table-wrap floor-table-wrap">
       <table class="data-table floor-table"><thead><tr><th>楼层</th><th class="num">建筑面积（㎡）</th><th class="num">可租赁面积（㎡）</th><th class="num">得铺率</th><th class="num">保底/平均租金（元/㎡）</th>${concessionEnabled ? '<th class="num">销售基数（元/㎡/月）</th><th class="num">扣点率</th>' : ''}<th class="num">满租月收益（元）</th><th class="num">实际加权收益</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
@@ -879,6 +1019,7 @@ function renderDetailedPricing(m, shops, preview) {
     <div class="form-section compact-top">
       <div class="section-title">业态租金 / 联营扣点规则</div>
       <div class="section-note">每个业态可单独选择计租方式：继承项目、纯租金、纯联营扣点或保底与扣点取高。销售基数和扣点率为行业参考起点，应与本地竞品核对。</div>
+      ${formulaPanel('一铺一价与联营扣点公式', '保底月收入 = 租赁面积 × 楼层均价 × 业态系数 ×（1 + 位置条件溢价）\n联营扣点月收入 = 租赁面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '条件溢价合计最高40%；铺位填写租金覆盖值时，以覆盖值优先。')}
       <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金（元/㎡/月）</th><th class="num">销售基数（元/㎡/月）</th><th class="num">扣点率</th><th class="num">业态系数</th></tr></thead><tbody>
         ${(m.categories || []).map((cat, i) => `<tr><td><strong>${escapeHtml(cat.name)}</strong></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td></tr>`).join('')}
       </tbody></table></div>
@@ -886,6 +1027,7 @@ function renderDetailedPricing(m, shops, preview) {
     <div class="form-section">
       <div class="section-title">铺位位置条件溢价</div>
       <div class="section-note">勾选启用后，同一铺位可叠加多个条件；条件溢价合计最高按40%封顶。</div>
+      ${formulaPanel('位置条件溢价公式', '条件溢价 = MIN(40%, SUM(已启用条件溢价))\n条件调整后租金 = 基准租金 ×（1 + 条件溢价）', ['MIN', 'SUM'], '位置越优，溢价越高；可按项目实际招商策略调整每一项比例。')}
       <div class="condition-grid">
         ${(m.conditionPremiums || []).map((condition, i) => `<div class="condition-item ${condition.enabled ? 'active' : ''}"><label class="condition-toggle"><input type="checkbox" data-path="conditionPremiums.${i}.enabled" data-type="bool" ${condition.enabled ? 'checked' : ''}><span></span></label><input class="condition-name" data-path="conditionPremiums.${i}.name" data-type="text" value="${escapeHtml(condition.name)}"><div class="condition-rate"><input data-path="conditionPremiums.${i}.premium" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(condition.premium || 0) * 100).toFixed(1)}"><span>%</span></div></div>`).join('')}
       </div>
@@ -913,6 +1055,7 @@ function renderOperationsStep() {
     <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会自动形成20年现金流、税费和投资收益。</div></div>
     <div class="form-section">
       <div class="section-title">租金与出租率</div>
+      ${formulaPanel('出租率、租金增长与收入公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n首年免租系数 = 1 - 免租月数 ÷ 12\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 增长因子', ['IF', 'POWER', 'SUM'], '首年出租率、稳定出租率、免租月数和增长率均可直接调整。')}
       <div class="form-grid">
         ${textField('首年出租率', 'operations.occupancyY1', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('第二年出租率', 'operations.occupancyY2', { type: 'number', unit: '%', scale: 0.01 })}
@@ -920,6 +1063,7 @@ function renderOperationsStep() {
         ${textField('稳定期起始运营年', 'operations.stableYear', { type: 'number', unit: '年' })}
         ${textField('首年免租月数', 'operations.rentFreeMonths', { type: 'number', unit: '月' })}
         ${textField('租金年增长率', 'operations.rentGrowth', { type: 'number', unit: '%', scale: 0.01 })}
+        ${selectField('租金增长方式', 'formulas.rentGrowthMode', [{value:'compound',label:'复利增长'},{value:'simple',label:'单利增长'}], { help: '复利：租金×(1+g)^n；单利：租金×(1+g×n)' })}
         ${textField('联营销售额年增长率', 'operations.salesGrowth', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('租金收缴率', 'operations.collectionRate', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('续租周期', 'operations.renewalCycle', { type: 'number', unit: '年' })}
@@ -928,6 +1072,7 @@ function renderOperationsStep() {
     </div>
     <div class="form-section">
       <div class="section-title">收入与运营成本</div>
+      ${formulaPanel('收入、运营成本与NOI公式', '营业收入 = 租金收入 + 物业费 + 多经收入 + 停车收入\n运营成本 = 物业 + 能耗 + 商管 + 行政 + 营销 + 维修 + 保险 + 坏账 + 其他\nNOI = 不含税营业收入 - 不含税运营成本 - 税费', ['SUM', 'MAX', 'MIN'], '所有运营参数均可直接修改，结果会联动更新。')}
       <div class="form-grid">
         ${textField('物业管理费', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月' })}
         ${textField('多经收入占租金比例', 'revenues.otherIncomeRatio', { type: 'number', unit: '%', scale: 0.01 })}
@@ -946,6 +1091,7 @@ function renderOperationsStep() {
     <details class="advanced">
       <summary>税费与属地公共费用（高级）</summary>
       <div class="advanced-body">
+        ${formulaPanel('增值税、房产税与所得税公式', '销项税 = Σ[含税收入 ÷（1+税率）× 税率]\n进项税 = MIN(销项税, 可抵扣成本 × 抵扣比例 × 进项税率 ÷（1+进项税率）)\n房产税 = IF(从租, 不含税租金×12%, 房产原值×（1-扣除比例）×1.2%)\n所得税 = MAX(0, 税前利润 - 可结转亏损)×所得税率', ['SUM', 'MIN', 'MAX', 'IF', 'POWER'], '税费口径均可在下方调整；地方政策请以项目属地最新规定为准。')}
         <div class="form-grid">
           ${textField('租金增值税率', 'taxes.vatRent', { type: 'number', unit: '%', scale: 0.01 })}
           ${textField('物业费增值税率', 'taxes.vatProperty', { type: 'number', unit: '%', scale: 0.01 })}
@@ -968,6 +1114,7 @@ function renderOperationsStep() {
     <details class="advanced">
       <summary>融资与退出假设</summary>
       <div class="advanced-body">
+        ${formulaPanel('融资、折旧、所得税与退出公式', '贷款额 = 总投资 × 债务比例\n利息 =（期初余额 + 当年提款÷2）× 年利率\n年折旧 = 建筑投资÷建筑年限 + 装修投资÷装修年限 + 设备投资÷设备年限\n项目现金流 = NOI - 资本化改造 - 所得税 + 期末退出价值\nNPV = Σ[CFt ÷（1+r）^t]；IRR：NPV(IRR)=0', ['IF', 'SUM', 'MAX', 'POWER', 'NPV', 'IRR'], '折旧年限、亏损结转、还款方式、退出方法和敏感性区间均可在下方“公式参数”中调整。')}
         <div class="form-grid">
           ${textField('债务融资比例', 'finance.debtRatio', { type: 'number', unit: '%', scale: 0.01 })}
           ${textField('年贷款利率', 'finance.loanRate', { type: 'number', unit: '%', scale: 0.01 })}
@@ -977,6 +1124,31 @@ function renderOperationsStep() {
           ${textField('退出资本化率', 'valuation.exitCapRate', { type: 'number', unit: '%', scale: 0.01 })}
           ${selectField('是否计入期末退出价值', 'valuation.includeExit', [{ value: 'true', label: '计入' }, { value: 'false', label: '不计入' }], { help: '退出价值=期末NOI÷退出资本化率' })}
         </div>
+      </div>
+    </details>
+    <details class="advanced" open>
+      <summary>公式参数：折旧、亏损、退出与敏感性（可直接调整）</summary>
+      <div class="advanced-body">
+        <div class="section-note" style="margin-top:0">这些参数直接改变测算公式，不仅影响显示口径。修改后请保存并重新测算。</div>
+        <div class="form-grid">
+          ${textField('建筑折旧年限', 'formulas.buildingDepreciationYears', { type: 'number', unit: '年' })}
+          ${textField('装修折旧年限', 'formulas.fitoutDepreciationYears', { type: 'number', unit: '年' })}
+          ${textField('设备折旧年限', 'formulas.equipmentDepreciationYears', { type: 'number', unit: '年' })}
+          ${textField('亏损结转年限', 'formulas.taxLossCarryforwardYears', { type: 'number', unit: '年' })}
+          ${selectField('贷款还款方式', 'formulas.loanRepaymentMethod', [{value:'equal_principal',label:'等额本金'},{value:'interest_only',label:'先息后本'}], { help: '等额本金逐年还本；先息后本在贷款期末一次还本' })}
+          ${selectField('退出估值方法', 'formulas.exitValueMethod', [{value:'noi_cap',label:'NOI ÷ 资本化率'},{value:'revenue_multiple',label:'营业收入 × 倍数'}], { help: '选择期末退出价值的计算公式' })}
+          ${textField('退出收入倍数', 'formulas.exitRevenueMultiple', { type: 'number', unit: '倍', optional: true })}
+        </div>
+        <div class="section-title" style="margin-top:20px">NPV敏感性矩阵</div>
+        <div class="form-grid">
+          ${textField('租金系数下限', 'formulas.sensitivityRentMin', { type: 'number', unit: '倍', step: '0.01' })}
+          ${textField('租金系数上限', 'formulas.sensitivityRentMax', { type: 'number', unit: '倍', step: '0.01' })}
+          ${textField('租金系数步长', 'formulas.sensitivityRentStep', { type: 'number', unit: '倍', step: '0.01' })}
+          ${textField('投资系数下限', 'formulas.sensitivityCapexMin', { type: 'number', unit: '倍', step: '0.01' })}
+          ${textField('投资系数上限', 'formulas.sensitivityCapexMax', { type: 'number', unit: '倍', step: '0.01' })}
+          ${textField('投资系数步长', 'formulas.sensitivityCapexStep', { type: 'number', unit: '倍', step: '0.01' })}
+        </div>
+        <div class="formula-actions"><button class="btn btn-secondary btn-sm" id="reset-formula-defaults">恢复系统默认公式参数</button></div>
       </div>
     </details>`;
 }
@@ -1203,6 +1375,8 @@ function bindStepInputs() {
         if (value === 'false') value = false;
       }
       setPath(state.current.model, path, value);
+      const formulaCurrent = input.closest('.field')?.querySelector('.formula-current');
+      if (formulaCurrent) formulaCurrent.textContent = `当前：${input.value || '未填写'}`;
       if (path === 'project.location') {
         state.current.model.project.latitude = null;
         state.current.model.project.longitude = null;
@@ -1226,10 +1400,30 @@ function bindStepInputs() {
     });
   });
   document.getElementById('open-map-picker')?.addEventListener('click', openMapPicker);
+  document.getElementById('reset-formula-defaults')?.addEventListener('click', () => {
+    state.current.model.formulas = { ...DEFAULT_FORMULAS };
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast('已恢复系统默认公式参数', 'success');
+  });
   if (state.step === 2) bindShopsStep();
   if (state.step === 1) bindCostPresets();
   if (state.step === 4) bindMarketStep();
   if (state.step === 5) bindResultsActions();
+}
+
+function bindFormulaToolbar() {
+  const button = document.getElementById('toggle-all-formulas');
+  if (!button) return;
+  const cards = () => Array.from(document.querySelectorAll('.inline-formula, .section-formula'));
+  let open = false;
+  button.addEventListener('click', () => {
+    open = !open;
+    cards().forEach(card => { card.open = open; });
+    button.textContent = open ? '收起全部公式' : '显示全部公式';
+  });
 }
 
 function updateSaveState() {
