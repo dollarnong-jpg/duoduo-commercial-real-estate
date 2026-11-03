@@ -1,4 +1,4 @@
-import './backend.js?v=20261031-static8';
+import './backend.js?v=20261103-static9';
 await window.__duoduoBackendReady;
 
 const app = document.getElementById('app');
@@ -119,6 +119,80 @@ const FIELD_FORMULAS = {
   'formulas.sensitivityCapexMax': { title: '敏感性投资上限', formula: '敏感性矩阵投资系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
   'formulas.sensitivityCapexStep': { title: '敏感性投资步长', formula: '投资系数序列 = MIN, MIN+STEP, …, MAX', functions: ['SEQUENCE'], role: '步长越小，矩阵越细。' },
 };
+const FUNCTION_DEFINITIONS = {
+  'IF': { syntax: 'IF(条件, 条件成立时的值, 条件不成立时的值)', meaning: '条件判断函数。系统先判断条件，再选择对应的计算结果。', example: 'IF(运营年=1, 首年出租率, 稳定期出租率)', note: '调整出租率、稳定年或计租方式时，首先会检查 IF 的条件和边界。' },
+  'SUM': { syntax: 'SUM(数值1, 数值2, …) 或 Σ', meaning: '把多个分项金额或比率相加，形成合计。', example: '项目总投资 = SUM(土地, 工程, 装修, 预备费, 开办费, 流动资金)', note: '漏项会直接造成投资或收入低估；新增费用时应检查是否已纳入对应 SUM。' },
+  'MAX': { syntax: 'MAX(数值1, 数值2, …)', meaning: '取多个数值中的最大值，常用于保底与扣点取高、零值下限。', example: '月收益 = MAX(保底月租金, 联营扣点月收入)', note: '如果希望保底条款优先，确保保底收入被正确录入；取高模式不会同时重复计算两项收入。' },
+  'MIN': { syntax: 'MIN(数值1, 数值2, …)', meaning: '取多个数值中的最小值，常用于进项税抵扣上限、条件溢价封顶。', example: '进项税 = MIN(销项税, 可抵扣进项税估算)', note: 'MIN 的上限值如果设得过低，会压低抵扣或溢价；应核对税法上限和项目招商政策。' },
+  'POWER': { syntax: 'POWER(底数, 指数)', meaning: '乘幂函数，用于复利增长和折现计算。', example: '第n年租金 = 首年租金 × POWER(1+增长率, n)', note: '复利增长前低后高；如果项目租约采用固定递增额，应切换为单利或直接按租约录入。' },
+  'ROUND': { syntax: 'ROUND(数值, 小数位数)', meaning: '按指定小数位四舍五入，通常用于金额、面积和比率展示。', example: 'ROUND(总投资, 2)', note: '显示取整不应改变底层计算；系统计算保留原始精度，表格展示时才取整。' },
+  'NPV': { syntax: 'NPV = Σ[CFt ÷ POWER(1+r, t)]', meaning: '净现值，把每一年现金流按折现率折算到当前时点后相加。', example: 'NPV = CF1/(1+r)^1 + CF2/(1+r)^2 + …', note: '折现率越高，未来现金流越不值钱；NPV大于0表示达到或超过门槛收益。' },
+  'IRR': { syntax: 'IRR：使 NPV(IRR)=0 的折现率', meaning: '内部收益率，是项目自身能够承受的折现率。系统通过二分法不断逼近解。', example: '若IRR=10%，且企业要求8%，说明项目超过门槛。', note: '现金流没有正负交替或全部同号时，IRR可能无解；此时优先看NPV。' },
+  'MOD': { syntax: 'MOD(数值, 除数)', meaning: '返回除法余数，用于判断续租周期或周期性发生年份。', example: 'IF(MOD(运营年, 续租周期)=0, 计算续租佣金, 0)', note: '续租周期应结合租约结构设置，不能简单把首开佣金每年重复计算。' },
+  'INDEX': { syntax: 'INDEX(列表, 位置)', meaning: '按位置取出列表中的值，常用于按楼层、年份或业态取参数。', example: 'INDEX(年度租金列表, 运营年)', note: '如果缺少对应年份或楼层数据，系统会使用0或默认值，需检查数据完整性。' },
+  'LOOKUP': { syntax: 'LOOKUP(查找值, 查找区域, 返回区域)', meaning: '按条件查找并返回对应数据，用于回收期、楼层和业态参数匹配。', example: 'LOOKUP(运营年, 年度列表, 累计现金流)', note: '查找表必须覆盖完整年度；新增楼层或业态时应同步补充规则。' },
+  'SEQUENCE': { syntax: 'SEQUENCE(MIN, MAX, STEP)', meaning: '按下限、上限和步长生成一列敏感性情景值。', example: '租金系数 = 90%、95%、100%、105%、110%', note: '步长过细会增加计算量；通常设置5个左右情景即可用于初筛。' },
+  '二分法': { syntax: '不断取区间中点，直到 NPV(IRR)≈0', meaning: '一种数值求解方法，用于反推 IRR 或盈亏平衡点。', example: '在-99.99%到1000%之间反复二分，逼近使NPV为0的利率', note: '如果现金流结构异常，二分法可能找不到解；系统会显示“不适用”。' },
+};
+
+const FORMULA_GUIDES = {
+  project: {
+    how: '① 先确定项目面积、土地、建设期和计租方式等基础参数；② 代入公式计算总建筑面积、租金基数或土地成本；③ 再把结果传递到工程投资、税费和年度现金流。',
+    adjust: '优先采用土地合同、规划条件和经批准的目标成本。每调整一项，观察总投资、NPV、IRR和回收期；不要同时大幅修改多个基础假设。'
+  },
+  costs: {
+    how: '先按“总建筑面积 × 分项单价 ÷ 10000”计算各分项工程金额，再汇总直接工程费和预备费，最后加入土地、开办费和流动资金形成项目总投资。',
+    adjust: '以造价咨询、工程量清单、已签合同或同类项目对标为依据。先调整建安和装修单价，再调整预备费和非必要公共投入，比较投资变化对NPV和IRR的影响。'
+  },
+  operations: {
+    how: '先确定出租率和租金增长，再按面积、业态系数、铺位条件计算租金；同步计算物业费、停车和多经收入。运营成本按面积、单价、出租率和爬坡系数计算，最后得到NOI和年度现金流。',
+    adjust: '出租率按招商计划，租金按市场样本和租约递增，运营成本按物业预算。建议每次只调整一个变量，并比较NPV敏感性结果；若NPV对租金最敏感，应优先优化首层租金和招商组合。'
+  },
+  taxes: {
+    how: '先按含税收入计算销项税，再用可抵扣成本和进项税率计算进项税，得到增值税净额及附加税；随后计算房产税、土地使用税、印花税和企业所得税。',
+    adjust: '税率和计征方式必须按项目属地最新税政、税务顾问意见和实际合同口径填写。房产税从租/从价、进项抵扣比例、亏损结转年限是影响税后收益的主要变量。'
+  },
+  finance: {
+    how: '贷款额 = 项目总投资 × 债务融资比例；利息按期初余额和当年提款计算；本金按等额本金或先息后本偿还。融资结果进入股权现金流和股权IRR。',
+    adjust: '按银行或融资机构方案填写贷款比例、利率、期限和宽限期。提高债务比例可能提高股权IRR，但会增加利息和偿债压力，必须同时查看股权现金流最低点。'
+  },
+  valuation: {
+    how: '折现率用于把未来年度现金流折现为NPV；期末退出价值按NOI资本化率法或营业收入倍数法计算，再扣除退出税费后进入最后一年现金流。',
+    adjust: '折现率采用企业投资门槛或同类项目资本成本；资本化率按区域同类商业资产成交和估值判断；收入倍数应保守，并与NOI资本化率法交叉验证。'
+  },
+  depreciation: {
+    how: '建筑、装修和设备分别按各自折旧年限计提折旧。折旧会降低税前利润和所得税，但不是当年实际现金支出。亏损可在设定年限内结转，抵减以后年度应纳税所得额。',
+    adjust: '折旧年限按会计政策、税法规定和资产实际寿命设置；亏损结转年限按适用税法设置。调整后重点观察税后净利润、所得税和股权现金流，不要将折旧重复当作现金支出。'
+  },
+  sensitivity: {
+    how: '系统按设定的下限、上限和步长生成租金和投资情景，逐个重新计算项目NPV，形成敏感性矩阵。',
+    adjust: '上下限应覆盖悲观和乐观情景，通常从±10%开始；步长5%适合初筛。若某个变量跨越NPV由负转正的临界点，应进一步细化该变量。'
+  },
+  generic: {
+    how: '系统读取该参数，代入上方公式，并按项目面积、出租率、税率和年度现金流逐年计算；最终汇总到投资、NOI、NPV、IRR或回收期。',
+    adjust: '先采用可研、预算、合同或市场调研的基准值；每次只调整一个变量，比较NPV、IRR、回收期和现金流最低点，避免同时改变多个假设造成误判。'
+  }
+};
+
+function formulaGuideFor(path, info) {
+  if (path === 'project.revenueModel') return {
+    how: '先判断项目采用纯租金、纯联营扣点还是保底与扣点取高；纯租金取保底收入，纯扣点取扣点收入，取高模式逐铺比较两者并选择较高值。',
+    adjust: '先确定项目整体商业模式，再到“铺位数据”中按业态覆盖。百货/奥莱通常使用保底与扣点取高；社区商业通常纯租金。切换后重点比较租金收入、租户风险和NOI。'
+  };
+  if (path.startsWith('formulas.sensitivity')) return FORMULA_GUIDES.sensitivity;
+  if (path.includes('DepreciationYears') || path.includes('taxLossCarryforwardYears')) return FORMULA_GUIDES.depreciation;
+  if (path.includes('rentGrowthMode')) return FORMULA_GUIDES.operations;
+  if (path.includes('loanRepaymentMethod')) return FORMULA_GUIDES.finance;
+  if (path.includes('exitValueMethod') || path.includes('exitRevenueMultiple')) return FORMULA_GUIDES.valuation;
+  if (path.startsWith('costs.')) return FORMULA_GUIDES.costs;
+  if (path.startsWith('taxes.')) return FORMULA_GUIDES.taxes;
+  if (path.startsWith('finance.')) return FORMULA_GUIDES.finance;
+  if (path.startsWith('valuation.')) return FORMULA_GUIDES.valuation;
+  if (path.startsWith('operations.') || path.startsWith('revenues.')) return FORMULA_GUIDES.operations;
+  if (path.startsWith('project.')) return FORMULA_GUIDES.project;
+  return FORMULA_GUIDES.generic;
+}
+
 
 const SETTLEMENT_PRESETS = {
   department: {
@@ -666,7 +740,7 @@ function renderWorkspace() {
       </aside>
       <section class="step-panel">
         <div class="panel-head"><h2>${active.label}</h2><p>${stepDescription(state.step)}</p></div>
-        <div class="panel-body">${state.step < 4 ? `<div class="formula-toolbar"><div><span class="fx-chip">ƒ</span><strong>公式就在对应数据下方</strong><small>点击任一项查看计算式、函数和参数作用</small></div><button class="btn btn-ghost btn-sm" id="toggle-all-formulas">显示全部公式</button></div>` : ''}${renderStep()}</div>
+        <div class="panel-body">${state.step < 4 ? `<div class="formula-toolbar"><div><span class="fx-chip">ƒ</span><strong>公式就在对应数据下方</strong><small>点击任一项查看计算式、函数和参数作用</small></div><div class="formula-toolbar-actions"><button class="btn btn-ghost btn-sm" id="open-function-glossary">函数说明</button><button class="btn btn-ghost btn-sm" id="toggle-all-formulas">显示全部公式</button></div></div>` : ''}${renderStep()}</div>
         <div class="panel-foot">
           <button class="btn btn-secondary" id="prev-step" ${state.step === 0 ? 'disabled' : ''}>${ICONS.back}<span>上一步</span></button>
           ${state.step < STEPS.length - 1
@@ -782,30 +856,82 @@ function selectField(label, path, options, opts = {}) {
   </div>`;
 }
 
+function functionChips(functions) {
+  return (functions || []).map(name => {
+    const definition = FUNCTION_DEFINITIONS[name];
+    const title = definition ? `${definition.syntax}｜点击查看函数说明` : '点击查看函数说明';
+    return `<button type="button" class="function-chip" data-function="${escapeHtml(name)}" title="${escapeHtml(title)}">${escapeHtml(name)}</button>`;
+  }).join('');
+}
+
 function formulaHint(path) {
   const info = FIELD_FORMULAS[path];
   if (!info) return '';
+  const guide = formulaGuideFor(path, info);
   const current = getPath(state.current.model, path);
   const shown = current === true ? '是' : current === false ? '否' : current === null || current === undefined || current === '' ? '未填写' : (typeof current === 'number' ? fmt(current, Number.isInteger(current) ? 0 : 4) : String(current));
   return `<details class="inline-formula" data-formula-path="${escapeHtml(path)}">
-    <summary><span class="fx-chip">ƒ</span><span>${escapeHtml(info.title)}公式</span><span class="formula-current">当前：${escapeHtml(shown)}</span></summary>
+    <summary><span class="fx-chip">ƒ</span><span>${escapeHtml(info.title)}：公式、算法与调整建议</span><span class="formula-current">当前：${escapeHtml(shown)}</span></summary>
     <div class="inline-formula-body">
+      <div class="formula-label">公式表达式</div>
       <code>${escapeHtml(info.formula)}</code>
-      <div class="formula-function-row"><span>使用函数</span>${(info.functions || []).map(name => `<b>${escapeHtml(name)}</b>`).join('')}</div>
-      <p>${escapeHtml(info.role || '')}</p>
+      <div class="formula-function-row"><span>使用函数（点击看语法和示例）</span>${functionChips(info.functions)}</div>
+      <div class="formula-guide-grid">
+        <div class="formula-guide-block"><strong>怎么算</strong><p>${escapeHtml(guide.how)}</p></div>
+        <div class="formula-guide-block adjust"><strong>应该怎么调</strong><p>${escapeHtml(guide.adjust)}</p></div>
+      </div>
+      <div class="formula-impact"><strong>这个参数的影响：</strong>${escapeHtml(info.role || '')}</div>
     </div>
   </details>`;
 }
 
 function formulaPanel(title, formula, functions, note = '') {
   return `<details class="section-formula">
-    <summary><span class="fx-chip">ƒ</span><strong>${escapeHtml(title)}</strong><span>展开公式与函数</span></summary>
+    <summary><span class="fx-chip">ƒ</span><strong>${escapeHtml(title)}</strong><span>展开公式、函数和计算顺序</span></summary>
     <div class="inline-formula-body">
+      <div class="formula-label">公式表达式</div>
       <code>${escapeHtml(formula)}</code>
-      <div class="formula-function-row"><span>使用函数</span>${(functions || []).map(name => `<b>${escapeHtml(name)}</b>`).join('')}</div>
-      ${note ? `<p>${escapeHtml(note)}</p>` : ''}
+      <div class="formula-function-row"><span>使用函数（点击看语法和示例）</span>${functionChips(functions)}</div>
+      ${note ? `<div class="formula-impact"><strong>调整说明：</strong>${escapeHtml(note)}</div>` : ''}
     </div>
   </details>`;
+}
+
+function openFunctionHelp(name) {
+  const info = FUNCTION_DEFINITIONS[name];
+  if (!info) return;
+  modalRegion.innerHTML = `
+    <div class="modal-backdrop" id="function-help-backdrop">
+      <div class="modal" style="width:min(620px,100%)">
+        <div class="modal-head"><div><h2><span class="function-title-chip">ƒ</span> ${escapeHtml(name)} 函数说明</h2><p>${escapeHtml(info.syntax)}</p></div><button class="modal-close" id="function-help-close">×</button></div>
+        <div class="modal-body function-help-body">
+          <div class="formula-guide-block"><strong>含义</strong><p>${escapeHtml(info.meaning)}</p></div>
+          <div class="formula-guide-block"><strong>本项目示例</strong><p><code>${escapeHtml(info.example)}</code></p></div>
+          <div class="formula-guide-block adjust"><strong>调整时注意</strong><p>${escapeHtml(info.note)}</p></div>
+        </div>
+        <div class="modal-foot"><button class="btn btn-primary" id="function-help-ok">知道了</button></div>
+      </div>
+    </div>`;
+  const close = () => { modalRegion.innerHTML = ''; };
+  document.getElementById('function-help-close').addEventListener('click', close);
+  document.getElementById('function-help-ok').addEventListener('click', close);
+  document.getElementById('function-help-backdrop').addEventListener('click', event => { if (event.target.id === 'function-help-backdrop') close(); });
+}
+
+function openFunctionGlossary() {
+  const cards = Object.entries(FUNCTION_DEFINITIONS).map(([name, info]) => `<button type="button" class="function-glossary-card" data-function="${escapeHtml(name)}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(info.syntax)}</span><small>${escapeHtml(info.meaning)}</small></button>`).join('');
+  modalRegion.innerHTML = `
+    <div class="modal-backdrop" id="function-glossary-backdrop">
+      <div class="modal" style="width:min(860px,100%)">
+        <div class="modal-head"><div><h2>测算函数字典</h2><p>点击任一函数查看语法、含义、项目示例和调整注意事项。</p></div><button class="modal-close" id="function-glossary-close">×</button></div>
+        <div class="modal-body"><div class="function-glossary-grid">${cards}</div></div>
+        <div class="modal-foot"><button class="btn btn-primary" id="function-glossary-ok">关闭</button></div>
+      </div>
+    </div>`;
+  const close = () => { modalRegion.innerHTML = ''; };
+  document.getElementById('function-glossary-close').addEventListener('click', close);
+  document.getElementById('function-glossary-ok').addEventListener('click', close);
+  document.getElementById('function-glossary-backdrop').addEventListener('click', event => { if (event.target.id === 'function-glossary-backdrop') close(); });
 }
 
 function renderProjectStep() {
@@ -1415,6 +1541,7 @@ function bindStepInputs() {
 }
 
 function bindFormulaToolbar() {
+  document.getElementById('open-function-glossary')?.addEventListener('click', openFunctionGlossary);
   const button = document.getElementById('toggle-all-formulas');
   if (!button) return;
   const cards = () => Array.from(document.querySelectorAll('.inline-formula, .section-formula'));
@@ -2121,6 +2248,14 @@ function drawDonut(canvas, items) {
 
 window.addEventListener('resize', () => {
   if (state.step === 5 && state.current) renderResultCharts();
+});
+
+document.addEventListener('click', event => {
+  const functionButton = event.target.closest('[data-function]');
+  if (functionButton) {
+    event.preventDefault();
+    openFunctionHelp(functionButton.dataset.function);
+  }
 });
 
 boot();
