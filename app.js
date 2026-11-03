@@ -1,6 +1,7 @@
-import './backend.js?v=20261103-static9';
+import './backend.js?v=20261103-static10';
 await window.__duoduoBackendReady;
 
+const APP_VERSION = '1.1.2';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -464,7 +465,7 @@ function renderAuth(mode = 'login') {
             <div class="field"><label>密码 <small>至少6位</small></label><input class="input" type="password" name="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" required placeholder="输入密码"></div>
             <button class="auth-submit" type="submit">${isLogin ? '进入工作台' : '注册并进入'}</button>
           </form>
-          ${isLogin ? `<div class="auth-demo">首次使用可直接体验：账号 <strong>demo</strong>，密码 <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
+          ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>首次使用可直接体验：账号 <strong>demo</strong>，密码 <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
         </div>
       </section>
     </div>`;
