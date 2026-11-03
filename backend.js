@@ -517,6 +517,7 @@ function marketTemplate() {
 function exportExcel(result) {
   const model = result.model;
   const s = result.summary;
+  const formulas = model.formulas || {};
   const wb = XLSX.utils.book_new();
   addSheet(wb, '项目概览', [
     ['多多 · 商业地产投资测算'], [''],
@@ -536,7 +537,39 @@ function exportExcel(result) {
     ['运营', '稳定期出租率', model.operations.stableOccupancy], ['运营', '租金增长率', model.operations.rentGrowth],
     ['税费', '租金增值税', model.taxes.vatRent], ['税费', '房产税（从租）', model.taxes.propertyTaxRateRent], ['税费', '企业所得税', model.taxes.corporateTax],
     ['融资', '债务比例', model.finance.debtRatio], ['融资', '贷款利率', model.finance.loanRate], ['估值', '折现率', model.valuation.discountRate],
+    ['公式', '租金增长方式', formulas.rentGrowthMode], ['公式', '建筑折旧年限', formulas.buildingDepreciationYears],
+    ['公式', '装修折旧年限', formulas.fitoutDepreciationYears], ['公式', '设备折旧年限', formulas.equipmentDepreciationYears],
+    ['公式', '亏损结转年限', formulas.taxLossCarryforwardYears], ['公式', '贷款还款方式', formulas.loanRepaymentMethod],
+    ['公式', '退出估值方法', formulas.exitValueMethod], ['公式', '退出收入倍数', formulas.exitRevenueMultiple],
   ], [18, 28, 20]);
+  addSheet(wb, '公式与参数', [
+    ['模块', '公式名称', '公式表达式', '使用函数', '参数路径', '当前值', '说明'],
+    ['面积', '总建筑面积', 'IF(手动总建筑面积=0, 商铺建筑面积合计×(1+公区系数), 手动总建筑面积)', 'IF / SUM', 'project.commonAreaFactor', model.project.commonAreaFactor, '公区系数可调整，联动建设投资'],
+    ['租金', '出租率', 'IF(运营年=1,首年出租率,IF(运营年<稳定年,第二年出租率,稳定出租率))', 'IF', 'operations.occupancyY1', model.operations.occupancyY1, '首年出租率'],
+    ['租金', '租金增长', '复利:(1+g)^n；单利:1+g×n', 'POWER / IF', 'formulas.rentGrowthMode', formulas.rentGrowthMode, '增长方式可切换'],
+    ['租金', '免租调整', '首年租金×出租率×(1-免租月数÷12)', 'IF / SUM', 'operations.rentFreeMonths', model.operations.rentFreeMonths, '首年免租月数'],
+    ['联营', '保底与扣点取高', 'MAX(保底月收入,联营扣点月收入)', 'MAX', 'project.revenueModel', model.project.revenueModel, '项目默认结算方式'],
+    ['投资', '分项工程投资', '总建筑面积×分项单价÷10000', 'SUM / ROUND', 'costs.constructionRate', model.costs.constructionRate, '建安单价'],
+    ['投资', '预备费', '直接工程费×预备费费率', 'SUM', 'project.contingencyRate', model.project.contingencyRate, '预备费率'],
+    ['投资', '铺底流动资金', '稳定运营成本估算×铺底比例', 'SUM / MAX', 'costs.workingCapitalRate', model.costs.workingCapitalRate, '铺底流动资金率'],
+    ['收入', '物业费收入', '可租赁面积×物业费单价×12×出租率÷10000', 'SUM', 'revenues.propertyFee', model.revenues.propertyFee, '物业费单价'],
+    ['运营', '运营成本', '物业+能耗+商管+行政+营销+维修+保险+坏账+其他', 'SUM', 'operations.propertyOpsCost', model.operations.propertyOpsCost, '物业运营成本单价'],
+    ['税费', '销项税', 'Σ[含税收入÷(1+税率)×税率]', 'SUM', 'taxes.vatRent', model.taxes.vatRent, '租金增值税率'],
+    ['税费', '进项税', 'MIN(销项税,可抵扣成本×抵扣比例×进项税率÷(1+进项税率))', 'MIN', 'taxes.inputVatShare', model.taxes.inputVatShare, '可抵扣比例'],
+    ['税费', '房产税（从租）', '不含税租金×从租税率', 'IF', 'taxes.propertyTaxRateRent', model.taxes.propertyTaxRateRent, '从租房产税率'],
+    ['税费', '土地使用税', '占地面积×单位税额÷10000', 'ROUND', 'taxes.landUseTax', model.taxes.landUseTax, '单位土地税额'],
+    ['融资', '贷款额', '项目总投资×债务融资比例', 'SUM', 'finance.debtRatio', model.finance.debtRatio, '债务比例'],
+    ['融资', '贷款利息', '(期初余额+当年提款÷2)×年贷款利率', 'SUM', 'finance.loanRate', model.finance.loanRate, '贷款年利率'],
+    ['融资', '还款方式', '等额本金或先息后本', 'IF', 'formulas.loanRepaymentMethod', formulas.loanRepaymentMethod, '可切换'],
+    ['折旧', '年折旧', '建筑投资÷建筑年限+装修投资÷装修年限+设备投资÷设备年限', 'SUM', 'formulas.buildingDepreciationYears', formulas.buildingDepreciationYears, '建筑折旧年限'],
+    ['所得税', '可结转亏损', 'Σ历史亏损中年限≤N的部分', 'SUM / IF', 'formulas.taxLossCarryforwardYears', formulas.taxLossCarryforwardYears, '亏损结转年限'],
+    ['退出', 'NOI资本化率法', '期末NOI÷退出资本化率×(1-退出税费率)', 'MAX / IF', 'valuation.exitCapRate', model.valuation.exitCapRate, '退出资本化率'],
+    ['退出', '收入倍数法', '期末营业收入×退出收入倍数×(1-退出税费率)', 'IF / SUM', 'formulas.exitRevenueMultiple', formulas.exitRevenueMultiple, '收入倍数'],
+    ['收益', 'NPV', 'Σ[CFt÷(1+r)^t]', 'SUM / POWER / NPV', 'valuation.discountRate', model.valuation.discountRate, '折现率'],
+    ['收益', 'IRR', '求解NPV(IRR)=0', 'IRR / 二分法', 'valuation.discountRate', model.valuation.discountRate, '与折现率比较判断可行性'],
+    ['收益', '静态回收期', '累计现金流由负转正的插值年份', 'LOOKUP / IF', 'project.operationYears', model.project.operationYears, '运营测算期'],
+    ['敏感性', 'NPV敏感性矩阵', 'NPV=f(租金系数,投资系数)，在MIN~MAX间按STEP生成', 'SEQUENCE / NPV', 'formulas.sensitivityRentMin', formulas.sensitivityRentMin, '租金系数下限'],
+  ], [14, 22, 70, 24, 34, 18, 46]);
   addSheet(wb, '投资构成', [['项目', '金额（万元）', '占比'], ...result.investmentBreakdown.map(x => [x.name, x.value, s.totalInvestment ? x.value / s.totalInvestment : 0])], [28, 18, 14]);
   addSheet(wb, '楼层均价', [['楼层', '建筑面积（㎡）', '可租赁面积（㎡）', '平均月收益（元/㎡/月）', '满租月收益（万元）'], ...(result.floors || []).map(x => [x.name, x.buildingArea, x.leasableArea, x.weightedRent || x.avgRent, x.monthlyRevenue || x.monthlyRent])], [12, 18, 20, 26, 22]);
   addSheet(wb, '商铺明细', [['铺位号', '楼层', '业态', '状态', '建筑面积（㎡）', '实际租赁面积（㎡）', '租金单价（元/㎡/月）', '条件', '满租月收益（万元）'], ...(result.shops || []).map(x => [x.id, x.floor, x.category, x.status || '', x.buildingArea, x.leasableArea, x.rent, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [16, 10, 16, 12, 18, 20, 22, 24, 22]);
@@ -632,6 +665,33 @@ async function exportPPT(result) {
   addSlideTitle(slide, 'NPV敏感性分析', '租金与投资同时变动时的项目NPV（万元）');
   const matrixRows = [['租金↓ / 投资→', ...(result.sensitivity.capexSteps || []).map(v => `${(v * 100).toFixed(0)}%`)], ...(result.sensitivity.rentSteps || []).map((rent, i) => [`${(rent * 100).toFixed(0)}%`, ...(result.sensitivity.npvMatrix[i] || []).map(v => v.toLocaleString('zh-CN', { maximumFractionDigits: 0 }))])];
   slide.addTable(matrixRows, { x: 1.15, y: 1.55, w: 10.9, colW: [2.0, 1.75, 1.75, 1.75, 1.75, 1.75], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 10, align: 'center', valign: 'mid', margin: 0.06, rowH: 0.46 });
+
+  slide = pptx.addSlide();
+  addSlideTitle(slide, '测算公式（一）', '面积、租金、投资与运营成本');
+  slide.addTable([
+    ['模块', '公式', '使用函数'],
+    ['面积', 'GBA = IF(手动值为0, 商铺面积×(1+公区系数), 手动值)', 'IF / SUM'],
+    ['租金', '有效出租率 = IF(首年, 首年出租率, IF(稳定前, 第二年出租率, 稳定出租率))', 'IF'],
+    ['租金', '租金收入 = 满租月租金×12×出租率×免租系数×增长因子', 'POWER / SUM'],
+    ['联营', '测算收入 = IF(纯租金, 保底, IF(纯扣点, 扣点, MAX(保底,扣点)))', 'IF / MAX'],
+    ['投资', '分项工程投资 = 总建筑面积×分项单价÷10000', 'SUM / ROUND'],
+    ['投资', '预备费 = 直接工程费×预备费率', 'SUM'],
+    ['运营', 'NOI = 不含税收入 - 不含税运营成本 - 税费', 'SUM / MIN / MAX'],
+  ], { x: 0.7, y: 1.45, w: 12.0, colW: [1.2, 8.7, 2.1], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.48, autoFit: false });
+
+  slide = pptx.addSlide();
+  addSlideTitle(slide, '测算公式（二）', '税费、融资、折旧、现金流与收益指标');
+  slide.addTable([
+    ['模块', '公式', '使用函数'],
+    ['税费', '销项税 = Σ[含税收入÷(1+税率)×税率]；进项税 = MIN(销项税,可抵扣成本×比例×税率÷(1+税率))', 'SUM / MIN'],
+    ['房产税', 'IF(从租, 不含税租金×12%, 房产原值×(1-扣除比例)×1.2%)', 'IF'],
+    ['融资', '贷款利息 = (期初余额+当年提款÷2)×年利率；等额本金=贷款额÷期限', 'IF / MIN'],
+    ['折旧', '年折旧 = 建筑投资÷年限 + 装修投资÷年限 + 设备投资÷年限', 'SUM'],
+    ['所得税', '所得税 = MAX(0, 税前利润-可结转亏损)×所得税率', 'MAX / IF'],
+    ['现金流', '项目CF = NOI - 资本化改造 - 所得税 + 期末退出价值', 'SUM / IF'],
+    ['收益', 'NPV = Σ[CFt÷(1+r)^t]；IRR：NPV(IRR)=0；回收期按累计CF插值', 'NPV / IRR / LOOKUP'],
+    ['敏感性', 'NPV=f(租金系数,投资系数)，在MIN~MAX间按STEP生成矩阵', 'SEQUENCE / NPV'],
+  ], { x: 0.7, y: 1.45, w: 12.0, colW: [1.2, 8.7, 2.1], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.48, autoFit: false });
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '分析结论与行动建议', '供内部评审和下一步决策使用');
