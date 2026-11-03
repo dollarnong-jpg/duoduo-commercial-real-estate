@@ -1,7 +1,7 @@
-import './backend.js?v=20261103-static11';
+import './backend.js?v=20261103-static12';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -308,6 +308,7 @@ const state = {
   shopPage: 1,
   importWarnings: [],
   importHints: null,
+  budgetWarnings: [],
   sidebarOpen: false,
 };
 
@@ -1234,6 +1235,19 @@ function organizationAnnualCost(department, organization) {
   return headcount * salary * (12 + bonusMonths) * (1 + social) / 10000;
 }
 
+function renderOperatingBudgetImport() {
+  return `<div class="form-section budget-import-section">
+    <div class="section-title">Excel 运营成本预算导入</div>
+    <div class="section-note">可下载标准模板，填写基础参数、组织架构、办公预算、招商预算、营销渠道和维保预算后一次性导入。</div>
+    <div class="import-zone" id="budget-import-zone">
+      <div class="import-icon">${ICONS.excel}</div>
+      <div><h3>运营成本预算模板</h3><p>支持 .xlsx、.xlsm。金额单位为万元/年，工资单位为元/月，比例按百分数填写。</p></div>
+      <div class="import-actions"><button class="btn btn-secondary" id="download-budget-template">${ICONS.download}<span>下载模板</span></button><button class="btn btn-primary" id="choose-budget-file">${ICONS.upload}<span>导入预算</span></button><input type="file" id="budget-file" accept=".xlsx,.xlsm" hidden></div>
+    </div>
+    ${state.budgetWarnings.length ? `<div class="warning-list">${state.budgetWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
 function renderOrganizationSection(model, preview) {
   const organization = model.organization || (model.organization = {});
   const departments = organization.departments || (organization.departments = []);
@@ -1359,6 +1373,10 @@ function renderOperatingCostSummary(preview) {
 
 function bindOperationsBudgets() {
   const model = state.current.model;
+  const budgetFile = document.getElementById('budget-file');
+  document.getElementById('download-budget-template')?.addEventListener('click', () => downloadFile('/api/templates/operating-budget', '商业地产运营成本预算导入模板.xlsx'));
+  document.getElementById('choose-budget-file')?.addEventListener('click', () => budgetFile.click());
+  budgetFile?.addEventListener('change', () => budgetFile.files[0] && importOperatingBudget(budgetFile.files[0]));
   document.getElementById('add-department')?.addEventListener('click', () => {
     model.organization ||= { socialInsuranceRate: 0.28, annualBonusMonths: 1, recruitmentTrainingRate: 0.02, departments: [] };
     model.organization.departments ||= [];
@@ -1381,6 +1399,36 @@ function bindOperationsBudgets() {
   }));
 }
 
+
+async function importOperatingBudget(file) {
+  if (!/\.(xlsx|xlsm)$/i.test(file.name)) return toast('运营成本预算仅支持 .xlsx 或 .xlsm', 'error');
+  if (file.size > 20 * 1024 * 1024) return toast('文件不能超过20MB', 'error');
+  setBusy(true);
+  try {
+    const contentBase64 = await fileToBase64(file);
+    const payload = await api('/api/import-operating-budget', { method: 'POST', body: { filename: file.name, contentBase64 } });
+    const model = state.current.model;
+    if (payload.organization?.departments?.length) model.organization = { ...(model.organization || {}), ...payload.organization };
+    if (payload.officeBudget && Object.keys(payload.officeBudget).length) model.officeBudget = { ...(model.officeBudget || {}), ...payload.officeBudget };
+    if (payload.leasingBudget && Object.keys(payload.leasingBudget).length) model.leasingBudget = { ...(model.leasingBudget || {}), ...payload.leasingBudget };
+    if (payload.marketingBudget) {
+      model.marketingBudget = { ...(model.marketingBudget || {}), ...payload.marketingBudget };
+      if (!payload.marketingBudget.channels?.length) model.marketingBudget.channels = model.marketingBudget.channels || [];
+    }
+    if (payload.maintenanceBudget && Object.keys(payload.maintenanceBudget).length) model.maintenanceBudget = { ...(model.maintenanceBudget || {}), ...payload.maintenanceBudget };
+    if (payload.operations && Object.keys(payload.operations).length) model.operations = { ...(model.operations || {}), ...payload.operations };
+    state.budgetWarnings = payload.warnings || [];
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast('运营成本预算已导入', 'success');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
 
 function renderOperationsStep() {
   return `
@@ -1420,6 +1468,7 @@ function renderOperationsStep() {
         ${textField('资本化改造率', 'operations.capexRate', { type: 'number', unit: '%', scale: 0.01 })}
       </div>
     </div>
+    ${renderOperatingBudgetImport()}
     ${renderOrganizationSection(state.current.model, state.preview)}
     ${renderOfficeBudgetSection(state.current.model)}
     ${renderLeasingBudgetSection(state.current.model)}
