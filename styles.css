@@ -558,3 +558,32 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
   .formula-current { display:none; }
   .section-formula { margin-left:0; }
 }
+
+/* Detailed formula annotations and function glossary */
+.formula-toolbar-actions { display:flex; gap:7px; flex-wrap:wrap; }
+.formula-label { margin-bottom:5px; color:#8b9691; font-size:8px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+.formula-guide-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:9px; }
+.formula-guide-block { padding:9px 10px; border-radius:8px; border:1px solid #e1e9e5; background:#f8fbf9; }
+.formula-guide-block.adjust { border-color:#eadbb9; background:#fffaf0; }
+.formula-guide-block strong { display:block; margin-bottom:4px; color:var(--navy); font-size:9px; }
+.formula-guide-block p { margin:0; color:#65716c; font-size:9px; line-height:1.7; }
+.formula-guide-block code { margin:0; padding:0; background:transparent; color:var(--navy); }
+.formula-impact { margin-top:8px; padding:8px 9px; border-left:3px solid var(--gold); border-radius:0 7px 7px 0; background:#fbf8f1; color:#6d6250; font-size:9px; line-height:1.65; }
+.function-chip { display:inline-flex; align-items:center; border:0; border-radius:11px; padding:3px 8px; background:var(--gold-soft); color:#76571a; font:700 8px/1.4 "SFMono-Regular",Consolas,monospace; cursor:pointer; transition:transform .14s,background .14s; }
+.function-chip:hover { transform:translateY(-1px); background:#efd9a9; }
+.function-title-chip { display:inline-grid; place-items:center; width:25px; height:25px; border-radius:7px; background:var(--navy); color:#f7e6b8; font:italic 700 14px Georgia,serif; vertical-align:middle; }
+.function-help-body { display:grid; gap:10px; line-height:1.7; }
+.function-help-body .formula-guide-block { padding:12px 13px; }
+.function-help-body .formula-guide-block p { font-size:11px; }
+.function-help-body code { display:block; padding:9px 10px; border-radius:7px; background:#f1f5f2; }
+.function-glossary-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; max-height:62vh; overflow:auto; }
+.function-glossary-card { display:flex; flex-direction:column; align-items:flex-start; gap:4px; width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:#fffdf9; text-align:left; }
+.function-glossary-card:hover { border-color:var(--green); background:var(--green-soft); }
+.function-glossary-card strong { color:var(--green); font:700 12px "SFMono-Regular",Consolas,monospace; }
+.function-glossary-card span { color:var(--navy); font-size:9px; line-height:1.5; }
+.function-glossary-card small { color:var(--muted); font-size:9px; line-height:1.6; }
+@media (max-width:620px) {
+  .formula-guide-grid, .function-glossary-grid { grid-template-columns:1fr; }
+  .formula-toolbar-actions { width:100%; }
+  .formula-toolbar-actions .btn { flex:1; }
+}
