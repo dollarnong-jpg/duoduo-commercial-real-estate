@@ -1,7 +1,7 @@
-import './backend.js?v=20261103-static10';
+import './backend.js?v=20261103-static11';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.2.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -119,6 +119,29 @@ const FIELD_FORMULAS = {
   'formulas.sensitivityCapexMin': { title: '敏感性投资下限', formula: '敏感性矩阵投资系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
   'formulas.sensitivityCapexMax': { title: '敏感性投资上限', formula: '敏感性矩阵投资系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
   'formulas.sensitivityCapexStep': { title: '敏感性投资步长', formula: '投资系数序列 = MIN, MIN+STEP, …, MAX', functions: ['SEQUENCE'], role: '步长越小，矩阵越细。' },
+  'organization.socialInsuranceRate': { title: '社保公积金比例', formula: '部门年成本 = 人数 × 月薪 ×（12 + 年终奖月数）×（1 + 社保公积金比例）', functions: ['SUM'], role: '社保公积金比例越高，年度人员成本越高。' },
+  'organization.annualBonusMonths': { title: '年终奖月数', formula: '年度薪资月数 = 12 + 年终奖月数', functions: ['SUM'], role: '影响年度工资总额和人员成本。' },
+  'organization.recruitmentTrainingRate': { title: '招聘培训费', formula: '招聘培训费 = 年度工资成本 × 招聘培训费率', functions: ['SUM'], role: '用于招聘、培训、团队建设等人员相关支出。' },
+  'officeBudget.officeRentAnnual': { title: '办公室租金', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '直接计入年度办公行政成本。' },
+  'officeBudget.utilitiesAnnual': { title: '水电及通讯费', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '直接计入年度办公行政成本。' },
+  'officeBudget.itSoftwareAnnual': { title: 'IT及软件服务', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '包括商管系统、财务系统、会员系统等年度服务费。' },
+  'officeBudget.officeSuppliesAnnual': { title: '办公用品', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '直接计入年度办公行政成本。' },
+  'officeBudget.travelEntertainmentAnnual': { title: '差旅及业务招待', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '直接计入年度办公行政成本。' },
+  'officeBudget.otherAnnual': { title: '其他办公费用', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '直接计入年度办公行政成本。' },
+  'leasingBudget.channelFeeAnnual': { title: '渠道及代理费', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '计入年度招商费用。' },
+  'leasingBudget.eventsAnnual': { title: '招商活动', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '包括招商推介会、品牌对接会等。' },
+  'leasingBudget.materialsAnnual': { title: '招商物料', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '包括招商手册、效果图、视频和印刷物料。' },
+  'leasingBudget.travelAnnual': { title: '招商差旅', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '直接计入年度招商费用。' },
+  'leasingBudget.platformAnnual': { title: '招商平台及系统', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '包括招商数据库、线上平台和渠道系统。' },
+  'leasingBudget.otherAnnual': { title: '其他招商费用', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '直接计入年度招商费用。' },
+  'marketingBudget.useFixedAnnual': { title: '营销预算方式', formula: 'IF(固定预算, 固定年度预算, 营业收入 × 营销费用率)', functions: ['IF'], role: '决定营销预算按固定金额还是营业收入比例生成。' },
+  'marketingBudget.fixedAnnual': { title: '固定年度营销预算', formula: '固定预算模式下：年度营销预算 = 固定年度预算', functions: ['IF'], role: '仅在固定年度预算模式下启用。' },
+  'marketingBudget.contingencyRate': { title: '营销机动预备', formula: '机动预备 = 年度营销预算 × 机动预备比例', functions: ['SUM'], role: '预留临时活动、媒体补位和不可预见支出。' },
+  'maintenanceBudget.elevatorAnnual': { title: '电梯维保', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '按电梯维保合同计入年度维保成本。' },
+  'maintenanceBudget.hvacAnnual': { title: '暖通空调维保', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '按暖通维保合同计入年度维保成本。' },
+  'maintenanceBudget.fireAnnual': { title: '消防维保', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '包括消防设施检测、维保和年检。' },
+  'maintenanceBudget.landscapeAnnual': { title: '景观绿化养护', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '包括室内外绿植、景观和水景养护。' },
+  'maintenanceBudget.otherAnnual': { title: '其他专项维保', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '用于未单列的专项维保支出。' },
 };
 const FUNCTION_DEFINITIONS = {
   'IF': { syntax: 'IF(条件, 条件成立时的值, 条件不成立时的值)', meaning: '条件判断函数。系统先判断条件，再选择对应的计算结果。', example: 'IF(运营年=1, 首年出租率, 稳定期出租率)', note: '调整出租率、稳定年或计租方式时，首先会检查 IF 的条件和边界。' },
@@ -169,6 +192,26 @@ const FORMULA_GUIDES = {
     how: '系统按设定的下限、上限和步长生成租金和投资情景，逐个重新计算项目NPV，形成敏感性矩阵。',
     adjust: '上下限应覆盖悲观和乐观情景，通常从±10%开始；步长5%适合初筛。若某个变量跨越NPV由负转正的临界点，应进一步细化该变量。'
   },
+  organization: {
+    how: '先确定部门和编制人数，再按平均月薪 ×（12+年终奖月数）×（1+社保公积金比例）计算部门年度成本，汇总后加入招聘培训费。保安、保洁、物业工程和运营团队分别计算。',
+    adjust: '按定编定岗方案填写人数和岗位平均月薪，社保公积金按项目属地政策设置。先确定是否需要自管、外包或混合模式，再比较人员成本对NOI和现金流的影响。'
+  },
+  office: {
+    how: '将办公室租金、水电通讯、IT软件、办公用品、差旅招待和其他行政费用逐项相加，形成年度办公行政成本。',
+    adjust: '优先使用年度行政预算或已签合同。办公室租金和人员编制、办公面积要匹配；系统软件和IT费用应与数字化运营计划一致。'
+  },
+  leasing: {
+    how: '年度招商费用由渠道代理费、招商活动、招商物料、招商差旅、平台系统和其他费用相加；续租佣金按续租周期另行计算。',
+    adjust: '按招商策略和渠道政策填写。首开招商佣金、年度招商费用和续租佣金要分开，避免重复计算；招商预算应与开业率、出租率和租户结构目标匹配。'
+  },
+  marketing: {
+    how: '先按“营业收入×营销费用率”或固定年度预算确定营销总额，再预留机动预备，最后按渠道权重归一化分配到品牌公关、媒体、活动、会员数字和物料美陈。',
+    adjust: '开业期可提高媒体投放和活动占比，稳定期提高会员数字和品牌公关占比。权重会自动归一化，但渠道预算应与年度推广计划和KPI一致。'
+  },
+  maintenance: {
+    how: '日常维修按资产原值×维修费率计提；电梯、暖通、消防、景观等专项维保按年度合同金额相加，两者共同形成维保成本。',
+    adjust: '日常维修费率通常按资产原值的0.5%–2%设置；专项维保优先按合同、报价和年检要求填写。新开业项目可适当提高首年维修预算。'
+  },
   generic: {
     how: '系统读取该参数，代入上方公式，并按项目面积、出租率、税率和年度现金流逐年计算；最终汇总到投资、NOI、NPV、IRR或回收期。',
     adjust: '先采用可研、预算、合同或市场调研的基准值；每次只调整一个变量，比较NPV、IRR、回收期和现金流最低点，避免同时改变多个假设造成误判。'
@@ -185,6 +228,11 @@ function formulaGuideFor(path, info) {
   if (path.includes('rentGrowthMode')) return FORMULA_GUIDES.operations;
   if (path.includes('loanRepaymentMethod')) return FORMULA_GUIDES.finance;
   if (path.includes('exitValueMethod') || path.includes('exitRevenueMultiple')) return FORMULA_GUIDES.valuation;
+  if (path.startsWith('organization.')) return FORMULA_GUIDES.organization;
+  if (path.startsWith('officeBudget.')) return FORMULA_GUIDES.office;
+  if (path.startsWith('leasingBudget.')) return FORMULA_GUIDES.leasing;
+  if (path.startsWith('marketingBudget.')) return FORMULA_GUIDES.marketing;
+  if (path.startsWith('maintenanceBudget.')) return FORMULA_GUIDES.maintenance;
   if (path.startsWith('costs.')) return FORMULA_GUIDES.costs;
   if (path.startsWith('taxes.')) return FORMULA_GUIDES.taxes;
   if (path.startsWith('finance.')) return FORMULA_GUIDES.finance;
@@ -1177,6 +1225,163 @@ function renderDetailedPricing(m, shops, preview) {
     <div class="table-pagination"><button class="btn btn-ghost btn-sm" id="shop-prev" ${state.shopPage <= 1 ? 'disabled' : ''}>上一页</button><span>第 ${state.shopPage} / ${pageCount} 页，共 ${filtered.length} 个铺位</span><button class="btn btn-ghost btn-sm" id="shop-next" ${state.shopPage >= pageCount ? 'disabled' : ''}>下一页</button></div>`;
 }
 
+
+function organizationAnnualCost(department, organization) {
+  const headcount = Number(department.headcount || 0);
+  const salary = Number(department.avgMonthlySalary || 0);
+  const social = Number(organization.socialInsuranceRate || 0);
+  const bonusMonths = Number(organization.annualBonusMonths || 0);
+  return headcount * salary * (12 + bonusMonths) * (1 + social) / 10000;
+}
+
+function renderOrganizationSection(model, preview) {
+  const organization = model.organization || (model.organization = {});
+  const departments = organization.departments || (organization.departments = []);
+  const previewMap = new Map((preview?.organizationBreakdown || []).map((item, index) => [index, item]));
+  const headcount = departments.reduce((sum, dept) => sum + Number(dept.headcount || 0), 0);
+  const annualCost = departments.reduce((sum, dept) => sum + organizationAnnualCost(dept, organization), 0);
+  return `<div class="form-section budget-section">
+    <div class="section-title">组织架构与人员成本</div>
+    <div class="section-note">按部门、编制人数、平均月薪、社保公积金、年终奖和招聘培训测算年度人员成本；保安、保洁、物业工程和运营团队分别体现。</div>
+    ${formulaPanel('组织架构人员成本公式', '部门年成本 = 编制人数 × 平均月薪 ×（12 + 年终奖月数）×（1 + 社保公积金比例）÷10000\n年度人员成本 = Σ各部门年成本 + 招聘培训费\n招聘培训费 = 年度工资成本 × 招聘培训费率', ['SUM', 'ROUND'], '先按定编定岗填写人数和月薪，再按项目所在地社保政策调整；招商、运营、市场、物业、保安和保洁应分别设置。')}
+    <div class="form-grid">
+      ${textField('社保公积金综合比例', 'organization.socialInsuranceRate', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('年终奖月数', 'organization.annualBonusMonths', { type: 'number', unit: '月' })}
+      ${textField('招聘培训费率', 'organization.recruitmentTrainingRate', { type: 'number', unit: '%', scale: 0.01 })}
+    </div>
+    <div class="data-table-wrap budget-table-wrap">
+      <table class="data-table budget-table"><thead><tr><th>部门</th><th class="num">编制人数</th><th class="num">平均月薪（元）</th><th class="num">年度成本（万元）</th><th>岗位/职责说明</th><th></th></tr></thead><tbody>
+        ${departments.map((dept, i) => `<tr>
+          <td><input class="table-input text-left" data-path="organization.departments.${i}.name" data-type="text" value="${escapeHtml(dept.name || '')}"></td>
+          <td class="num"><input class="table-input" data-path="organization.departments.${i}.headcount" data-type="number" type="number" step="1" value="${dept.headcount ?? 0}"></td>
+          <td class="num"><input class="table-input" data-path="organization.departments.${i}.avgMonthlySalary" data-type="number" type="number" step="100" value="${dept.avgMonthlySalary ?? 0}"></td>
+          <td class="num"><strong>${fmt(previewMap.get(i)?.annualCost ?? organizationAnnualCost(dept, organization), 1)}</strong></td>
+          <td><input class="table-input text-left" data-path="organization.departments.${i}.note" data-type="text" value="${escapeHtml(dept.note || '')}"></td>
+          <td><button class="btn btn-ghost btn-sm" type="button" data-remove-department="${i}">${ICONS.trash}</button></td>
+        </tr>`).join('') || '<tr><td colspan="6" class="empty-table-cell">尚未设置部门</td></tr>'}
+      </tbody></table>
+    </div>
+    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-department" type="button">${ICONS.plus}<span>新增部门</span></button><span>合计编制 <strong>${fmt(headcount)}</strong> 人｜年度人员成本 <strong>${fmt(annualCost, 1)}</strong> 万元</span></div>
+  </div>`;
+}
+
+function renderOfficeBudgetSection(model) {
+  return `<div class="form-section budget-section">
+    <div class="section-title">办公及行政费用</div>
+    <div class="section-note">按年度固定预算录入，不按面积粗略估算；包括办公室租金、水电通讯、IT软件、办公用品、差旅招待等。</div>
+    ${formulaPanel('办公及行政费用公式', '办公行政成本 = 办公室租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他办公费用', ['SUM'], '优先按年度行政预算或已签合同填写；调整后直接进入运营成本和NOI。')}
+    <div class="form-grid">
+      ${textField('办公室租金', 'officeBudget.officeRentAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('水电及通讯费', 'officeBudget.utilitiesAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('IT及软件服务', 'officeBudget.itSoftwareAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('办公用品', 'officeBudget.officeSuppliesAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('差旅及业务招待', 'officeBudget.travelEntertainmentAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('其他办公费用', 'officeBudget.otherAnnual', { type: 'number', unit: '万元/年' })}
+    </div>
+  </div>`;
+}
+
+function renderLeasingBudgetSection(model) {
+  return `<div class="form-section budget-section">
+    <div class="section-title">年度招商费用预算</div>
+    <div class="section-note">首开招商佣金在投资测算中单列；本区域用于年度招商渠道、活动、物料、差旅和平台费用。</div>
+    ${formulaPanel('年度招商费用公式', '招商费用 = 渠道代理费 + 招商活动 + 招商物料 + 招商差旅 + 招商平台系统 + 其他\n运营期续租佣金按“月租金 × 续租佣金月数 × 当年出租率”另计', ['SUM','MOD','IF'], '按招商计划和渠道政策填写；续租佣金在运营期周期性发生，避免与年度固定招商预算重复。')}
+    <div class="form-grid">
+      ${textField('渠道及代理费', 'leasingBudget.channelFeeAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('招商活动', 'leasingBudget.eventsAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('招商物料', 'leasingBudget.materialsAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('招商差旅', 'leasingBudget.travelAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('招商平台及系统', 'leasingBudget.platformAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('其他招商费用', 'leasingBudget.otherAnnual', { type: 'number', unit: '万元/年' })}
+    </div>
+  </div>`;
+}
+
+function renderMarketingBudgetSection(model, preview) {
+  const marketing = model.marketingBudget || (model.marketingBudget = {});
+  const channels = marketing.channels || (marketing.channels = []);
+  const allocation = preview?.marketingAllocation || [];
+  const allocationMap = new Map(allocation.map(item => [item.name, item.amount]));
+  const totalAmount = Number(preview?.summary?.stableMarketingCost || 0);
+  return `<div class="form-section budget-section">
+    <div class="section-title">年度营销推广费用及分解</div>
+    <div class="section-note">年度营销总额可按营业收入比例自动生成，也可切换为固定年度预算；再按品牌、媒体、活动、会员数字和物料美陈分解。</div>
+    ${formulaPanel('年度营销预算分解公式', '年度营销预算 = IF(使用固定预算, 固定年度预算, 不含税营业收入 × 营销费用率)\n渠道预算 = (年度营销预算 - 机动预备) × 渠道权重 ÷ 权重合计\n机动预备 = 年度营销预算 × 预备比例', ['IF','SUM','ROUND'], '先确定年度营销总额，再调整渠道权重；权重会自动归一化，不要求严格合计100%。')}
+    <div class="form-grid">
+      ${selectField('年度预算方式', 'marketingBudget.useFixedAnnual', [{value:'false',label:'按营业收入比例'},{value:'true',label:'固定年度预算'}])}
+      ${textField('固定年度营销预算', 'marketingBudget.fixedAnnual', { type: 'number', unit: '万元/年', optional: true })}
+      ${textField('营销机动预备比例', 'marketingBudget.contingencyRate', { type: 'number', unit: '%', scale: 0.01 })}
+    </div>
+    <div class="data-table-wrap budget-table-wrap">
+      <table class="data-table budget-table"><thead><tr><th>营销渠道</th><th class="num">权重</th><th class="num">实际占比</th><th class="num">预算金额（万元）</th><th>费用内容</th><th></th></tr></thead><tbody>
+        ${channels.map((channel, i) => `<tr>
+          <td><input class="table-input text-left" data-path="marketingBudget.channels.${i}.name" data-type="text" value="${escapeHtml(channel.name || '')}"></td>
+          <td class="num"><input class="table-input" data-path="marketingBudget.channels.${i}.weight" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(channel.weight || 0) * 100).toFixed(1)}"></td>
+          <td class="num">${fmtPct((allocation.find(item => item.name === channel.name)?.share) || 0)}</td>
+          <td class="num"><strong>${fmt(allocationMap.get(channel.name) || 0, 1)}</strong></td>
+          <td><input class="table-input text-left" data-path="marketingBudget.channels.${i}.note" data-type="text" value="${escapeHtml(channel.note || '')}"></td>
+          <td><button class="btn btn-ghost btn-sm" type="button" data-remove-marketing-channel="${i}">${ICONS.trash}</button></td>
+        </tr>`).join('') || '<tr><td colspan="6" class="empty-table-cell">尚未设置营销渠道</td></tr>'}
+      </tbody></table>
+    </div>
+    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-marketing-channel" type="button">${ICONS.plus}<span>新增营销渠道</span></button><span>测算年度营销预算 <strong>${fmt(totalAmount, 1)}</strong> 万元</span></div>
+  </div>`;
+}
+
+function renderMaintenanceBudgetSection(model) {
+  return `<div class="form-section budget-section">
+    <div class="section-title">日常维保与专项维修</div>
+    <div class="section-note">日维修费率按建安、装修、设备等资产原值计提；电梯、暖通、消防、景观等专项维保按年度合同或预算单列。</div>
+    ${formulaPanel('维保费用公式', '日常维修 = 资产原值 × 维修费率 × 运营爬坡系数\n专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他\n维保合计 = 日常维修 + 专项维保', ['SUM','ROUND'], '日常维修费率建议按资产原值的0.5%–2%设置；专项维保优先按已签合同或维保报价填写。')}
+    <div class="form-grid">
+      ${textField('电梯维保', 'maintenanceBudget.elevatorAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('暖通空调维保', 'maintenanceBudget.hvacAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('消防维保', 'maintenanceBudget.fireAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('景观绿化养护', 'maintenanceBudget.landscapeAnnual', { type: 'number', unit: '万元/年' })}
+      ${textField('其他专项维保', 'maintenanceBudget.otherAnnual', { type: 'number', unit: '万元/年' })}
+    </div>
+  </div>`;
+}
+
+function renderOperatingCostSummary(preview) {
+  const breakdown = preview?.operatingCostBreakdown || [];
+  const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  if (!breakdown.length) return '';
+  return `<div class="form-section budget-section">
+    <div class="section-title">年度运营成本核算结果</div>
+    <div class="section-note">按稳定运营年汇总，金额单位：万元/年。每项成本可在上方直接调整。</div>
+    <div class="operating-cost-bars">
+      ${breakdown.map((item, i) => `<div class="operating-cost-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(2, Number(item.value || 0) / Math.max(total, 1) * 100)}%;background:${donutColor(i)}"></i></div><strong>${fmt(item.value, 1)}</strong><em>${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</em></div>`).join('')}
+    </div>
+    <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong>${fmt(total, 1)} 万元/年</strong></div>
+  </div>`;
+}
+
+function bindOperationsBudgets() {
+  const model = state.current.model;
+  document.getElementById('add-department')?.addEventListener('click', () => {
+    model.organization ||= { socialInsuranceRate: 0.28, annualBonusMonths: 1, recruitmentTrainingRate: 0.02, departments: [] };
+    model.organization.departments ||= [];
+    model.organization.departments.push({ name: '新增部门', headcount: 1, avgMonthlySalary: 8000, note: '' });
+    state.dirty = true; renderWorkspace(); scheduleLivePreview();
+  });
+  document.querySelectorAll('[data-remove-department]').forEach(btn => btn.addEventListener('click', () => {
+    model.organization.departments.splice(Number(btn.dataset.removeDepartment), 1);
+    state.dirty = true; renderWorkspace(); scheduleLivePreview();
+  }));
+  document.getElementById('add-marketing-channel')?.addEventListener('click', () => {
+    model.marketingBudget ||= { useFixedAnnual: false, fixedAnnual: 0, contingencyRate: 0.05, channels: [] };
+    model.marketingBudget.channels ||= [];
+    model.marketingBudget.channels.push({ name: '新增渠道', weight: 0.1, note: '' });
+    state.dirty = true; renderWorkspace(); scheduleLivePreview();
+  });
+  document.querySelectorAll('[data-remove-marketing-channel]').forEach(btn => btn.addEventListener('click', () => {
+    model.marketingBudget.channels.splice(Number(btn.dataset.removeMarketingChannel), 1);
+    state.dirty = true; renderWorkspace(); scheduleLivePreview();
+  }));
+}
+
+
 function renderOperationsStep() {
   return `
     <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会自动形成20年现金流、税费和投资收益。</div></div>
@@ -1215,6 +1420,12 @@ function renderOperationsStep() {
         ${textField('资本化改造率', 'operations.capexRate', { type: 'number', unit: '%', scale: 0.01 })}
       </div>
     </div>
+    ${renderOrganizationSection(state.current.model, state.preview)}
+    ${renderOfficeBudgetSection(state.current.model)}
+    ${renderLeasingBudgetSection(state.current.model)}
+    ${renderMarketingBudgetSection(state.current.model, state.preview)}
+    ${renderMaintenanceBudgetSection(state.current.model)}
+    ${renderOperatingCostSummary(state.preview)}
     <details class="advanced">
       <summary>税费与属地公共费用（高级）</summary>
       <div class="advanced-body">
@@ -1460,6 +1671,7 @@ function renderResultsStep() {
       <div class="card"><h3>20年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
       <div class="card"><h3>投资构成</h3><div class="donut-wrap"><canvas id="cost-donut"></canvas><div class="donut-legend">${state.result.investmentBreakdown.map((item, i) => `<div class="donut-item"><i style="background:${donutColor(i)}"></i><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)}万</strong></div>`).join('')}</div></div></div>
     </div>
+    ${renderOperatingResultCards()}
     <div class="analysis-panel">
       <div class="card"><h3>分析结论</h3><ul class="analysis-list">${analysis.bullets.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul></div>
       <div class="card"><h3>建议与下一步</h3>${analysis.recommendations.map((text, i) => `<div class="recommendation"><div class="num">${i + 1}</div><p>${escapeHtml(text)}</p></div>`).join('')}</div>
@@ -1470,6 +1682,38 @@ function renderResultsStep() {
     </div>
     ${renderFloorResultTable()}
     <div class="export-bar"><div><strong>生成汇报材料</strong><span>Excel用于继续分析；PPT用于内部评审和项目汇报。</span></div><div class="export-actions"><button class="btn btn-secondary" id="export-excel">${ICONS.excel}<span>导出Excel</span></button><button class="btn btn-primary" id="export-ppt">${ICONS.ppt}<span>导出PPT汇报</span></button></div></div>`;
+}
+
+function renderOperatingResultCards() {
+  const result = state.result;
+  const s = result.summary;
+  const breakdown = result.operatingCostBreakdown || [];
+  const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const organization = result.organizationBreakdown || [];
+  const marketing = result.marketingAllocation || [];
+  return `<div class="dashboard-grid operating-result-grid">
+    <div class="card operating-cost-card">
+      <h3>年度运营成本构成</h3>
+      <div class="operating-result-kpis">
+        <div><span>编制人数</span><strong>${fmt(s.stableHeadcount)} 人</strong></div>
+        <div><span>人员成本</span><strong>${fmt(s.stableStaffCost, 1)} 万/年</strong></div>
+        <div><span>办公行政</span><strong>${fmt(s.stableOfficeCost, 1)} 万/年</strong></div>
+        <div><span>招商费用</span><strong>${fmt(s.stableLeasingCost, 1)} 万/年</strong></div>
+        <div><span>营销费用</span><strong>${fmt(s.stableMarketingCost, 1)} 万/年</strong></div>
+        <div><span>维保费用</span><strong>${fmt(s.stableMaintenanceCost, 1)} 万/年</strong></div>
+      </div>
+      <div class="operating-cost-bars">${breakdown.map((item, i) => `<div class="operating-cost-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(2, Number(item.value || 0) / Math.max(total, 1) * 100)}%;background:${donutColor(i)}"></i></div><strong>${fmt(item.value, 1)}</strong><em>${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</em></div>`).join('')}</div>
+      <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong>${fmt(total, 1)} 万元/年</strong></div>
+    </div>
+    <div class="card">
+      <h3>组织架构与人员成本</h3>
+      <div class="data-table-wrap" style="max-height:420px"><table class="data-table"><thead><tr><th>部门</th><th class="num">人数</th><th class="num">平均月薪</th><th class="num">年度成本</th></tr></thead><tbody>${organization.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong><small class="table-subnote">${escapeHtml(item.note || '')}</small></td><td class="num">${fmt(item.headcount)}</td><td class="num">${fmt(item.avgMonthlySalary)}</td><td class="num">${fmt(item.annualCost, 1)}万</td></tr>`).join('')}</tbody></table></div>
+    </div>
+  </div>
+  <div class="card marketing-allocation-card">
+    <h3>年度营销推广费用分解</h3>
+    <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>渠道</th><th class="num">权重</th><th class="num">实际占比</th><th class="num">年度预算</th><th>费用内容</th></tr></thead><tbody>${marketing.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${item.weight ? fmtPct(item.weight) : '—'}</td><td class="num">${fmtPct(item.share)}</td><td class="num">${fmt(item.amount, 1)}万</td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>
+  </div>`;
 }
 
 function renderFloorResultTable() {
@@ -1536,6 +1780,7 @@ function bindStepInputs() {
     toast('已恢复系统默认公式参数', 'success');
   });
   if (state.step === 2) bindShopsStep();
+  if (state.step === 3) bindOperationsBudgets();
   if (state.step === 1) bindCostPresets();
   if (state.step === 4) bindMarketStep();
   if (state.step === 5) bindResultsActions();
