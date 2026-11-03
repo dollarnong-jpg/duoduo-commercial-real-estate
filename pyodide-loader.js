@@ -17,7 +17,7 @@
     }, delay);
   }
 
-  window.__duoduoSWReady = navigator.serviceWorker.register('./sw.js', { scope: './' })
+  window.__duoduoSWReady = navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' }).then(registration => { registration.update().catch(() => {}); return registration; })
     .then(() => navigator.serviceWorker.ready)
     .then(() => new Promise((resolve, reject) => {
       if (navigator.serviceWorker.controller) return resolve(true);
