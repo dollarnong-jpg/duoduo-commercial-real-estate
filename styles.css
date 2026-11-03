@@ -587,3 +587,4 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
   .formula-toolbar-actions { width:100%; }
   .formula-toolbar-actions .btn { flex:1; }
 }
+.version-badge { display:inline-flex; margin-right:7px; padding:2px 6px; border-radius:8px; background:var(--green); color:#fff; font-size:8px; font-weight:700; vertical-align:middle; }
