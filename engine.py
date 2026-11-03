@@ -139,6 +139,22 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "exitCapRate": 0.06,
             "includeExit": True,
         },
+        "formulas": {
+            "rentGrowthMode": "compound",
+            "buildingDepreciationYears": 20,
+            "fitoutDepreciationYears": 5,
+            "equipmentDepreciationYears": 10,
+            "taxLossCarryforwardYears": 5,
+            "loanRepaymentMethod": "equal_principal",
+            "exitValueMethod": "noi_cap",
+            "exitRevenueMultiple": 1.0,
+            "sensitivityRentMin": 0.90,
+            "sensitivityRentMax": 1.10,
+            "sensitivityRentStep": 0.05,
+            "sensitivityCapexMin": 0.90,
+            "sensitivityCapexMax": 1.10,
+            "sensitivityCapexStep": 0.05,
+        },
     }
 
 
@@ -264,6 +280,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     taxes = model["taxes"]
     finance = model["finance"]
     valuation = model["valuation"]
+    formulas = model.get("formulas") if isinstance(model.get("formulas"), dict) else {}
     shops = model["shops"]
     floors = model.get("floors", [])
     calculation_mode = str(model.get("calculationMode") or "preliminary")
@@ -433,18 +450,28 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         operation_year = idx - int(project.get("constructionYears") or 2) + 1
         principal = 0.0
         if operation_year > grace and operation_year <= grace + loan_term:
-            principal = min(balance + draw, principal_per_year)
+            if str(formulas.get("loanRepaymentMethod") or "equal_principal") == "interest_only":
+                if operation_year == grace + loan_term:
+                    principal = balance + draw
+            else:
+                principal = min(balance + draw, principal_per_year)
         closing = balance + draw - principal
         loan_schedule.append({"opening": balance, "draw": draw, "interest": interest, "principal": principal, "closing": closing})
         balance = closing
 
-    depreciation_building = (preconstruction + construction + municipal_fee + civil_defense + other_public + other_engineering + contingency) / 20
-    depreciation_fitout = fitout / 5
-    depreciation_equipment = equipment / 10
+    depreciation_building_years = max(1, int(as_float(formulas.get("buildingDepreciationYears"), 20)))
+    depreciation_fitout_years = max(1, int(as_float(formulas.get("fitoutDepreciationYears"), 5)))
+    depreciation_equipment_years = max(1, int(as_float(formulas.get("equipmentDepreciationYears"), 10)))
+    depreciation_building = (preconstruction + construction + municipal_fee + civil_defense + other_public + other_engineering + contingency) / depreciation_building_years
+    depreciation_fitout = fitout / depreciation_fitout_years
+    depreciation_equipment = equipment / depreciation_equipment_years
     annual_depreciation = depreciation_building + depreciation_fitout + depreciation_equipment
 
     annual_rows: list[dict[str, Any]] = []
-    tax_loss_balance = max(0.0, loan_schedule[0]["interest"] + loan_schedule[1]["interest"]) if len(loan_schedule) > 1 else 0.0
+    tax_loss_carry: list[tuple[int, float]] = []
+    construction_interest_loss = max(0.0, loan_schedule[0]["interest"] + loan_schedule[1]["interest"]) if len(loan_schedule) > 1 else 0.0
+    if construction_interest_loss > 0:
+        tax_loss_carry.append((0, construction_interest_loss))
 
     project_cash_flows: list[float] = []
     equity_cash_flows: list[float] = []
@@ -495,8 +522,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
         occupancy = occupancy_for_year(op_year, operations)
         free_factor = 1 - as_float(operations.get("rentFreeMonths")) / 12 if op_year == 1 else 1
-        guarantee_gross = total_monthly_guarantee * 12 * occupancy * free_factor * (1 + as_float(operations.get("rentGrowth"))) ** (op_year - 1) / 10000
-        concession_gross = total_monthly_concession * 12 * occupancy * free_factor * (1 + as_float(operations.get("salesGrowth"))) ** (op_year - 1) / 10000
+        growth_mode = str(formulas.get("rentGrowthMode") or "compound")
+        rent_growth_periods = op_year - 1
+        rent_growth_factor = (1 + as_float(operations.get("rentGrowth")) * rent_growth_periods) if growth_mode == "simple" else (1 + as_float(operations.get("rentGrowth"))) ** rent_growth_periods
+        sales_growth_factor = (1 + as_float(operations.get("salesGrowth")) * rent_growth_periods) if growth_mode == "simple" else (1 + as_float(operations.get("salesGrowth"))) ** rent_growth_periods
+        guarantee_gross = total_monthly_guarantee * 12 * occupancy * free_factor * rent_growth_factor / 10000
+        concession_gross = total_monthly_concession * 12 * occupancy * free_factor * sales_growth_factor / 10000
         rent_gross = guarantee_gross + concession_gross
         property_gross = gla * as_float(revenues.get("propertyFee")) * 12 * occupancy / 10000
         other_gross = (
@@ -547,14 +578,29 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         ebit = noi - annual_depreciation
         interest = loan["interest"]
         pretax_profit = ebit - interest
-        loss_used = min(max(0.0, tax_loss_balance), max(0.0, pretax_profit))
+        loss_carry_years = max(0, int(as_float(formulas.get("taxLossCarryforwardYears"), 5)))
+        tax_loss_carry = [(year, amount) for year, amount in tax_loss_carry if amount > 1e-9 and op_year - year <= loss_carry_years]
+        loss_available = sum(amount for _, amount in tax_loss_carry)
+        loss_used = min(loss_available, max(0.0, pretax_profit))
+        remaining_loss_use = loss_used
+        retained_losses: list[tuple[int, float]] = []
+        for loss_year, amount in tax_loss_carry:
+            used = min(amount, remaining_loss_use)
+            remaining_loss_use -= used
+            if amount - used > 1e-9:
+                retained_losses.append((loss_year, amount - used))
+        tax_loss_carry = retained_losses
         taxable_income = max(0.0, pretax_profit - loss_used)
         income_tax = taxable_income * as_float(taxes.get("corporateTax"))
-        tax_loss_balance = max(0.0, tax_loss_balance - loss_used - pretax_profit) if pretax_profit < 0 else max(0.0, tax_loss_balance - loss_used)
+        if pretax_profit < 0:
+            tax_loss_carry.append((op_year, -pretax_profit))
         net_profit = pretax_profit - income_tax
         exit_value = 0.0
         if idx == total_periods - 1 and bool(valuation.get("includeExit")):
-            exit_value = safe_div(max(0.0, noi), as_float(valuation.get("exitCapRate"))) * (1 - as_float(taxes.get("exitTaxRate")))
+            if str(formulas.get("exitValueMethod") or "noi_cap") == "revenue_multiple":
+                exit_value = max(0.0, revenue_net) * as_float(formulas.get("exitRevenueMultiple"), 1.0) * (1 - as_float(taxes.get("exitTaxRate")))
+            else:
+                exit_value = safe_div(max(0.0, noi), as_float(valuation.get("exitCapRate"))) * (1 - as_float(taxes.get("exitTaxRate")))
         unlevered_tax = max(0.0, ebit) * as_float(taxes.get("corporateTax"))
         project_cf = noi - capex_reserve - unlevered_tax + exit_value
         equity_cf = noi - capex_reserve - income_tax - interest - loan["principal"] + exit_value - (loan["closing"] if idx == total_periods - 1 else 0.0)
@@ -916,9 +962,30 @@ def scale_model_for_sensitivity(model: dict[str, Any], rent_multiplier: float = 
     return m
 
 
+def build_percent_steps(minimum: float, maximum: float, step: float) -> list[float]:
+    low, high = sorted((minimum, maximum))
+    step = max(0.001, abs(step))
+    values = {1.0}
+    current = low
+    while current <= high + 1e-9 and len(values) < 11:
+        values.add(round(current, 6))
+        current += step
+    values.add(round(high, 6))
+    return sorted(values)
+
+
 def build_sensitivity(model: dict[str, Any], discount_rate: float) -> dict[str, Any]:
-    rent_steps = [0.90, 0.95, 1.00, 1.05, 1.10]
-    capex_steps = [0.90, 0.95, 1.00, 1.05, 1.10]
+    formulas = model.get("formulas") if isinstance(model.get("formulas"), dict) else {}
+    rent_steps = build_percent_steps(
+        as_float(formulas.get("sensitivityRentMin"), 0.90),
+        as_float(formulas.get("sensitivityRentMax"), 1.10),
+        as_float(formulas.get("sensitivityRentStep"), 0.05),
+    )
+    capex_steps = build_percent_steps(
+        as_float(formulas.get("sensitivityCapexMin"), 0.90),
+        as_float(formulas.get("sensitivityCapexMax"), 1.10),
+        as_float(formulas.get("sensitivityCapexStep"), 0.05),
+    )
     matrix: list[list[float]] = []
     for capex in capex_steps:
         row: list[float] = []
