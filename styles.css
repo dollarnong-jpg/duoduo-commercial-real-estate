@@ -526,3 +526,35 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 @media (max-width: 900px) {
   .dashboard-grid[style] { grid-template-columns: 1fr !important; }
 }
+
+/* Inline formula explanations next to editable data */
+.formula-toolbar { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:-4px 0 20px; padding:11px 13px; border:1px solid #cfe0d8; border-radius:12px; background:linear-gradient(135deg,#f0f7f3,#fbfaf5); }
+.formula-toolbar > div { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.formula-toolbar strong { color:var(--navy); font-size:11px; }
+.formula-toolbar small { color:var(--muted); font-size:9px; }
+.fx-chip { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; border-radius:7px; background:var(--navy); color:#f7e6b8; font:italic 700 13px Georgia,serif; }
+.field label > span:first-child { display:inline-flex; align-items:center; gap:6px; }
+.label-fx { display:inline-grid; place-items:center; width:18px; height:18px; margin-left:6px; border-radius:6px; background:var(--green-soft); color:var(--green); font:italic 700 12px Georgia,serif; cursor:help; }
+.inline-formula { margin-top:7px; border:1px solid #d9e6df; border-radius:8px; background:#f8fbf9; overflow:hidden; }
+.inline-formula summary { display:flex; align-items:center; gap:6px; padding:6px 8px; color:var(--green); font-size:9px; cursor:pointer; list-style:none; }
+.inline-formula summary::-webkit-details-marker { display:none; }
+.inline-formula summary .fx-chip { min-width:17px; height:17px; border-radius:5px; font-size:10px; }
+.formula-current { margin-left:auto; color:#939b97; font-variant-numeric:tabular-nums; }
+.inline-formula-body { padding:9px 10px 10px; border-top:1px solid #e3ece7; background:#fff; }
+.inline-formula-body code { display:block; padding:9px 10px; border-radius:7px; background:#f3f6f4; color:#24483e; font:10px/1.65 "SFMono-Regular",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+.inline-formula-body p { margin:8px 0 0; color:var(--muted); font-size:9px; line-height:1.65; }
+.formula-function-row { display:flex; align-items:center; flex-wrap:wrap; gap:5px; margin-top:7px; color:#87918c; font-size:8px; }
+.formula-function-row b { display:inline-block; padding:2px 6px; border-radius:10px; background:var(--gold-soft); color:#795b1d; font:700 8px/1.4 "SFMono-Regular",Consolas,monospace; }
+.section-formula { margin:8px 0 15px 13px; border:1px dashed #c7d9d0; border-radius:10px; background:#fbfdfb; }
+.section-formula summary { display:flex; align-items:center; gap:8px; padding:9px 11px; color:var(--green); font-size:10px; cursor:pointer; list-style:none; }
+.section-formula summary::-webkit-details-marker { display:none; }
+.section-formula summary strong { color:var(--navy); font-size:10px; }
+.section-formula summary > span:last-child { margin-left:auto; color:#9aa29e; font-size:8px; }
+.section-formula .inline-formula-body { border-top:1px dashed #dce8e2; }
+.formula-actions { display:flex; justify-content:flex-end; margin-top:16px; }
+@media (max-width:620px) {
+  .formula-toolbar { align-items:flex-start; flex-direction:column; }
+  .formula-toolbar .btn { width:100%; }
+  .formula-current { display:none; }
+  .section-formula { margin-left:0; }
+}
