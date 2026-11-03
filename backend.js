@@ -538,6 +538,165 @@ function exportFunctionDescription(names) {
   }).join(' / ');
 }
 
+
+const BUDGET_BASIC_DEFS = [
+  { label: '社保公积金综合比例', path: 'organization.socialInsuranceRate', unit: '%', scale: 0.01, value: 28 },
+  { label: '年终奖月数', path: 'organization.annualBonusMonths', unit: '月', scale: 1, value: 1 },
+  { label: '招聘培训费率', path: 'organization.recruitmentTrainingRate', unit: '%', scale: 0.01, value: 2 },
+  { label: '物业基础运营单价', path: 'operations.propertyOpsCost', unit: '元/㎡/月', scale: 1, value: 10 },
+  { label: '公共能耗单价', path: 'operations.energyCost', unit: '元/㎡/月', scale: 1, value: 4.5 },
+  { label: '日常维修费率', path: 'operations.repairRate', unit: '%', scale: 0.01, value: 1 },
+  { label: '保险费用率', path: 'operations.insuranceRate', unit: '%', scale: 0.01, value: 0.15 },
+  { label: '年度营销费用率', path: 'operations.marketingRate', unit: '%', scale: 0.01, value: 2 },
+  { label: '营销预算方式', path: 'marketingBudget.useFixedAnnual', unit: '', scale: 1, value: '按营业收入比例' },
+  { label: '固定年度营销预算', path: 'marketingBudget.fixedAnnual', unit: '万元/年', scale: 1, value: 0 },
+  { label: '营销机动预备比例', path: 'marketingBudget.contingencyRate', unit: '%', scale: 0.01, value: 5 },
+  { label: '其他运营费用率', path: 'operations.otherOpexRate', unit: '%', scale: 0.01, value: 0.5 },
+];
+const OFFICE_BUDGET_DEFS = [
+  ['办公室租金', 'officeRentAnnual'], ['水电及通讯费', 'utilitiesAnnual'], ['IT及软件服务', 'itSoftwareAnnual'],
+  ['办公用品', 'officeSuppliesAnnual'], ['差旅及业务招待', 'travelEntertainmentAnnual'], ['其他办公费用', 'otherAnnual'],
+];
+const LEASING_BUDGET_DEFS = [
+  ['渠道及代理费', 'channelFeeAnnual'], ['招商活动', 'eventsAnnual'], ['招商物料', 'materialsAnnual'],
+  ['招商差旅', 'travelAnnual'], ['招商平台及系统', 'platformAnnual'], ['其他招商费用', 'otherAnnual'],
+];
+const MAINTENANCE_BUDGET_DEFS = [
+  ['电梯维保', 'elevatorAnnual'], ['暖通空调维保', 'hvacAnnual'], ['消防维保', 'fireAnnual'],
+  ['景观绿化养护', 'landscapeAnnual'], ['其他专项维保', 'otherAnnual'],
+];
+
+function operatingBudgetTemplate() {
+  const wb = XLSX.utils.book_new();
+  addSheet(wb, '使用说明', [
+    ['多多 · 商业地产运营成本预算导入模板'],
+    ['请在黄色或空白单元格中填写，不要修改工作表名称和表头。'],
+    ['导入后会覆盖当前项目的组织架构、办公、招商、营销和维保预算；不填写的工作表保持原值。'],
+    ['比例类参数按百分数填写，例如28%填写28，2%填写2。金额单位均为万元/年，工资单位为元/月。'],
+  ], [20, 100]);
+  addSheet(wb, '基础参数', [
+    ['参数', '填写值', '单位', '说明'],
+    ...BUDGET_BASIC_DEFS.map(item => [item.label, item.value, item.unit, '按项目实际预算和属地政策填写']),
+  ], [28, 18, 16, 56]);
+  addSheet(wb, '组织架构', [
+    ['部门', '编制人数', '平均月薪（元/月）', '岗位职责说明'],
+    ['总经办', 2, 18000, '项目负责人、综合管理'],
+    ['招商部', 6, 12000, '招商总监、招商经理、租赁专员'],
+    ['运营部', 10, 10000, '运营经理、楼层主管、客服'],
+    ['市场推广部', 4, 11000, '品牌、活动、新媒体、会员'],
+    ['财务行政部', 3, 9000, '财务、人事行政、采购'],
+    ['物业工程部', 6, 8500, '物业经理、工程、消防、强弱电'],
+    ['保安部', 8, 5500, '秩序维护、监控、巡逻'],
+    ['保洁部', 10, 4200, '公共区域保洁、垃圾清运'],
+  ], [20, 14, 22, 52]);
+  addSheet(wb, '办公预算', [['费用项目', '年度金额（万元）', '说明'], ...OFFICE_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
+  addSheet(wb, '招商预算', [['费用项目', '年度金额（万元）', '说明'], ...LEASING_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
+  addSheet(wb, '营销预算', [
+    ['营销渠道', '权重（%）', '费用内容'],
+    ['品牌公关', 15, '品牌发布、媒体关系、公关传播'],
+    ['媒体投放', 30, '线上信息流、户外、本地生活平台'],
+    ['主题活动', 25, '开业、节庆、周末活动、PR活动'],
+    ['会员与数字营销', 20, '会员、小程序、私域、直播'],
+    ['物料与美陈', 10, '导视、美陈、印刷、临时物料'],
+  ], [24, 16, 60]);
+  addSheet(wb, '维保预算', [['维保项目', '年度金额（万元）', '说明'], ...MAINTENANCE_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
+  return wb;
+}
+
+function getTemplateRows(wb, sheetName) {
+  const sheet = wb.Sheets[sheetName];
+  return sheet ? XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) : [];
+}
+
+function parseOperatingBudgetWorkbook(base64, filename) {
+  if (!/\.(xlsx|xlsm)$/i.test(filename)) throw new Error('运营成本预算仅支持 .xlsx 或 .xlsm 多工作表文件');
+  const wb = readWorkbook(base64, filename);
+  const warnings = [];
+  const organization = { departments: [] };
+  const officeBudget = {};
+  const leasingBudget = {};
+  const marketingBudget = { channels: [] };
+  const maintenanceBudget = {};
+  const operations = {};
+
+  const basicRows = getTemplateRows(wb, '基础参数');
+  const basicHeader = findHeaderRow(basicRows, { label: ['参数'], value: ['填写值'] }, ['label', 'value']);
+  if (basicHeader >= 0) {
+    const indexes = headerIndexes(basicRows[basicHeader], { label: ['参数'], value: ['填写值'] });
+    const defsByLabel = Object.fromEntries(BUDGET_BASIC_DEFS.map(item => [normalizeHeader(item.label), item]));
+    for (const row of basicRows.slice(basicHeader + 1)) {
+      const label = String(rowValue(row, indexes, 'label') || '').trim();
+      const raw = rowValue(row, indexes, 'value');
+      const def = defsByLabel[normalizeHeader(label)];
+      if (!def) continue;
+      if (def.path === 'marketingBudget.useFixedAnnual') {
+        const value = String(raw || '').trim();
+        marketingBudget.useFixedAnnual = value.includes('固定') || value === '1' || value === 'true' || value === '是';
+      } else {
+        const number = safeNumber(raw) * def.scale;
+        const [group, key] = def.path.split('.');
+        if (group === 'organization') organization[key] = number;
+        else if (group === 'marketingBudget') marketingBudget[key] = number;
+        else if (group === 'operations') operations[key] = number;
+      }
+    }
+  } else {
+    warnings.push('未找到“基础参数”工作表或表头');
+  }
+
+  const orgRows = getTemplateRows(wb, '组织架构');
+  const orgHeader = findHeaderRow(orgRows, { name: ['部门'], headcount: ['编制人数'], salary: ['平均月薪'], note: ['岗位职责', '说明'] }, ['name', 'headcount', 'salary']);
+  if (orgHeader >= 0) {
+    const indexes = headerIndexes(orgRows[orgHeader], { name: ['部门'], headcount: ['编制人数'], salary: ['平均月薪'], note: ['岗位职责', '说明'] });
+    for (const row of orgRows.slice(orgHeader + 1)) {
+      const name = String(rowValue(row, indexes, 'name') || '').trim();
+      if (!name) continue;
+      organization.departments.push({
+        name,
+        headcount: safeNumber(rowValue(row, indexes, 'headcount')),
+        avgMonthlySalary: safeNumber(rowValue(row, indexes, 'salary')),
+        note: String(rowValue(row, indexes, 'note') || '').trim(),
+      });
+    }
+  }
+  if (!organization.departments.length) warnings.push('组织架构工作表没有有效部门记录');
+
+  function parseAmountSheet(sheetName, defs, target) {
+    const rows = getTemplateRows(wb, sheetName);
+    const header = findHeaderRow(rows, { name: ['费用项目', '维保项目'], amount: ['年度金额'] }, ['name', 'amount']);
+    if (header < 0) return;
+    const indexes = headerIndexes(rows[header], { name: ['费用项目', '维保项目'], amount: ['年度金额'], note: ['说明'] });
+    const keyByLabel = Object.fromEntries(defs.map(([label, key]) => [normalizeHeader(label), key]));
+    for (const row of rows.slice(header + 1)) {
+      const label = String(rowValue(row, indexes, 'name') || '').trim();
+      const key = keyByLabel[normalizeHeader(label)];
+      if (!key) continue;
+      target[key] = safeNumber(rowValue(row, indexes, 'amount'));
+    }
+  }
+  parseAmountSheet('办公预算', OFFICE_BUDGET_DEFS, officeBudget);
+  parseAmountSheet('招商预算', LEASING_BUDGET_DEFS, leasingBudget);
+  parseAmountSheet('维保预算', MAINTENANCE_BUDGET_DEFS, maintenanceBudget);
+
+  const marketingRows = getTemplateRows(wb, '营销预算');
+  const marketingHeader = findHeaderRow(marketingRows, { name: ['营销渠道', '渠道'], weight: ['权重'] }, ['name', 'weight']);
+  if (marketingHeader >= 0) {
+    const indexes = headerIndexes(marketingRows[marketingHeader], { name: ['营销渠道', '渠道'], weight: ['权重'], note: ['费用内容', '说明'] });
+    for (const row of marketingRows.slice(marketingHeader + 1)) {
+      const name = String(rowValue(row, indexes, 'name') || '').trim();
+      if (!name) continue;
+      let weight = safeNumber(rowValue(row, indexes, 'weight'));
+      if (weight > 1) weight /= 100;
+      marketingBudget.channels.push({ name, weight, note: String(rowValue(row, indexes, 'note') || '').trim() });
+    }
+  }
+  if (!marketingBudget.channels.length) warnings.push('营销预算工作表没有有效渠道记录');
+  const weightTotal = marketingBudget.channels.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+  if (weightTotal <= 0) warnings.push('营销渠道权重合计为0，导入后请填写权重');
+
+  return { organization, officeBudget, leasingBudget, marketingBudget, maintenanceBudget, operations, warnings };
+}
+
 function exportExcel(result) {
   const model = result.model;
   const s = result.summary;
@@ -950,6 +1109,13 @@ async function handleApi(path, init) {
     return jsonResponse(parseShopWorkbook(body.contentBase64, String(body.filename || '')));
   }
 
+  if (pathname.endsWith('/api/import-operating-budget') && method === 'POST') {
+    const body = await requestJSON(init);
+    if (!body.contentBase64) return jsonResponse({ error: '请选择运营成本预算文件' }, 400);
+    try { return jsonResponse(parseOperatingBudgetWorkbook(body.contentBase64, String(body.filename || ''))); }
+    catch (error) { return jsonResponse({ error: error.message }, 400); }
+  }
+
   if (pathname.endsWith('/api/import-market-comps') && method === 'POST') {
     const body = await requestJSON(init);
     if (!body.contentBase64) return jsonResponse({ error: '请选择竞品租金文件' }, 400);
@@ -980,6 +1146,10 @@ async function handleApi(path, init) {
 
   if (pathname.endsWith('/api/templates/market-comps') && method === 'GET') {
     return fileResponse(workbookBlob(marketTemplate()), '商业地产竞品租金导入模板.xlsx', XLSX_MIME);
+  }
+
+  if (pathname.endsWith('/api/templates/operating-budget') && method === 'GET') {
+    return fileResponse(workbookBlob(operatingBudgetTemplate()), '商业地产运营成本预算导入模板.xlsx', XLSX_MIME);
   }
 
   if (pathname.endsWith('/api/projects') && method === 'GET') {
