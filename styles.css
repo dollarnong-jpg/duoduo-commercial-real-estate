@@ -588,3 +588,35 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
   .formula-toolbar-actions .btn { flex:1; }
 }
 .version-badge { display:inline-flex; margin-right:7px; padding:2px 6px; border-radius:8px; background:var(--green); color:#fff; font-size:8px; font-weight:700; vertical-align:middle; }
+
+/* Structured operating budgets */
+.budget-section { padding:18px; border:1px solid #e3e9e5; border-radius:14px; background:#fffefa; }
+.budget-table-wrap { max-height:none; margin-top:12px; }
+.budget-table .table-input { width:100%; min-width:70px; }
+.budget-table .text-left { min-width:130px; text-align:left; }
+.budget-table td strong { color:var(--navy); font-size:10px; }
+.budget-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:11px; color:var(--muted); font-size:10px; }
+.budget-toolbar strong { color:var(--navy); font-size:12px; }
+.empty-table-cell { padding:22px !important; text-align:center; color:var(--muted); }
+.operating-cost-bars { display:grid; gap:8px; margin-top:12px; }
+.operating-cost-row { display:grid; grid-template-columns:150px 1fr 78px 54px; gap:9px; align-items:center; color:var(--muted); font-size:9px; }
+.operating-cost-row > div { height:7px; border-radius:6px; background:#edf1ee; overflow:hidden; }
+.operating-cost-row i { display:block; height:100%; border-radius:6px; }
+.operating-cost-row strong { color:var(--navy); text-align:right; font-size:10px; }
+.operating-cost-row em { color:#8a948f; text-align:right; font-style:normal; }
+.budget-total-line { display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); color:var(--muted); font-size:10px; }
+.budget-total-line strong { color:var(--navy); font-size:17px; }
+@media (max-width:620px) {
+  .budget-section { padding:14px; }
+  .operating-cost-row { grid-template-columns:95px 1fr 64px; }
+  .operating-cost-row em { display:none; }
+  .budget-toolbar { align-items:flex-start; flex-direction:column; }
+}
+.operating-result-grid { align-items:start; }
+.operating-result-kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+.operating-result-kpis div { padding:9px 10px; border-radius:9px; background:#f7faf8; border:1px solid #e4ebe7; }
+.operating-result-kpis span { display:block; color:var(--muted); font-size:8px; }
+.operating-result-kpis strong { display:block; margin-top:4px; color:var(--navy); font-size:13px; }
+.table-subnote { display:block; margin-top:2px; color:var(--muted); font-size:8px; }
+.marketing-allocation-card { margin-bottom:16px; }
+@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } }
