@@ -1,7 +1,7 @@
-import './backend.js?v=20261103-static12';
+import './backend.js?v=20261103-static13';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.2.2';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -242,6 +242,87 @@ function formulaGuideFor(path, info) {
   return FORMULA_GUIDES.generic;
 }
 
+
+const TERM_DEFINITIONS = {
+  '项目总投资': { category: '投资收益', definition: '项目从取得土地、建设、装修、设备到开业前招商和铺底流动资金的全部投入。', why: '它是判断项目需要多少钱、单位面积投资强度和融资规模的基础。', how: '先用它检查投资量级是否合理，再与NOI、IRR和NPV结合判断是否值得继续推进。' },
+  'IRR': { category: '投资收益', definition: '内部收益率，是让项目全部现金流净现值等于0的折现率，可理解为项目自身的年化收益能力。', why: '用于与企业投资门槛或资金成本比较。', how: '通常IRR高于门槛收益率才通过初筛；如果现金流异常导致IRR无法计算，应优先看NPV。' },
+  'NPV': { category: '投资收益', definition: '净现值，把未来每年的现金流按折现率折算成今天的价值后相加。', why: 'NPV大于0表示项目达到或超过门槛收益。', how: '重点观察NPV对租金、投资和出租率的敏感性，而不是只看单个静态利润。' },
+  'NOI': { category: '投资收益', definition: '净营运收入，等于不含税营业收入减运营成本和税费，未扣折旧、利息和所得税。', why: '它反映商业物业本身持续经营产生现金的能力。', how: '先看稳定期NOI是否为正，再看NOI回报率和退出估值是否合理。' },
+  'NOI回报率': { category: '投资收益', definition: '稳定期NOI除以项目总投资。', why: '用于快速比较不同项目或方案的运营收益水平。', how: '应与当地同类商业资产资本化率和企业投资门槛对照，而不是只看绝对金额。' },
+  '静态回收期': { category: '投资收益', definition: '累计项目现金流由负转正所需的年数，不考虑资金时间价值。', why: '反映资金占用时间和回收速度。', how: '回收期越短风险通常越低；如果超过贷款期限或运营期，应重新检查投资和租金假设。' },
+  '得铺率': { category: '建筑面积', definition: '可租赁面积除以建筑面积，反映公共空间、交通和设备房等不可租面积占比。', why: '得铺率越高，同样建筑面积可产生租金的空间越多。', how: '购物中心通常在50%–75%左右，具体应结合业态、动线和公共空间品质判断。' },
+  '公区分摊系数': { category: '建筑面积', definition: '用于由商铺建筑面积反推项目总建筑面积的公共部位及设备房分摊比例。', why: '公区系数会同时影响建安、装修、设备和规费投资。', how: '按规划设计或测绘口径填写，不要为了压低投资而任意降低。' },
+  '商业POI': { category: '市场侦测', definition: '地图上具有商业经营属性的兴趣点，例如购物中心、餐饮、零售、酒店和商务办公。', why: '用于判断周边商业供给密度和业态丰富度。', how: 'POI数量只能做初筛，还要结合竞品质量、客流和实际经营情况判断。' },
+  '直接竞品': { category: '市场侦测', definition: '与本项目在客群、业态或消费场景上直接争夺客户的购物中心、百货、超市和传统市场。', why: '直接决定项目招商和租金定价面临的市场竞争。', how: '应优先分析3公里内直接竞品的定位、品牌、空置率、租金和客流，而不只看数量。' },
+  '商业锚点': { category: '市场侦测', definition: '能够带动目的性客流的商业设施，例如购物中心、百货、影院和酒店。', why: '锚点越强，区域商业吸引力和客流基础通常越好。', how: '既可能是竞争，也可能带来客流外溢，需要进一步判断业态互补关系。' },
+  '商业密度': { category: '市场侦测', definition: '单位面积范围内的商业POI数量。', why: '用于判断商业供给集中程度。', how: '密度高不代表一定好，要结合区域人口、消费能力、交通和竞品经营质量判断。' },
+  '商业侦测评分': { category: '市场侦测', definition: '综合商业POI、直接竞品、商业锚点、交通、居住、公共配套和业态多样性形成的0–100分初筛评分。', why: '用于快速比较不同项目位置的商业环境。', how: '评分只用于初筛，不能替代实地踏勘、客流调查和授权商业数据。' },
+  '商圈等级': { category: '市场侦测', definition: '根据侦测评分划分的A、B、C、D级商业环境判断。', why: '帮助快速判断项目属于成熟商圈、成长商圈还是培育商圈。', how: '成熟商圈竞争通常更强，培育商圈需要更多运营和招商投入，不能简单认为等级越高越好。' },
+  '交通配套': { category: '市场侦测', definition: '项目周边的公交、轨道、停车和加油充电等交通设施。', why: '交通可达性直接影响目的性客流和停留时间。', how: '除POI数量外，还要实地核对地铁口步行距离、公交线路、停车位和高峰拥堵。' },
+  '居住社区': { category: '市场侦测', definition: '公开地图识别到的住宅小区或居住片区。', why: '用于判断周边是否有稳定的社区消费基础。', how: '这只是数量代理指标，正式分析还需人口规模、家庭结构、收入和入住率数据。' },
+  '保底与扣点取高': { category: '招商租赁', definition: '租户按保底租金和联营扣点分别计算，项目取两者中的较高金额。', why: '既保障业主最低租金，又能分享租户销售增长。', how: '需要明确保底、扣点率、销售口径、结算周期和取高条款，避免重复计算。' },
+  '扣点率': { category: '招商租赁', definition: '联营扣点收入占租户销售额的比例。', why: '扣点率决定销售增长能在多大程度上转化为项目收入。', how: '不同业态差异很大，应以品牌谈判、同类商场数据和租户承受能力为依据。' },
+  '销售基数': { category: '招商租赁', definition: '用于测算联营扣点收入的单位面积月销售额参考值。', why: '销售基数越高，在相同扣点率下项目收入越高。', how: '应来自同类项目、品牌方经营数据或授权市场数据，不确定时做保守情景。' },
+  '出租率': { category: '招商租赁', definition: '已出租面积或已营业面积占可租赁面积的比例。', why: '出租率同时影响租金、物业费、停车和运营成本。', how: '首年、爬坡期和稳定期应分别设置，结合招商计划和同类项目开业爬坡情况。' },
+  '免租期': { category: '招商租赁', definition: '租户在合同开始阶段无需支付租金的月数。', why: '免租期会减少首年现金流，但不一定降低合同租金单价。', how: '按装修期和招商谈判填写，并关注免租期后的现金流恢复。' },
+  '招商佣金': { category: '招商租赁', definition: '支付给招商团队、渠道或代理机构的租赁成交佣金。', why: '属于招商成本，影响项目总投资和运营期现金流。', how: '区分首开佣金、续租佣金和渠道年度预算，避免重复计算。' },
+  '资本化率': { category: '估值退出', definition: '用稳定期NOI估算商业物业价值时使用的收益率指标。', why: '资本化率越高，相同NOI对应的物业估值越低。', how: '应参考同类商业资产成交、区位、租约质量和运营水平，谨慎选择。' },
+  '折现率': { category: '估值退出', definition: '把未来现金流折算为当前价值时使用的收益率门槛。', why: '折现率越高，未来现金流现值越低，NPV越保守。', how: '通常参考企业投资门槛、资金成本和同类项目风险收益要求。' },
+  '预备费': { category: '工程投资', definition: '为设计变更、工程量误差和不可预见工程风险预留的费用。', why: '方案深度越浅、建设风险越高，预备费越重要。', how: '通常按直接工程费的3%–8%设置，并随设计深化动态调整。' },
+  '铺底流动资金': { category: '运营资金', definition: '项目开业初期为支付运营成本和周转需要准备的启动资金。', why: '即使项目长期可行，开业初期也可能因出租率和现金流爬坡需要额外资金。', how: '按稳定运营成本的一定比例估算，并结合招商爬坡速度检查是否充足。' },
+  '增值税': { category: '税费', definition: '对商品和服务增值部分征收的流转税，项目测算中通常分别计算销项税和可抵扣进项税。', why: '影响不含税收入、运营成本和现金流。', how: '按项目实际纳税人身份、业务类型和属地税务口径设置，不建议直接套用单一税率。' },
+  '房产税': { category: '税费', definition: '商业物业持有期间按房产原值或租金收入计征的税。', why: '是持有型商业项目的重要年度税费。', how: '需确认从租计征或从价计征及当地扣除比例，按税务认定填写。' },
+  '企业所得税': { category: '税费', definition: '对项目税前利润征收的所得税。', why: '影响税后净利润和股权现金流。', how: '按适用企业所得税率和亏损结转政策测算，并结合融资利息和折旧影响。' },
+  '租金收缴率': { category: '运营管理', definition: '实际收到租金占应收租金的比例。', why: '收缴率不足会形成坏账并影响现金流。', how: '根据商户质量、运营管理能力和历史收缴情况设置，不宜默认100%。' },
+  '运营成本': { category: '运营管理', definition: '项目运营期间发生的物业、能耗、人员、办公、招商、营销、维保、保险和坏账等成本。', why: '运营成本直接决定NOI和资产估值。', how: '按年度预算和合同逐项填写，重点区分固定成本、随出租率变化的成本和一次性费用。' },
+};
+
+const TERM_ALIASES = { '项目IRR': 'IRR', '项目NPV': 'NPV', '稳定期NOI': 'NOI' };
+function termLabel(name, text = name) {
+  const termName = TERM_ALIASES[name] || name;
+  const info = TERM_DEFINITIONS[termName];
+  if (!info) return escapeHtml(text);
+  return `<span class="term-label">${escapeHtml(text)}<button type="button" class="term-help" data-term="${escapeHtml(termName)}" title="点击查看“${escapeHtml(name)}”解释">?</button></span>`;
+}
+
+function openTermHelp(name) {
+  const info = TERM_DEFINITIONS[name];
+  if (!info) return;
+  modalRegion.innerHTML = `
+    <div class="modal-backdrop" id="term-help-backdrop">
+      <div class="modal" style="width:min(640px,100%)">
+        <div class="modal-head"><div><span class="term-category">${escapeHtml(info.category)}</span><h2>${escapeHtml(name)}</h2><p>名词解释与使用建议</p></div><button class="modal-close" id="term-help-close">×</button></div>
+        <div class="modal-body term-help-body">
+          <div class="formula-guide-block"><strong>通俗解释</strong><p>${escapeHtml(info.definition)}</p></div>
+          <div class="formula-guide-block"><strong>为什么重要</strong><p>${escapeHtml(info.why)}</p></div>
+          <div class="formula-guide-block adjust"><strong>测算时怎么用</strong><p>${escapeHtml(info.how)}</p></div>
+        </div>
+        <div class="modal-foot"><button class="btn btn-primary" id="term-help-ok">知道了</button></div>
+      </div>
+    </div>`;
+  const close = () => { modalRegion.innerHTML = ''; };
+  document.getElementById('term-help-close').addEventListener('click', close);
+  document.getElementById('term-help-ok').addEventListener('click', close);
+  document.getElementById('term-help-backdrop').addEventListener('click', event => { if (event.target.id === 'term-help-backdrop') close(); });
+}
+
+function openTermGlossary() {
+  const groups = {};
+  for (const [name, info] of Object.entries(TERM_DEFINITIONS)) (groups[info.category] ||= []).push([name, info]);
+  const cards = Object.entries(groups).map(([category, items]) => `<section class="term-group"><h3>${escapeHtml(category)}</h3><div class="term-grid">${items.map(([name, info]) => `<button type="button" class="term-card" data-term="${escapeHtml(name)}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(info.definition)}</span></button>`).join('')}</div></section>`).join('');
+  modalRegion.innerHTML = `
+    <div class="modal-backdrop" id="term-glossary-backdrop">
+      <div class="modal" style="width:min(980px,100%)">
+        <div class="modal-head"><div><h2>商业地产名词词典</h2><p>点击名词查看通俗解释、重要性和测算使用建议。</p></div><button class="modal-close" id="term-glossary-close">×</button></div>
+        <div class="modal-body term-glossary-body">${cards}</div>
+        <div class="modal-foot"><button class="btn btn-primary" id="term-glossary-ok">关闭</button></div>
+      </div>
+    </div>`;
+  const close = () => { modalRegion.innerHTML = ''; };
+  document.getElementById('term-glossary-close').addEventListener('click', close);
+  document.getElementById('term-glossary-ok').addEventListener('click', close);
+  document.getElementById('term-glossary-backdrop').addEventListener('click', event => { if (event.target.id === 'term-glossary-backdrop') close(); });
+}
 
 const SETTLEMENT_PRESETS = {
   department: {
@@ -564,6 +645,9 @@ function sidebar(active = 'projects') {
       <button class="nav-item" data-nav="guide">
         <span class="nav-icon">${ICONS.info}</span><span>使用说明</span>
       </button>
+      <button class="nav-item" data-nav="terms">
+        <span class="nav-icon">${ICONS.info}</span><span>名词解释</span>
+      </button>
       <div class="sidebar-spacer"></div>
       <div class="user-box">
         <strong>${escapeHtml(state.user?.displayName || state.user?.username || '')}</strong>
@@ -618,6 +702,7 @@ function bindShell() {
       renderProjectList();
     } else if (nav === 'new') openNewProjectModal();
     else if (nav === 'guide') openGuideModal();
+    else if (nav === 'terms') openTermGlossary();
   }));
   document.getElementById('back-projects')?.addEventListener('click', () => {
     if (state.dirty && !confirm('当前修改尚未保存，确定返回项目列表吗？')) return;
@@ -790,7 +875,7 @@ function renderWorkspace() {
       </aside>
       <section class="step-panel">
         <div class="panel-head"><h2>${active.label}</h2><p>${stepDescription(state.step)}</p></div>
-        <div class="panel-body">${state.step < 4 ? `<div class="formula-toolbar"><div><span class="fx-chip">ƒ</span><strong>公式就在对应数据下方</strong><small>点击任一项查看计算式、函数和参数作用</small></div><div class="formula-toolbar-actions"><button class="btn btn-ghost btn-sm" id="open-function-glossary">函数说明</button><button class="btn btn-ghost btn-sm" id="toggle-all-formulas">显示全部公式</button></div></div>` : ''}${renderStep()}</div>
+        <div class="panel-body">${state.step < 4 ? `<div class="formula-toolbar"><div><span class="fx-chip">ƒ</span><strong>公式就在对应数据下方</strong><small>点击任一项查看计算式、函数和参数作用</small></div><div class="formula-toolbar-actions"><button class="btn btn-ghost btn-sm" id="open-term-glossary">名词解释</button><button class="btn btn-ghost btn-sm" id="open-function-glossary">函数说明</button><button class="btn btn-ghost btn-sm" id="toggle-all-formulas">显示全部公式</button></div></div>` : ''}${renderStep()}</div>
         <div class="panel-foot">
           <button class="btn btn-secondary" id="prev-step" ${state.step === 0 ? 'disabled' : ''}>${ICONS.back}<span>上一步</span></button>
           ${state.step < STEPS.length - 1
@@ -1132,7 +1217,7 @@ function renderFloorEditor(m, mode, preview) {
     <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层均价将作为一铺一价的基础：再乘业态系数并叠加铺位条件溢价。'}</div>
     ${formulaPanel('楼层收益公式', '楼层满租月收益 = 可租赁面积 × 楼层均价\n联营扣点月收益 = 可租赁面积 × 销售基数 × 扣点率\n实际加权收益 = 楼层月收益合计 ÷ 可租赁面积', ['SUM', 'MAX', 'IF'], '调整楼层均价、面积、销售基数或扣点率后，系统会实时更新。')}
     <div class="data-table-wrap floor-table-wrap">
-      <table class="data-table floor-table"><thead><tr><th>楼层</th><th class="num">建筑面积（㎡）</th><th class="num">可租赁面积（㎡）</th><th class="num">得铺率</th><th class="num">保底/平均租金（元/㎡）</th>${concessionEnabled ? '<th class="num">销售基数（元/㎡/月）</th><th class="num">扣点率</th>' : ''}<th class="num">满租月收益（元）</th><th class="num">实际加权收益</th><th></th></tr></thead><tbody>
+      <table class="data-table floor-table"><thead><tr><th>楼层</th><th class="num">建筑面积（㎡）</th><th class="num">可租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">保底/平均租金（元/㎡）</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th class="num">实际加权收益</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
           const ratio = Number(floor.buildingArea) ? Number(floor.leasableArea) / Number(floor.buildingArea) : 0;
           const area = Number(floor.leasableArea || 0);
@@ -1196,7 +1281,7 @@ function renderDetailedPricing(m, shops, preview) {
       <div class="section-title">业态租金 / 联营扣点规则</div>
       <div class="section-note">每个业态可单独选择计租方式：继承项目、纯租金、纯联营扣点或保底与扣点取高。销售基数和扣点率为行业参考起点，应与本地竞品核对。</div>
       ${formulaPanel('一铺一价与联营扣点公式', '保底月收入 = 租赁面积 × 楼层均价 × 业态系数 ×（1 + 位置条件溢价）\n联营扣点月收入 = 租赁面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '条件溢价合计最高40%；铺位填写租金覆盖值时，以覆盖值优先。')}
-      <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金（元/㎡/月）</th><th class="num">销售基数（元/㎡/月）</th><th class="num">扣点率</th><th class="num">业态系数</th></tr></thead><tbody>
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金（元/㎡/月）</th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th><th class="num">业态系数</th></tr></thead><tbody>
         ${(m.categories || []).map((cat, i) => `<tr><td><strong>${escapeHtml(cat.name)}</strong></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td></tr>`).join('')}
       </tbody></table></div>
     </div>
@@ -1562,12 +1647,7 @@ function renderMarketStep() {
     </div>
     ${analysis?.fallbackUsed ? `<div class="warning-item market-fallback-note">${escapeHtml(analysis.coverageNote || '当前显示较近半径的缓存市场结果。')}</div>` : ''}
     ${state.marketBusy ? `<div class="market-loading"><div class="spinner"></div><strong>正在汇总周边商业大数据</strong><span>分析购物中心、百货、超市、餐饮、影院、健身和酒店等POI</span></div>` : state.marketError && !analysis ? `<div class="market-error-card"><div class="import-icon">${ICONS.info}</div><div><strong>周边市场数据暂时获取失败</strong><span>${escapeHtml(state.marketError)}</span></div><button class="btn btn-primary" id="retry-market-analysis">${ICONS.spark}<span>重新获取</span></button></div>` : analysis ? `
-      <div class="stats-row market-stats">
-        <div class="mini-stat"><strong>${fmt(analysis.totalPoi)}</strong><span>相关商业POI</span></div>
-        <div class="mini-stat"><strong>${fmt(analysis.competitorCount)}</strong><span>直接竞品</span></div>
-        <div class="mini-stat"><strong>${fmt(analysis.densityPerKm2, 1)}</strong><span>商业POI密度/平方公里</span></div>
-        <div class="mini-stat"><strong>${escapeHtml(analysis.competitionLevel)}</strong><span>供给竞争判断</span></div>
-      </div>
+      ${renderMarketDetection(analysis)}
       <div class="dashboard-grid market-dashboard">
         <div class="card"><h3>周边商业业态结构</h3><div class="market-bars">${(analysis.categories || []).map(item => { const max = Math.max(...(analysis.categories || []).map(x => x.count), 1); return `<div class="market-bar-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(4, item.count / max * 100)}%"></i></div><strong>${fmt(item.count)}</strong></div>`; }).join('') || '<div class="empty-inline">暂无分类数据</div>'}</div><div class="market-source-note">${escapeHtml(analysis.summary || '')}</div></div>
         <div class="card"><h3>主要竞品</h3><div class="competitor-list">${(analysis.competitors || []).slice(0, 8).map((item, index) => `<div class="competitor-item"><span class="competitor-index">${index + 1}</span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category)} · ${item.distanceKm == null ? '距离未知' : `${fmt(item.distanceKm, 1)}km`}</small></div></div>`).join('') || '<div class="empty-inline">未识别到具名直接竞品</div>'}</div></div>
@@ -1584,6 +1664,35 @@ function renderMarketStep() {
     </div>
     ${rentSummary && rentSummary.count > 0 ? renderMarketRentSummary(rentSummary, comps) : `<div class="market-empty-comps"><strong>尚未导入竞品租金样本</strong><span>没有市场样本时，系统不会凭空判断项目租金高低。请导入调研数据或授权市场数据库记录。</span></div>`}
   `;
+}
+
+function renderMarketDetection(analysis) {
+  const score = Number(analysis.detectionScore || 0);
+  const rings = analysis.ringStats || [];
+  return `<div class="market-detection-stats">
+    <div><span>${termLabel('商业POI', '商业类POI')}</span><strong>${fmt(analysis.commercialCount ?? analysis.totalPoi)}</strong></div>
+    <div><span>${termLabel('直接竞品')}</span><strong>${fmt(analysis.competitorCount)}</strong></div>
+    <div><span>${termLabel('商业锚点')}</span><strong>${fmt(analysis.anchorCount || 0)}</strong></div>
+    <div><span>${termLabel('交通配套')}</span><strong>${fmt(analysis.transportCount || 0)}</strong></div>
+    <div><span>${termLabel('居住社区')}</span><strong>${fmt(analysis.residentialCount || 0)}</strong></div>
+    <div><span>${termLabel('商业侦测评分', '侦测评分')}</span><strong>${fmt(score)}/100</strong></div>
+  </div>
+  <div class="market-detection-grid">
+    <div class="card market-score-card">
+      <div class="market-score-ring" style="--score:${score * 3.6}deg"><div><strong>${fmt(score)}</strong><span>/100</span></div></div>
+      <div class="market-score-copy"><span class="market-grade">${termLabel('商圈等级', analysis.marketGrade || '待评估')}</span><h3>${termLabel('商业侦测评分', '商业侦测评分')}</h3><p>${escapeHtml(analysis.competitionLevel || '')}</p><small>${termLabel('商业密度', '商业密度')} ${fmt(analysis.densityPerKm2, 1)} 个/平方公里</small></div>
+    </div>
+    <div class="card market-ring-card">
+      <h3>分圈层商业侦测</h3>
+      <div class="market-ring-grid">${rings.map(ring => `<div class="market-ring-item"><strong>${escapeHtml(ring.label)}</strong><span>${fmt(ring.commercialCount)} 商业POI</span><span>${fmt(ring.competitorCount)} 直接竞品</span><span>${fmt(ring.transportCount)} 交通配套</span><span>${fmt(ring.residentialCount)} 居住片区</span></div>`).join('')}</div>
+    </div>
+    <div class="card market-insight-card">
+      <h3>侦测结论</h3>
+      <ul class="analysis-list">${(analysis.conclusions || []).map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul>
+      <h4>商业机会</h4>
+      <ul class="analysis-list opportunity-list">${(analysis.opportunities || []).map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul>
+    </div>
+  </div>`;
 }
 
 function renderMarketRentSummary(summary, comps) {
@@ -1773,7 +1882,7 @@ function renderFloorResultTable() {
 }
 
 function kpiCard(label, value, unit, cls) {
-  return `<div class="kpi-card ${cls}"><div class="label">${label}</div><div class="value">${value}</div><div class="unit">${unit}</div></div>`;
+  return `<div class="kpi-card ${cls}"><div class="label">${termLabel(label)}</div><div class="value">${value}</div><div class="unit">${unit}</div></div>`;
 }
 
 function donutColor(i) {
@@ -1836,6 +1945,7 @@ function bindStepInputs() {
 }
 
 function bindFormulaToolbar() {
+  document.getElementById('open-term-glossary')?.addEventListener('click', openTermGlossary);
   document.getElementById('open-function-glossary')?.addEventListener('click', openFunctionGlossary);
   const button = document.getElementById('toggle-all-formulas');
   if (!button) return;
@@ -2550,6 +2660,12 @@ document.addEventListener('click', event => {
   if (functionButton) {
     event.preventDefault();
     openFunctionHelp(functionButton.dataset.function);
+    return;
+  }
+  const termButton = event.target.closest('[data-term]');
+  if (termButton) {
+    event.preventDefault();
+    openTermHelp(termButton.dataset.term);
   }
 });
 
