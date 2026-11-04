@@ -88,11 +88,14 @@ function authTokenFromRequest(init = {}) {
 }
 
 async function currentUser(init) {
+  const token = authTokenFromRequest(init);
+  const localUsername = usernameFromToken(token);
+  if (localUsername) {
+    const users = await ensureUsers();
+    return users[localUsername] ? { username: localUsername, displayName: users[localUsername].displayName || localUsername, role: 'user', status: 'approved' } : null;
+  }
   if (CLOUD_ENABLED) return cloudCurrentUser(init);
-  const username = usernameFromToken(authTokenFromRequest(init));
-  if (!username) return null;
-  const users = await ensureUsers();
-  return users[username] ? { username, displayName: users[username].displayName || username } : null;
+  return null;
 }
 
 function cloudSession() {
@@ -224,6 +227,7 @@ async function cloudCurrentUser(init = {}) {
     displayName: profile.display_name || profile.username,
     role: profile.role || 'user',
     status: profile.status,
+    isCloud: true,
     createdAt: profile.created_at,
     lastLoginAt: profile.last_login_at,
   };
@@ -1640,7 +1644,7 @@ async function handleApi(path, init) {
 
   if (pathname.endsWith('/api/projects') && method === 'GET') {
     const projects = [];
-    if (CLOUD_ENABLED) {
+    if (user.isCloud) {
       const token = await cloudAccessToken();
       const rows = await cloudJSON(`/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&user_id=eq.${encodeURIComponent(user.id)}&order=updated_at.desc`, { token });
       for (const row of Array.isArray(rows) ? rows : []) projects.push(await cloudProjectSummary(cloudProject(row)));
@@ -1662,7 +1666,7 @@ async function handleApi(path, init) {
     const projectName = String(body.name || body.model?.project?.name || '未命名商业项目').trim();
     const model = await normalizeModel(body.model || await defaultModel(projectName));
     let project;
-    if (CLOUD_ENABLED) {
+    if (user.isCloud) {
       const token = await cloudAccessToken();
       const rows = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at', {
         method: 'POST', token,
@@ -1689,7 +1693,7 @@ async function handleApi(path, init) {
     let localRows = null;
     let idx = -1;
     let cloudToken = '';
-    if (CLOUD_ENABLED) {
+    if (user.isCloud) {
       cloudToken = await cloudAccessToken();
       const rows = await cloudJSON(`/rest/v1/projects?id=eq.${encodeURIComponent(id)}&select=id,user_id,name,model,created_at,updated_at`, { token: cloudToken });
       if (Array.isArray(rows) && rows[0]) project = cloudProject(rows[0]);
@@ -1711,7 +1715,7 @@ async function handleApi(path, init) {
     if (method === 'PUT') {
       const body = await requestJSON(init);
       const model = await normalizeModel(body.model || body);
-      if (CLOUD_ENABLED) {
+      if (user.isCloud) {
         const rows = await cloudJSON(`/rest/v1/projects?id=eq.${encodeURIComponent(id)}&select=id,user_id,name,model,created_at,updated_at`, {
           method: 'PATCH', token: cloudToken,
           body: { model, name: String(body.name || model.project?.name || project.name || '未命名商业项目').trim() },
@@ -1728,7 +1732,7 @@ async function handleApi(path, init) {
       return jsonResponse({ project, result: await calculate(model, true) });
     }
     if (method === 'DELETE') {
-      if (CLOUD_ENABLED) {
+      if (user.isCloud) {
         await cloudRequest(`/rest/v1/projects?id=eq.${encodeURIComponent(id)}`, {
           method: 'DELETE', token: cloudToken, headers: { Prefer: 'return=minimal' },
         }).then(async response => {

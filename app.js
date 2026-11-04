@@ -1,4 +1,4 @@
-import './backend.js?v=20261105-cloud4';
+import './backend.js?v=20261105-cloud6';
 await window.__duoduoBackendReady;
 
 const APP_VERSION = '1.3.0';
