@@ -1,7 +1,7 @@
-const CACHE_NAME = 'duoduo-cre-v15-20261103';
+const CACHE_NAME = 'duoduo-cre-v17-20261105';
 const CORE = [
-  './', './index.html', './styles.css?v=20261103-static13', './app.js?v=20261103-static13',
-  './backend.js', './pyodide-loader.js?v=20261103-static13', './engine.py',
+  './', './index.html', './styles.css?v=20261105-cloud2', './app.js?v=20261105-cloud2',
+  './backend.js?v=20261105-cloud2', './cloud-config.js?v=20261105-cloud2', './pyodide-loader.js?v=20261105-cloud2', './engine.py',
   './pyodide/pyodide.mjs', './pyodide/pyodide.asm.js', './pyodide/pyodide-lock.json', './pyodide/chunk-manifest.json',
   './vendor/xlsx.full.min.js', './vendor/pptxgen.bundle.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'
@@ -105,6 +105,9 @@ async function chunkedResponse(cache, url, partCount, mime) {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const requestUrl = new URL(event.request.url);
+  // Never cache cross-origin API responses. Authenticated Supabase responses
+  // must not be shared between accounts by the Cache API.
+  if (requestUrl.origin !== self.location.origin) return;
   if (requestUrl.pathname.endsWith('/pyodide/pyodide.asm.wasm')) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);

@@ -1,7 +1,7 @@
-import './backend.js?v=20261103-static13';
+import './backend.js?v=20261105-cloud2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.2.2';
+const APP_VERSION = '1.3.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -369,6 +369,7 @@ const ICONS = {
   pin: '<svg viewBox="0 0 24 24" fill="none"><path d="M12 21s6-5.3 6-11a6 6 0 1 0-12 0c0 5.7 6 11 6 11Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.2" stroke="currentColor" stroke-width="1.7"/></svg>',
   locate: '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  users: '<svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 20c.4-4 2.2-6 5.5-6s5.1 2 5.5 6M16 5.5a3 3 0 0 1 0 5.8M16.5 14.2c2.4.3 3.7 2.2 4 5.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
 };
 
 const state = {
@@ -391,6 +392,12 @@ const state = {
   importHints: null,
   budgetWarnings: [],
   sidebarOpen: false,
+  adminUsers: [],
+  adminProjects: [],
+  adminLogs: [],
+  adminStatus: 'all',
+  adminSearch: '',
+  adminLoaded: false,
 };
 
 let locationGeocodeTimer = null;
@@ -479,8 +486,9 @@ async function api(path, options = {}) {
     body = JSON.stringify(body);
   }
   const response = await fetch(path, { ...options, headers, body });
-  if (response.status === 401) {
-    logout(false);
+  if (response.status === 401 && !path.endsWith('/api/login') && !path.endsWith('/api/register')) {
+    clearSession();
+    renderAuth('login');
     throw new Error('登录已过期，请重新登录');
   }
   const contentType = response.headers.get('Content-Type') || '';
@@ -531,7 +539,7 @@ function saveSession(token, user) {
   localStorage.setItem('cr_user', JSON.stringify(user));
 }
 
-function logout(render = true) {
+function clearSession() {
   state.token = '';
   state.user = null;
   state.projects = [];
@@ -540,8 +548,20 @@ function logout(render = true) {
   state.preview = null;
   state.marketAnalysis = null;
   state.marketError = null;
+  state.adminUsers = [];
+  state.adminProjects = [];
+  state.adminLogs = [];
+  state.adminLoaded = false;
   localStorage.removeItem('cr_token');
   localStorage.removeItem('cr_user');
+}
+
+async function logout(render = true) {
+  const token = state.token;
+  if (token) {
+    try { await fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); } catch {}
+  }
+  clearSession();
   if (render) renderAuth('login');
 }
 
@@ -549,7 +569,8 @@ async function boot() {
   if (!state.token) return renderAuth('login');
   try {
     const me = await api('/api/me');
-    state.user = { username: me.username, displayName: me.displayName };
+    state.user = { ...me, username: me.username, displayName: me.displayName };
+    localStorage.setItem('cr_user', JSON.stringify(state.user));
     await loadProjects();
     renderProjectList();
   } catch {
@@ -560,6 +581,7 @@ async function boot() {
 async function loadProjects() {
   const payload = await api('/api/projects');
   state.projects = payload.projects || [];
+  state.adminLoaded = false;
 }
 
 function renderAuth(mode = 'login') {
@@ -574,7 +596,7 @@ function renderAuth(mode = 'login') {
           <p>导入铺位面积与业态，系统自动完成投资、租金、税费、20年现金流、IRR与NPV分析，并生成可汇报的表格和PPT。</p>
         </div>
         <div class="auth-points">
-          <div class="auth-point"><strong>5步</strong><span>完成项目基础测算</span></div>
+          <div class="auth-point"><strong>6步</strong><span>完成项目基础测算</span></div>
           <div class="auth-point"><strong>20年</strong><span>经营与现金流预测</span></div>
           <div class="auth-point"><strong>1键</strong><span>导出Excel与PPT</span></div>
         </div>
@@ -582,8 +604,8 @@ function renderAuth(mode = 'login') {
       </section>
       <section class="auth-panel">
         <div class="auth-card">
-          <h2>${isLogin ? '登录工作台' : '创建新账号'}</h2>
-          <p class="auth-sub">${isLogin ? '项目保存在本机，登录后继续之前的工作。' : '账号数据保存在本机，适合个人或小团队试用。'}</p>
+          <h2>${isLogin ? '登录工作台' : '申请正式账号'}</h2>
+          <p class="auth-sub">${isLogin ? '正式账号登录后可跨设备访问自己的项目；演示账号仍保存在本机。' : '首个正式账号自动成为超级管理员，其余账号须经管理员审核授权。'}</p>
           <div class="auth-tabs">
             <button type="button" class="${isLogin ? 'active' : ''}" data-auth-mode="login">登录</button>
             <button type="button" class="${!isLogin ? 'active' : ''}" data-auth-mode="register">注册</button>
@@ -593,7 +615,7 @@ function renderAuth(mode = 'login') {
             ${!isLogin ? '<div class="field"><label>姓名 / 称呼</label><input class="input" name="displayName" autocomplete="name" placeholder="例如：王经理"></div>' : ''}
             <div class="field"><label>用户名</label><input class="input" name="username" autocomplete="username" required placeholder="输入用户名"></div>
             <div class="field"><label>密码 <small>至少6位</small></label><input class="input" type="password" name="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" required placeholder="输入密码"></div>
-            <button class="auth-submit" type="submit">${isLogin ? '进入工作台' : '注册并进入'}</button>
+            <button class="auth-submit" type="submit">${isLogin ? '进入工作台' : '提交注册申请'}</button>
           </form>
           ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>首次使用可直接体验：账号 <strong>demo</strong>，密码 <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
         </div>
@@ -619,11 +641,18 @@ function renderAuth(mode = 'login') {
     setBusy(true);
     try {
       const payload = await api(endpoint, { method: 'POST', body });
+      if (payload.pending) {
+        alert.textContent = payload.message || '注册申请已提交，请等待超级管理员审核授权。';
+        alert.classList.add('show', 'success');
+        return;
+      }
       saveSession(payload.token, payload.user);
       await loadProjects();
       renderProjectList();
+      if (payload.firstAdmin) setTimeout(() => toast('首个正式账号已自动设为超级管理员', 'success'), 120);
     } catch (error) {
       alert.textContent = error.message;
+      alert.classList.remove('success');
       alert.classList.add('show');
     } finally {
       setBusy(false);
@@ -648,18 +677,23 @@ function sidebar(active = 'projects') {
       <button class="nav-item" data-nav="terms">
         <span class="nav-icon">${ICONS.info}</span><span>名词解释</span>
       </button>
+      ${state.user?.role === 'super_admin' ? `
+      <div class="sidebar-context">Administration</div>
+      <button class="nav-item ${active === 'admin' ? 'active' : ''}" data-nav="admin">
+        <span class="nav-icon">${ICONS.users}</span><span>用户与项目管理</span>
+      </button>` : ''}
       <div class="sidebar-spacer"></div>
       <div class="user-box">
         <strong>${escapeHtml(state.user?.displayName || state.user?.username || '')}</strong>
-        <span>本地工作空间</span>
+        <span>${state.user?.role === 'super_admin' ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : '正式账号 · 云端工作空间'}</span>
         <button type="button" id="logout-btn">退出登录</button>
       </div>
     </aside>`;
 }
 
 function shell(content, active = 'projects', workspace = false) {
-  const title = workspace ? (state.current?.model?.project?.name || '未命名项目') : '项目工作台';
-  const subtitle = workspace ? '项目测算与汇报' : '商业地产投资测算';
+  const title = workspace ? (state.current?.model?.project?.name || '未命名项目') : active === 'admin' ? '用户与项目管理' : '项目工作台';
+  const subtitle = workspace ? '项目测算与汇报' : active === 'admin' ? '账号审核 · 项目数据总览' : '商业地产投资测算';
   app.innerHTML = `
     <div class="app-shell">
       ${sidebar(active)}
@@ -680,7 +714,7 @@ function shell(content, active = 'projects', workspace = false) {
               <button class="btn btn-secondary" id="top-save">${ICONS.save}<span>保存并计算</span></button>
               <button class="btn btn-secondary" id="top-export-excel">${ICONS.excel}<span>Excel</span></button>
               <button class="btn btn-primary" id="top-export-ppt">${ICONS.ppt}<span>PPT汇报</span></button>
-            ` : `<button class="btn btn-primary" id="top-new-project">${ICONS.plus}<span>新建项目</span></button>`}
+            ` : active === 'admin' ? `<button class="btn btn-secondary" id="admin-refresh">${ICONS.spark}<span>刷新数据</span></button>` : `<button class="btn btn-primary" id="top-new-project">${ICONS.plus}<span>新建项目</span></button>`}
           </div>
         </header>
         <div class="content">${content}</div>
@@ -703,7 +737,9 @@ function bindShell() {
     } else if (nav === 'new') openNewProjectModal();
     else if (nav === 'guide') openGuideModal();
     else if (nav === 'terms') openTermGlossary();
+    else if (nav === 'admin') openAdminDashboard();
   }));
+  document.getElementById('admin-refresh')?.addEventListener('click', () => openAdminDashboard(true));
   document.getElementById('back-projects')?.addEventListener('click', () => {
     if (state.dirty && !confirm('当前修改尚未保存，确定返回项目列表吗？')) return;
     state.current = null; state.result = null; state.dirty = false;
@@ -725,12 +761,15 @@ function bindShell() {
 
 function renderProjectList() {
   const cards = state.projects.map(project => projectCard(project)).join('');
+  const storageCopy = state.user?.username === 'demo'
+    ? '演示账号项目只保存在当前浏览器，适合体验功能。'
+    : '正式账号项目保存在云端，登录后可跨设备继续测算。';
   const content = `
     <div class="page-intro">
       <div>
         <div class="eyebrow">Project portfolio</div>
         <h1>项目工作台</h1>
-        <p>从项目基础信息开始，按步骤完成成本、铺位和运营测算。所有项目保存在此浏览器所在的本地工作空间。</p>
+        <p>从项目基础信息开始，按步骤完成成本、铺位和运营测算。${storageCopy}</p>
       </div>
       <button class="btn btn-primary" id="new-project-btn">${ICONS.plus}<span>新建测算项目</span></button>
     </div>
@@ -760,7 +799,7 @@ function newProjectCard() {
 }
 
 function emptyProjectState() {
-  return `<div class="empty-state"><div class="new-project-icon" style="width:58px;height:58px;font-size:30px">${ICONS.plus}</div><h3>还没有测算项目</h3><p>创建第一个项目，系统会用5个步骤带你完成投资测算。</p><button class="btn btn-primary" id="empty-new-project">创建第一个项目</button></div>`;
+  return `<div class="empty-state"><div class="new-project-icon" style="width:58px;height:58px;font-size:30px">${ICONS.plus}</div><h3>还没有测算项目</h3><p>创建第一个项目，系统会用6个步骤带你完成投资测算。</p><button class="btn btn-primary" id="empty-new-project">创建第一个项目</button></div>`;
 }
 
 function projectCard(project) {
@@ -777,6 +816,256 @@ function projectCard(project) {
     </div>
     <div class="project-card-foot"><span>更新于 ${fmtDate(project.updatedAt)}</span><button class="btn btn-ghost btn-sm" data-delete-project="${project.id}" title="删除项目">${ICONS.trash}</button></div>
   </article>`;
+}
+
+function adminStatusMeta(status) {
+  return {
+    pending: { label: '待审核', className: 'pending' },
+    approved: { label: '已授权', className: 'approved' },
+    rejected: { label: '已拒绝', className: 'rejected' },
+    disabled: { label: '已停用', className: 'disabled' },
+  }[status] || { label: status || '未知', className: 'pending' };
+}
+
+function adminUserForProject(project) {
+  return state.adminUsers.find(user => user.id === project.userId || user.id === project.user_id);
+}
+
+function adminFilteredUsers() {
+  const keyword = state.adminSearch.trim().toLowerCase();
+  return state.adminUsers.filter(user => {
+    const statusOK = state.adminStatus === 'all' || user.status === state.adminStatus;
+    const haystack = `${user.username || ''} ${user.display_name || ''}`.toLowerCase();
+    return statusOK && (!keyword || haystack.includes(keyword));
+  });
+}
+
+function adminFilteredProjects() {
+  const keyword = state.adminSearch.trim().toLowerCase();
+  const visibleUserIds = new Set(adminFilteredUsers().map(user => user.id));
+  return state.adminProjects.filter(project => {
+    const owner = adminUserForProject(project) || {};
+    const modelProject = project.model?.project || {};
+    const haystack = `${project.name || ''} ${modelProject.name || ''} ${modelProject.location || ''} ${owner.username || ''} ${owner.display_name || ''}`.toLowerCase();
+    const userOK = state.adminStatus === 'all' || visibleUserIds.has(project.userId);
+    return userOK && (!keyword || haystack.includes(keyword));
+  });
+}
+
+function adminUserTable() {
+  const users = adminFilteredUsers();
+  if (!users.length) return '<div class="admin-empty">没有符合条件的用户。</div>';
+  return `<div class="admin-table-wrap"><table class="admin-table">
+    <thead><tr><th>用户</th><th>审核状态</th><th>角色</th><th>项目</th><th>注册 / 最近登录</th><th>管理操作</th></tr></thead>
+    <tbody>${users.map(user => {
+      const meta = adminStatusMeta(user.status);
+      const projectCount = state.adminProjects.filter(project => project.userId === user.id).length;
+      const actions = [];
+      if (user.role !== 'super_admin') {
+        if (user.status !== 'approved') actions.push(`<button class="admin-action approve" data-admin-user="${user.id}" data-admin-status="approved">${user.status === 'pending' ? '批准' : '重新启用'}</button>`);
+        if (user.status !== 'rejected') actions.push(`<button class="admin-action reject" data-admin-user="${user.id}" data-admin-status="rejected">拒绝</button>`);
+        if (user.status === 'approved') actions.push(`<button class="admin-action disable" data-admin-user="${user.id}" data-admin-status="disabled">停用</button>`);
+      }
+      return `<tr>
+        <td><div class="admin-user-cell"><span class="admin-avatar">${escapeHtml((user.display_name || user.username || '?').slice(0, 1))}</span><div><strong>${escapeHtml(user.display_name || user.username)}</strong><small>@${escapeHtml(user.username)}</small></div></div></td>
+        <td><span class="status-badge ${meta.className}">${meta.label}</span></td>
+        <td>${user.role === 'super_admin' ? '<span class="role-badge">超级管理员</span>' : '普通用户'}</td>
+        <td><strong>${projectCount}</strong> 个</td>
+        <td><span class="admin-date">${escapeHtml(fmtDate(user.created_at))}</span><small class="admin-date">${user.last_login_at ? '最近 ' + escapeHtml(fmtDate(user.last_login_at)) : '尚未登录'}</small></td>
+        <td><div class="admin-actions">${actions.length ? actions.join('') : '<span class="admin-locked">当前账号受保护</span>'}</div></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function adminProjectTable() {
+  const projects = adminFilteredProjects();
+  if (!projects.length) return '<div class="admin-empty">没有符合条件的项目。</div>';
+  return `<div class="admin-table-wrap"><table class="admin-table project-admin-table">
+    <thead><tr><th>项目</th><th>所属用户</th><th>模式 / 规模</th><th>总投资</th><th>IRR / NPV</th><th>更新日期</th><th></th></tr></thead>
+    <tbody>${projects.map(project => {
+      const summary = project.summary || {};
+      const owner = adminUserForProject(project) || {};
+      const modelProject = project.model?.project || {};
+      return `<tr>
+        <td><strong>${escapeHtml(summary.projectName || project.name || modelProject.name || '未命名项目')}</strong><small class="admin-project-location">${escapeHtml(summary.location || modelProject.location || '未填写位置')}</small></td>
+        <td><strong>${escapeHtml(owner.display_name || owner.username || '未知用户')}</strong><small class="admin-date">@${escapeHtml(owner.username || '—')}</small></td>
+        <td>${summary.calculationMode === 'preliminary' ? '初步测算' : '一铺一价'}<small class="admin-date">${summary.calculationMode === 'preliminary' ? `${summary.floorCount || 0} 个楼层` : `${summary.shopsCount || 0} 个铺位`}</small></td>
+        <td><strong>${fmt(summary.totalInvestment)}</strong><small class="admin-date">万元</small></td>
+        <td><strong>${summary.projectIrr == null ? '—' : fmtPct(summary.projectIrr)}</strong><small class="admin-date">NPV ${fmt(summary.projectNpv)} 万元</small></td>
+        <td><span class="admin-date">${escapeHtml(fmtDate(project.updatedAt))}</span></td>
+        <td><button class="admin-action view" data-admin-project="${project.id}">查看数据</button></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function updateAdminLists() {
+  const userList = document.getElementById('admin-user-list');
+  const projectList = document.getElementById('admin-project-list');
+  const visibleCount = document.getElementById('admin-visible-count');
+  if (userList) userList.innerHTML = adminUserTable();
+  if (projectList) projectList.innerHTML = adminProjectTable();
+  if (visibleCount) visibleCount.textContent = `${adminFilteredUsers().length} 位用户 · ${adminFilteredProjects().length} 个项目`;
+  bindAdminListActions();
+}
+
+function bindAdminListActions() {
+  document.querySelectorAll('[data-admin-user]').forEach(button => button.addEventListener('click', async () => {
+    const nextStatus = button.dataset.adminStatus;
+    const meta = adminStatusMeta(nextStatus);
+    if ((nextStatus === 'rejected' || nextStatus === 'disabled') && !confirm(`确定将该用户设为“${meta.label}”吗？`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/admin/users/${button.dataset.adminUser}/status`, { method: 'POST', body: { status: nextStatus } });
+      state.adminLoaded = false;
+      await loadAdminData();
+      renderAdminDashboard();
+      toast(`用户已设为${meta.label}`, 'success');
+    } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
+  }));
+  document.querySelectorAll('[data-admin-project]').forEach(button => button.addEventListener('click', () => openAdminProject(button.dataset.adminProject)));
+}
+
+async function loadAdminData() {
+  const [userPayload, projectPayload, auditPayload] = await Promise.all([
+    api('/api/admin/users'),
+    api('/api/admin/projects'),
+    api('/api/admin/audit'),
+  ]);
+  state.adminUsers = userPayload.users || [];
+  state.adminProjects = projectPayload.projects || [];
+  state.adminLogs = auditPayload.logs || [];
+  state.adminLoaded = true;
+}
+
+async function openAdminDashboard(force = false) {
+  if (state.user?.role !== 'super_admin') return toast('仅超级管理员可访问用户管理', 'error');
+  state.current = null;
+  state.result = null;
+  state.preview = null;
+  state.sidebarOpen = false;
+  if (!state.adminLoaded || force) {
+    setBusy(true);
+    try { await loadAdminData(); }
+    catch (error) { toast(error.message, 'error'); return; }
+    finally { setBusy(false); }
+  }
+  renderAdminDashboard();
+}
+
+function renderAdminDashboard() {
+  const pending = state.adminUsers.filter(user => user.status === 'pending').length;
+  const approved = state.adminUsers.filter(user => user.status === 'approved').length;
+  const totalInvestment = state.adminProjects.reduce((sum, project) => sum + Number(project.summary?.totalInvestment || 0), 0);
+  const filters = [
+    ['all', '全部'], ['pending', '待审核'], ['approved', '已授权'], ['rejected', '已拒绝'], ['disabled', '已停用'],
+  ];
+  const content = `
+    <div class="page-intro admin-intro">
+      <div>
+        <div class="eyebrow">Super administrator</div>
+        <h1>用户审核与项目总览</h1>
+        <p>只有你授权的账号才能进入工作台。这里可查看所有正式用户、审核状态、项目测算摘要与最近管理操作。</p>
+      </div>
+    </div>
+    <div class="admin-kpis">
+      <div class="admin-kpi urgent"><span>待审核账号</span><strong>${pending}</strong><small>${pending ? '请及时处理注册申请' : '当前没有待审核申请'}</small></div>
+      <div class="admin-kpi"><span>已授权用户</span><strong>${approved}</strong><small>含超级管理员账号</small></div>
+      <div class="admin-kpi"><span>全部正式项目</span><strong>${state.adminProjects.length}</strong><small>项目数据由云端同步</small></div>
+      <div class="admin-kpi"><span>项目投资合计</span><strong>${fmt(totalInvestment)}</strong><small>万元 · 按当前测算结果</small></div>
+    </div>
+    <section class="admin-section">
+      <div class="admin-section-head">
+        <div><span class="eyebrow">Access control</span><h2>注册用户与授权</h2></div>
+        <span class="admin-count" id="admin-visible-count">${adminFilteredUsers().length} 位用户 · ${adminFilteredProjects().length} 个项目</span>
+      </div>
+      <div class="admin-toolbar">
+        <label class="admin-search">${ICONS.search}<input id="admin-search" type="search" value="${escapeHtml(state.adminSearch)}" placeholder="搜索用户名、项目名称或地址"></label>
+        <div class="admin-filter-group">${filters.map(([value, label]) => `<button type="button" class="${state.adminStatus === value ? 'active' : ''}" data-admin-filter="${value}">${label}</button>`).join('')}</div>
+      </div>
+      <div id="admin-user-list">${adminUserTable()}</div>
+    </section>
+    <section class="admin-section">
+      <div class="admin-section-head"><div><span class="eyebrow">Project oversight</span><h2>全部用户项目</h2></div></div>
+      <div id="admin-project-list">${adminProjectTable()}</div>
+    </section>
+    <section class="admin-section admin-audit-section">
+      <div class="admin-section-head"><div><span class="eyebrow">Audit trail</span><h2>最近管理记录</h2></div></div>
+      ${state.adminLogs.length ? `<div class="admin-audit-list">${state.adminLogs.slice(0, 10).map(log => {
+        const actionLabels = { user_approved: '批准用户', user_rejected: '拒绝用户', user_disabled: '停用用户', user_pending: '恢复待审核' };
+        return `<div><span>${escapeHtml(actionLabels[log.action] || log.action)}</span><strong>${escapeHtml(log.metadata?.username || '')}</strong><small>${escapeHtml(new Date(log.created_at).toLocaleString('zh-CN'))}</small></div>`;
+      }).join('')}</div>` : '<div class="admin-empty">暂无管理记录。</div>'}
+    </section>`;
+  shell(content, 'admin', false);
+  document.getElementById('admin-search')?.addEventListener('input', event => {
+    state.adminSearch = event.target.value;
+    updateAdminLists();
+  });
+  document.querySelectorAll('[data-admin-filter]').forEach(button => button.addEventListener('click', () => {
+    state.adminStatus = button.dataset.adminFilter;
+    document.querySelectorAll('[data-admin-filter]').forEach(item => item.classList.toggle('active', item === button));
+    updateAdminLists();
+  }));
+  bindAdminListActions();
+}
+
+async function openAdminProject(projectId) {
+  setBusy(true);
+  try {
+    const payload = await api(`/api/projects/${projectId}`);
+    const project = payload.project;
+    const result = payload.result || {};
+    const summary = result.summary || {};
+    const owner = adminUserForProject(project) || {};
+    const investmentRows = (result.investmentBreakdown || []).map(item => `<div><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)} 万元</strong></div>`).join('');
+    const costRows = (result.operatingCostBreakdown || []).map(item => `<div><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)} 万元/年</strong></div>`).join('');
+    const organizationRows = (result.organizationBreakdown || []).map(item => `<div><span>${escapeHtml(item.name)} · ${fmt(item.headcount)}人</span><strong>${fmt(item.annualCost)} 万元/年</strong></div>`).join('');
+    modalRegion.innerHTML = `
+      <div class="modal-backdrop" id="admin-project-backdrop">
+        <div class="modal admin-project-modal">
+          <div class="modal-head"><div><span class="eyebrow">Read-only project review</span><h2>${escapeHtml(summary.projectName || project.name || '项目数据')}</h2><p>${escapeHtml(summary.location || '未填写项目位置')} · 所属用户 ${escapeHtml(owner.display_name || owner.username || '未知')}</p></div><button class="modal-close" id="admin-project-close">×</button></div>
+          <div class="modal-body admin-project-body">
+            <div class="admin-project-metrics">
+              <div><span>项目总投资</span><strong>${fmt(summary.totalInvestment)}</strong><small>万元</small></div>
+              <div><span>项目 IRR</span><strong>${summary.projectIrr == null ? '—' : fmtPct(summary.projectIrr)}</strong><small>融资前税后</small></div>
+              <div><span>项目 NPV</span><strong>${fmt(summary.projectNpv)}</strong><small>万元</small></div>
+              <div><span>稳定期 NOI</span><strong>${fmt(summary.stableNoi)}</strong><small>万元/年</small></div>
+              <div><span>NOI 回报率</span><strong>${summary.noiYield == null ? '—' : fmtPct(summary.noiYield)}</strong><small>NOI / 总投资</small></div>
+              <div><span>初步结论</span><strong class="admin-status-text">${escapeHtml(summary.status || '待完善')}</strong><small>系统自动判断</small></div>
+            </div>
+            <div class="admin-project-facts">
+              <span>计租方式：${escapeHtml({ rent: '纯租金', concession: '纯联营扣点', guarantee_or_concession: '保底与扣点取高' }[summary.revenueModel] || '—')}</span>
+              <span>测算模式：${summary.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价'}</span>
+              <span>总建筑面积：${fmt(summary.grossFloorArea)} ㎡</span>
+              <span>可租赁面积：${fmt(summary.leasableArea)} ㎡</span>
+              <span>铺位 / 楼层：${summary.shopsCount || 0} 个 / ${summary.floorCount || 0} 层</span>
+              <span>静态回收期：${summary.staticPayback == null ? '—' : fmt(summary.staticPayback, 1) + ' 年'}</span>
+            </div>
+            <div class="admin-analysis-grid">
+              <div class="admin-data-panel"><h3>投资构成</h3>${investmentRows || '<p>暂无数据</p>'}</div>
+              <div class="admin-data-panel"><h3>稳定期运营成本</h3>${costRows || '<p>暂无数据</p>'}</div>
+              <div class="admin-data-panel"><h3>组织架构与人员成本</h3>${organizationRows || '<p>暂无数据</p>'}</div>
+            </div>
+            <div class="admin-analysis-note">
+              <h3>系统分析结论</h3>
+              ${(result.analysis?.bullets || []).map(text => `<p>• ${escapeHtml(text)}</p>`).join('') || '<p>暂无分析结论。</p>'}
+              <h3>优化建议</h3>
+              ${(result.analysis?.recommendations || []).map(text => `<p>• ${escapeHtml(text)}</p>`).join('') || '<p>暂无优化建议。</p>'}
+            </div>
+          </div>
+          <div class="modal-foot"><span class="admin-readonly-note">管理员只读查看，不会修改用户项目</span><button class="btn btn-secondary" id="admin-project-done">关闭</button></div>
+        </div>
+      </div>`;
+    const close = () => { modalRegion.innerHTML = ''; };
+    document.getElementById('admin-project-close').addEventListener('click', close);
+    document.getElementById('admin-project-done').addEventListener('click', close);
+    document.getElementById('admin-project-backdrop').addEventListener('click', event => { if (event.target.id === 'admin-project-backdrop') close(); });
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    setBusy(false);
+  }
 }
 
 function openNewProjectModal() {
@@ -811,6 +1100,7 @@ function openNewProjectModal() {
       updated.project.model.project.projectType = form.get('projectType');
       updated.project.model.project.revenueModel = form.get('revenueModel');
       await api(`/api/projects/${id}`, { method: 'PUT', body: { model: updated.project.model } });
+      state.adminLoaded = false;
       close();
       state.current = { ...updated.project, model: updated.project.model };
       state.result = null; state.preview = null; state.marketAnalysis = null; state.marketError = null; state.step = 0; state.dirty = true;
