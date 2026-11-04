@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#103b33">
+  <title>修复登录页 · 多多商业地产</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 80% 10%,rgba(214,168,75,.18),transparent 30%),linear-gradient(135deg,#0d342d,#1b5b4b);color:#fff;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif}.card{width:min(480px,100%);padding:34px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(255,255,255,.08);box-shadow:0 30px 80px rgba(0,0,0,.25);backdrop-filter:blur(12px)}.brand{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.08em}.mark{width:44px;height:44px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.3);border-radius:13px;color:#d6a84b;font-size:21px}.eyebrow{margin-top:30px;color:#d6a84b;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:10px 0 12px;font-size:30px;line-height:1.25}p{margin:0;color:#c8d8d3;font-size:14px;line-height:1.8}.steps{margin:24px 0;padding:16px;border-radius:13px;background:rgba(0,0,0,.13)}.step{display:flex;gap:10px;align-items:center;padding:6px 0;color:#bfd0cb;font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:#d6a84b;flex:0 0 auto}button,.button{display:flex;justify-content:center;align-items:center;width:100%;min-height:48px;border:0;border-radius:12px;background:#d6a84b;color:#17362f;font:700 14px inherit;text-decoration:none;cursor:pointer}.status{margin-top:15px;text-align:center;color:#9eb8b0;font-size:11px;min-height:18px}small{display:block;margin-top:18px;color:#8da9a0;font-size:10px;line-height:1.7}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><div class="mark">多</div><span>多多 · 商业地产</span></div>
+    <div class="eyebrow">Login recovery</div>
+    <h1>正在修复旧缓存并进入登录页</h1>
+    <p>这个页面会清除旧版网页缓存和过期登录状态，但不会删除你浏览器中的 demo 项目或测算内容。</p>
+    <div class="steps">
+      <div class="step"><span class="dot"></span>清理旧 Service Worker 与网页缓存</div>
+      <div class="step"><span class="dot"></span>清除过期登录凭证</div>
+      <div class="step"><span class="dot"></span>自动打开 v1.3.0 正式登录页</div>
+    </div>
+    <a class="button" id="go" href="./?v=20261105-cloud6">立即进入登录页</a>
+    <div class="status" id="status">准备清理…</div>
+    <small>如果页面没有自动跳转，请点击上方按钮。正式账号首次使用时请选择“注册”，第一个正式账号会自动成为超级管理员。</small>
+  </main>
+  <script>
+    (async () => {
+      const status = document.getElementById('status');
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(registration => registration.unregister()));
+          status.textContent = '旧版网页缓存已清理';
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(key => caches.delete(key)));
+        }
+        localStorage.removeItem('cr_token');
+        localStorage.removeItem('cr_user');
+        localStorage.removeItem('duoduo_cloud_session_v1');
+        status.textContent = '修复完成，正在打开登录页…';
+        const target = new URL('./', location.href);
+        target.searchParams.set('v', '20261105-cloud6');
+        target.searchParams.set('fixed', Date.now().toString());
+        setTimeout(() => location.replace(target.href), 900);
+      } catch (error) {
+        status.textContent = '自动清理未完成，请点击按钮进入新版登录页。';
+      }
+    })();
+  </script>
+</body>
+</html>
