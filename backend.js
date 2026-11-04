@@ -789,6 +789,29 @@ function exportExcel(result) {
   addSheet(wb, '商铺明细', [['铺位号', '楼层', '业态', '状态', '建筑面积（㎡）', '实际租赁面积（㎡）', '租金单价（元/㎡/月）', '条件', '满租月收益（万元）'], ...(result.shops || []).map(x => [x.id, x.floor, x.category, x.status || '', x.buildingArea, x.leasableArea, x.rent, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [16, 10, 16, 12, 18, 20, 22, 24, 22]);
   addSheet(wb, '租赁联营规则', [['业态', '基准月租金（元/㎡/月）', '业态系数', '销售基数（元/㎡/月）', '扣点率', '结算方式'], ...(model.categories || []).map(x => [x.name, x.rent, x.factor, x.salesPerSqmMonth, x.concessionRate, x.revenueMode])], [20, 24, 14, 22, 14, 20]);
   addSheet(wb, '周边市场分析', [['指标', '结果'], ['项目平均租金（元/㎡/月）', result.marketSummary.projectAverageRent], ['市场加权均价（元/㎡/月）', result.marketSummary.weightedAverageRent], ['市场中位数（元/㎡/月）', result.marketSummary.medianRent], ['市场25分位（元/㎡/月）', result.marketSummary.p25Rent], ['市场75分位（元/㎡/月）', result.marketSummary.p75Rent], ['项目定价位置', result.marketSummary.position], ...(result.marketSummary.conclusions || []).map((x, i) => [`结论${i + 1}`, x])], [30, 80]);
+  const detection = model.market?.lastAnalysis || {};
+  addSheet(wb, '3-5公里商业侦测', [
+    ['指标','结果','说明'],
+    ['侦测评分', detection.detectionScore, '综合商业、锚点、交通、居住、配套和业态多样性'],
+    ['商圈等级', detection.marketGrade, 'A级/成熟、B级/成长、C级/培育、D级/远端或潜力'],
+    ['商业类POI', detection.commercialCount, '购物、餐饮、娱乐、服务、酒店、金融和商务等'],
+    ['直接竞品', detection.competitorCount, '购物中心、百货、超市和传统市场'],
+    ['商业锚点', detection.anchorCount, '购物中心、百货、影院、酒店等'],
+    ['交通配套', detection.transportCount, '公共交通、轨道站点和停车设施'],
+    ['居住社区', detection.residentialCount, '住宅社区和居住片区'],
+    ['竞争判断', detection.competitionLevel, '基于商业密度和竞品数量'],
+    [''], ['分圈层统计'], ['圈层','商业POI','直接竞品','交通配套','居住片区','业态数量'],
+    ...(detection.ringStats || []).map(x => [x.label, x.commercialCount, x.competitorCount, x.transportCount, x.residentialCount, x.categoryCount]),
+    [''], ['周边业态结构'], ['业态','POI数量'],
+    ...(detection.categories || []).map(x => [x.name, x.count]),
+    [''], ['主要竞品'], ['名称','业态','距离（km）'],
+    ...(detection.competitors || []).map(x => [x.name, x.category, x.distanceKm]),
+    [''], ['侦测结论'], ['结论'],
+    ...(detection.conclusions || []).map(x => [x]),
+    [''], ['商业机会'], ['机会'],
+    ...(detection.opportunities || []).map(x => [x]),
+    [''], ['数据边界', detection.coverageNote || '公开地图数据不含人口、销售额和授权租金；正式决策需结合实地调查。']
+  ], [22, 30, 70]);
   addSheet(wb, '竞品租金样本', [['样本名称', '地址', '楼层', '业态', '可租赁面积（㎡）', '月租金（元/㎡/月）', '数据日期', '距项目（km）', '备注'], ...(model.market?.comparables || []).map(x => [x.name, x.address, x.floor, x.category, x.leasableArea, x.rent, x.date, x.distanceKm, x.note])], [24, 30, 10, 16, 18, 22, 14, 14, 28]);
   addSheet(wb, '年度收益20年', [['运营年', '日历年', '营业收入', '人员成本', '办公行政', '招商费用', '营销费用', '维保费用', '其他运营及税费', '运营成本', '税费', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.calendarYear, x.revenue, x.staffCost, x.officeCost, x.leasingCost, x.marketingCost, x.maintenanceCost, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - x.marketingCost - x.maintenanceCost, x.operatingCost, x.taxes, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,10,16,16,16,16,16,16,22,16,14,16,18,22]);
   addSheet(wb, '敏感性分析', [['租金变化 ↓ / 投资变化 →', ...(result.sensitivity.capexSteps || []).map(v => (v * 100).toFixed(0) + '%')], ...(result.sensitivity.rentSteps || []).map((rent, i) => [(rent * 100).toFixed(0) + '%', ...(result.sensitivity.npvMatrix[i] || [])])], [24, 14, 14, 14, 14, 14]);
@@ -881,6 +904,15 @@ async function exportPPT(result) {
   slide.addText(`年度营销预算 ${(result.summary.stableMarketingCost || 0).toFixed(1)} 万元｜办公 ${(result.summary.stableOfficeCost || 0).toFixed(1)} 万元｜招商 ${(result.summary.stableLeasingCost || 0).toFixed(1)} 万元｜维保 ${(result.summary.stableMaintenanceCost || 0).toFixed(1)} 万元`, { x: 6.8, y: 5.85, w: 5.8, h: 0.55, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.08 });
 
   slide = pptx.addSlide();
+  const detection = result.model.market?.lastAnalysis || {};
+  addSlideTitle(slide, '3–5公里商业侦测', `综合评分 ${detection.detectionScore || 0}/100｜${detection.marketGrade || '待评估'}｜${detection.competitionLevel || ''}`);
+  slide.addText(`商业POI ${detection.commercialCount || 0}｜直接竞品 ${detection.competitorCount || 0}｜商业锚点 ${detection.anchorCount || 0}｜交通配套 ${detection.transportCount || 0}｜居住社区 ${detection.residentialCount || 0}`, { x: 0.7, y: 1.35, w: 12.0, h: 0.45, fontFace: 'Microsoft YaHei', fontSize: 10, color: '17211E', fill: { color: 'E5F0EB' }, margin: 0.1 });
+  const ringRows = [['圈层','商业POI','直接竞品','交通配套','居住片区','业态数'], ...(detection.ringStats || []).map(x => [x.label, x.commercialCount, x.competitorCount, x.transportCount, x.residentialCount, x.categoryCount])];
+  slide.addTable(ringRows, { x: 0.7, y: 1.95, w: 5.8, colW: [1.2, 1.0, 1.0, 1.0, 1.0, 0.8], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 8, margin: 0.04, rowH: 0.52, autoFit: false });
+  slide.addText(`侦测结论\n${(detection.conclusions || []).map(x => `• ${x}`).join('\n')}\n\n商业机会\n${(detection.opportunities || []).map(x => `• ${x}`).join('\n')}`, { x: 6.8, y: 1.95, w: 5.8, h: 4.2, fontFace: 'Microsoft YaHei', fontSize: 9, color: '17211E', fill: { color: 'FBF8F1' }, margin: 0.14, valign: 'top', breakLine: false });
+  slide.addText('公开地图数据不含人口、销售额和授权租金，正式决策需结合实地客流、租户访谈和授权市场数据。', { x: 0.7, y: 6.35, w: 11.9, h: 0.4, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F' });
+
+  slide = pptx.addSlide();
   addSlideTitle(slide, '项目租金与市场位置', '竞品租金样本用于校准项目一铺一价');
   const ms = result.marketSummary;
   slide.addText(`项目平均租金\n${ms.projectAverageRent.toFixed(1)} 元/㎡/月`, { x: 0.75, y: 1.65, w: 3.4, h: 1.1, fontFace: 'Microsoft YaHei', fontSize: 16, bold: true, color: '103B33', fill: { color: 'E5F0EB' }, margin: 0.16, breakLine: false });
@@ -946,26 +978,54 @@ function classifyPOI(tags) {
   const shop = tags.shop;
   const amenity = tags.amenity;
   const leisure = tags.leisure;
+  const office = tags.office;
   if (shop === 'mall') return '购物中心';
   if (shop === 'department_store') return '百货商场';
-  if (['supermarket', 'convenience'].includes(shop)) return '超市便利';
+  if (['supermarket', 'convenience', 'grocery', 'greengrocer'].includes(shop)) return '超市便利';
   if (amenity === 'marketplace') return '传统市场';
-  if (['clothes', 'shoes', 'jewelry', 'cosmetics', 'electronics', 'furniture', 'sports'].includes(shop)) return '零售商业';
-  if (['restaurant', 'cafe', 'fast_food'].includes(amenity)) return '餐饮';
+  if (['clothes', 'shoes', 'jewelry', 'cosmetics', 'electronics', 'furniture', 'sports', 'books', 'toys', 'gift', 'bags', 'watches'].includes(shop)) return '零售商业';
+  if (['restaurant', 'cafe', 'fast_food', 'food_court', 'ice_cream'].includes(amenity)) return '餐饮';
   if (amenity === 'cinema') return '影院';
   if (['fitness_centre', 'sports_centre'].includes(leisure)) return '健身运动';
-  if (tags.tourism === 'hotel') return '酒店';
+  if (['hotel', 'guest_house'].includes(tags.tourism)) return '酒店';
+  if (['bank', 'atm', 'bureau_de_change'].includes(amenity)) return '银行金融';
+  if (['pharmacy', 'hospital', 'clinic', 'doctors', 'dentist'].includes(amenity)) return '医疗健康';
+  if (['school', 'college', 'university', 'kindergarten'].includes(amenity)) return '教育培训';
+  if (['parking', 'fuel', 'charging_station'].includes(amenity)) return '停车交通';
+  if (['bus_station', 'taxi'].includes(amenity) || tags.public_transport || ['station', 'subway_entrance'].includes(tags.railway)) return '公共交通';
+  if (['park', 'playground'].includes(leisure)) return '公园休闲';
+  if (office || ['coworking', 'company'].includes(office)) return '商务办公';
+  if (shop || amenity === 'post_office' || amenity === 'laundry' || amenity === 'hairdresser') return '生活服务';
+  if (tags.building === 'residential' || tags.landuse === 'residential') return '住宅社区';
   return null;
 }
+
+const COMMERCIAL_CATEGORIES = new Set(['购物中心','百货商场','超市便利','传统市场','零售商业','餐饮','影院','健身运动','酒店','银行金融','生活服务','商务办公']);
+const TRANSPORT_CATEGORIES = new Set(['公共交通','停车交通']);
+const SUPPORT_CATEGORIES = new Set(['医疗健康','教育培训','公园休闲','住宅社区']);
 
 const LIUZHOU_MARKET = {
   provider: 'OpenStreetMap Overpass（缓存演示）',
   center: { lat: 24.341202, lon: 109.430294 },
   radiusKm: 3,
   totalPoi: 35,
+  commercialCount: 35,
   competitorCount: 11,
+  anchorCount: 9,
+  transportCount: 0,
+  supportCount: 0,
+  residentialCount: 0,
   densityPerKm2: 1.2,
+  detectionScore: 58,
+  marketGrade: 'C级培育商圈',
   competitionLevel: '商业供给密集',
+  ringStats: [
+    {label:'0–1公里',minKm:0,maxKm:1,totalPoi:8,commercialCount:8,competitorCount:3,transportCount:0,residentialCount:0,categoryCount:4},
+    {label:'1–3公里',minKm:1,maxKm:3,totalPoi:27,commercialCount:27,competitorCount:8,transportCount:0,residentialCount:0,categoryCount:6},
+    {label:'3–5公里',minKm:3,maxKm:5,totalPoi:0,commercialCount:0,competitorCount:0,transportCount:0,residentialCount:0,categoryCount:0}
+  ],
+  conclusions: ['3公里范围内识别到35个相关商业POI，直接竞品约11个。','商业供给较密集，建议通过业态组合、品牌和场景体验形成差异化。'],
+  opportunities: ['可结合竞品租金样本和实地客流进一步寻找餐饮、体验和生活服务的差异化机会。'],
   categories: [
     { name: '健身运动', count: 11 }, { name: '餐饮', count: 7 }, { name: '传统市场', count: 7 },
     { name: '酒店', count: 4 }, { name: '购物中心', count: 4 }, { name: '影院', count: 2 },
@@ -983,54 +1043,166 @@ const LIUZHOU_MARKET = {
 };
 
 async function marketAnalysis(lat, lon, radiusKm) {
-  if (Math.abs(lat - 24.341202) < 0.05 && Math.abs(lon - 109.430294) < 0.05) {
-    return { ...LIUZHOU_MARKET, requestedRadiusKm: radiusKm, effectiveRadiusKm: 3, fallbackUsed: radiusKm !== 3 };
-  }
   const radiusM = Math.round(radiusKm * 1000);
-  const query = `[out:json][timeout:25];(nwr["shop"~"mall|department_store|supermarket|convenience|clothes|shoes|jewelry|cosmetics|electronics|furniture|sports"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});nwr["amenity"~"restaurant|cafe|fast_food|cinema|marketplace"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});nwr["leisure"~"fitness_centre|sports_centre"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});nwr["tourism"="hotel"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)}););out tags center;`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 27000);
-  try {
-    const response = await nativeFetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'Accept': 'application/json' },
-      body: new URLSearchParams({ data: query }).toString(), signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = await response.json();
-    const counts = {};
-    const competitors = [];
-    const seen = new Set();
-    for (const element of payload.elements || []) {
-      const key = `${element.type}:${element.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const tags = element.tags || {};
-      const category = classifyPOI(tags);
-      if (!category) continue;
-      counts[category] = (counts[category] || 0) + 1;
-      const center = element.center || {};
-      const poiLat = center.lat ?? element.lat;
-      const poiLon = center.lon ?? element.lon;
-      if (['购物中心', '百货商场', '超市便利', '传统市场'].includes(category) && tags.name) {
-        competitors.push({ name: tags.name, category, distanceKm: poiLat != null && poiLon != null ? haversineKm(lat, lon, Number(poiLat), Number(poiLon)) : null, lat: poiLat, lon: poiLon });
-      }
+  const query = `[out:json][timeout:35];(
+    nwr["shop"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    nwr["amenity"~"restaurant|cafe|fast_food|food_court|ice_cream|cinema|marketplace|bank|atm|bureau_de_change|pharmacy|hospital|clinic|doctors|dentist|school|college|university|kindergarten|bus_station|taxi|parking|fuel|charging_station|post_office|laundry|hairdresser"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    nwr["leisure"~"fitness_centre|sports_centre|park|playground"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    nwr["tourism"~"hotel|guest_house|attraction"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    nwr["office"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    nwr["public_transport"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    nwr["railway"~"station|subway_entrance"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    way["landuse"="residential"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    relation["landuse"="residential"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    way["building"="residential"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+    relation["building"="residential"](around:${radiusM},${lat.toFixed(7)},${lon.toFixed(7)});
+  );out tags center;`;
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.nchc.org.tw/api/interpreter',
+  ];
+  let payload = null;
+  let lastError = null;
+  for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 18000);
+    try {
+      const response = await nativeFetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'Accept': 'application/json' },
+        body: new URLSearchParams({ data: query }).toString(),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      payload = await response.json();
+      break;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timer);
     }
-    const total = Object.values(counts).reduce((a, b) => a + b, 0);
-    const competitorCount = ['购物中心', '百货商场', '超市便利', '传统市场'].reduce((sum, name) => sum + (counts[name] || 0), 0);
-    const density = total / (Math.PI * radiusKm * radiusKm);
-    return {
-      provider: 'OpenStreetMap Overpass', center: { lat, lon }, radiusKm, totalPoi: total, competitorCount, densityPerKm2: density,
-      competitionLevel: competitorCount < 5 ? '竞争相对有限' : competitorCount < 10 ? '中等竞争' : '商业供给密集',
-      categories: Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
-      competitors: competitors.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999)).slice(0, 20),
-      summary: `${radiusKm}公里范围内识别到${total}个相关商业POI，其中购物中心、百货、超市和传统市场等直接竞品约${competitorCount}个。`,
-      coverageNote: '公开地图POI覆盖程度因城市和街区而异；该结果用于供给密度初筛，正式决策应结合实地踏勘和授权市场数据库。',
-    };
-  } finally {
-    clearTimeout(timer);
   }
-}
+  if (!payload) {
+    if (Math.abs(lat - 24.341202) < 0.05 && Math.abs(lon - 109.430294) < 0.05) {
+      const fallback = { ...LIUZHOU_MARKET };
+      fallback.requestedRadiusKm = radiusKm;
+      fallback.effectiveRadiusKm = 3;
+      fallback.fallbackUsed = radiusKm !== 3;
+      fallback.coverageNote = `实时数据源暂时不可用，当前展示柳州项目缓存侦测结果。${lastError ? String(lastError.message || lastError) : ''}`;
+      return fallback;
+    }
+    throw new Error(`周边商业侦测服务暂时不可用：${lastError?.message || '全部数据节点无响应'}`);
+  }
 
+  const counts = {};
+  const competitors = [];
+  const namedPois = [];
+  const ringDefs = [
+    { label: '0–1公里', min: 0, max: 1 },
+    { label: '1–3公里', min: 1, max: 3 },
+    { label: '3–5公里', min: 3, max: 5 },
+  ];
+  const rings = ringDefs.map(item => ({ ...item, total: 0, commercial: 0, competitors: 0, transport: 0, residential: 0, categories: new Set() }));
+  const seen = new Set();
+  for (const element of payload.elements || []) {
+    const key = `${element.type}:${element.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const tags = element.tags || {};
+    const category = classifyPOI(tags);
+    if (!category) continue;
+    const center = element.center || {};
+    const poiLat = center.lat ?? element.lat;
+    const poiLon = center.lon ?? element.lon;
+    const distanceKm = poiLat != null && poiLon != null ? haversineKm(lat, lon, Number(poiLat), Number(poiLon)) : null;
+    if (distanceKm != null && distanceKm > radiusKm) continue;
+    counts[category] = (counts[category] || 0) + 1;
+    const ring = rings.find(item => distanceKm != null && distanceKm <= item.max && distanceKm > item.min) || rings[0];
+    ring.total += 1;
+    ring.categories.add(category);
+    if (COMMERCIAL_CATEGORIES.has(category)) ring.commercial += 1;
+    if (TRANSPORT_CATEGORIES.has(category)) ring.transport += 1;
+    if (category === '住宅社区') ring.residential += 1;
+    const name = tags.name || tags['name:zh'] || tags['name:en'] || '';
+    const record = { name: name || '', category, distanceKm, lat: poiLat, lon: poiLon };
+    if (name) namedPois.push(record);
+    if (['购物中心', '百货商场', '超市便利', '传统市场'].includes(category)) {
+      ring.competitors += 1;
+      if (name) competitors.push(record);
+    }
+  }
+  const commercialCount = Object.entries(counts).reduce((sum, [name, count]) => sum + (COMMERCIAL_CATEGORIES.has(name) ? count : 0), 0);
+  const competitorCount = ['购物中心', '百货商场', '超市便利', '传统市场'].reduce((sum, name) => sum + (counts[name] || 0), 0);
+  const transportCount = ['公共交通', '停车交通'].reduce((sum, name) => sum + (counts[name] || 0), 0);
+  const supportCount = ['医疗健康', '教育培训', '公园休闲', '住宅社区', '银行金融'].reduce((sum, name) => sum + (counts[name] || 0), 0);
+  const residentialCount = counts['住宅社区'] || 0;
+  const anchorCount = ['购物中心', '百货商场', '影院', '酒店'].reduce((sum, name) => sum + (counts[name] || 0), 0);
+  const density = radiusKm > 0 ? commercialCount / (Math.PI * radiusKm * radiusKm) : 0;
+  const diversity = Object.keys(counts).length;
+  const supplyScore = Math.min(24, commercialCount * 0.55);
+  const anchorScore = Math.min(18, anchorCount * 2.2);
+  const transportScore = Math.min(15, transportCount * 1.4);
+  const supportScore = Math.min(15, supportCount * 0.45);
+  const residentialScore = Math.min(10, residentialCount * 0.35);
+  const diversityScore = Math.min(10, diversity * 1.1);
+  const densityScore = Math.min(8, density * 3.0);
+  const detectionScore = Math.round(Math.min(100, supplyScore + anchorScore + transportScore + supportScore + residentialScore + diversityScore + densityScore));
+  const marketGrade = detectionScore >= 78 ? 'A级成熟商圈' : detectionScore >= 62 ? 'B级成长商圈' : detectionScore >= 46 ? 'C级培育商圈' : 'D级远端/潜力商圈';
+  const competitionLevel = competitorCount >= 18 || commercialCount >= 120 ? '商业供给高度密集' : competitorCount >= 10 || commercialCount >= 70 ? '商业供给密集' : competitorCount >= 5 ? '中等竞争' : '竞争相对有限';
+  const sortedCompetitors = competitors.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999)).slice(0, 30);
+  const conclusions = [];
+  conclusions.push(`3公里内识别到${commercialCount}个商业类POI、${competitorCount}个直接竞品、${anchorCount}个商业锚点。`);
+  if (competitionLevel.includes('密集')) conclusions.push('周边直接竞品密集，项目需要明确差异化定位，避免仅以租金竞争。');
+  else if (competitionLevel === '竞争相对有限') conclusions.push('直接竞品相对有限，但仍需验证有效客流和消费支撑。');
+  else conclusions.push('周边形成一定商业集聚，需要通过业态组合和品质形成差异化。');
+  if (transportCount < 5) conclusions.push('公共交通和停车配套识别数量偏少，建议补充实地交通与停车调查。');
+  else conclusions.push(`识别到${transportCount}个公交、轨道或停车配套，交通可达性具备一定基础。`);
+  if (residentialCount < 8) conclusions.push('公开地图住宅社区识别数量偏少，人口和消费数据需通过授权数据源补充。');
+  else conclusions.push(`识别到${residentialCount}个住宅社区/居住片区，具备一定社区消费基础。`);
+  const opportunities = [];
+  if (residentialCount >= 15) opportunities.push('居住社区密集，可重点布局社区餐饮、亲子、生活服务和日常零售。');
+  if (transportCount >= 12) opportunities.push('交通节点较多，可强化目的性业态和周末客流转化。');
+  if ((counts['餐饮'] || 0) > (counts['零售商业'] || 0)) opportunities.push('餐饮POI占比较高，项目可考虑差异化零售、体验和服务组合。');
+  if (anchorCount < 3) opportunities.push('周边大型商业锚点不足，存在承接区域消费的窗口。');
+  if (!opportunities.length) opportunities.push('可结合竞品租金样本、租户访谈和实地客流进一步寻找切入点。');
+  const ringStats = rings.map(item => ({
+    label: item.label,
+    minKm: item.min,
+    maxKm: item.max,
+    totalPoi: item.total,
+    commercialCount: item.commercial,
+    competitorCount: item.competitors,
+    transportCount: item.transport,
+    residentialCount: item.residential,
+    categoryCount: item.categories.size,
+  }));
+  return {
+    provider: 'OpenStreetMap Overpass 多节点侦测',
+    center: { lat, lon },
+    radiusKm,
+    totalPoi: Object.values(counts).reduce((a, b) => a + b, 0),
+    commercialCount,
+    competitorCount,
+    anchorCount,
+    transportCount,
+    supportCount,
+    residentialCount,
+    densityPerKm2: density,
+    detectionScore,
+    marketGrade,
+    competitionLevel,
+    categories: Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+    competitors: sortedCompetitors,
+    namedPois: namedPois.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999)).slice(0, 50),
+    ringStats,
+    conclusions,
+    opportunities,
+    summary: `${radiusKm}公里范围内识别到${commercialCount}个商业POI，其中直接竞品约${competitorCount}个；综合商业侦测评分${detectionScore}/100，判定为${marketGrade}。`,
+    coverageNote: '本侦测基于公开地图POI和交通、居住、公共配套数据，不含人口、销售额和授权租金数据；正式决策应结合实地踏勘、客流调研和授权商业数据库。',
+    detectionAt: new Date().toISOString(),
+  };
+}
 async function geocode(query) {
   const coord = query.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,，]\s*(-?\d+(?:\.\d+)?)\s*$/);
   if (coord) return { results: [{ displayName: `${coord[1]}, ${coord[2]}`, lat: Number(coord[1]), lon: Number(coord[2]) }] };
