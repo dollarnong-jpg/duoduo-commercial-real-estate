@@ -332,7 +332,9 @@ def duo_calculate(model_json, include_sensitivity=True):
   }
 })();
 
-window.__duoduoBackendReady = pyodideReady;
+// The application shell can start immediately. Calculation-dependent requests
+// await pyodideReady inside the fetch bridge instead of blocking login/UI render.
+window.__duoduoBackendReady = Promise.resolve();
 
 function pyCallJSON(expression, { model, includeSensitivity = true } = {}) {
   const py = window.__duoduoPyodide;
@@ -1752,7 +1754,13 @@ window.fetch = async function duoduoFetch(input, init = {}) {
   const url = new URL(rawUrl, location.href);
   if (!url.pathname.includes('/api/')) return nativeFetch(input, init);
   try {
-    await pyodideReady;
+    const fastEndpoints = [
+      '/api/login', '/api/register', '/api/logout', '/api/me', '/api/health',
+      '/api/geocode', '/api/reverse-geocode', '/api/market-analysis',
+      '/api/admin/users', '/api/admin/audit',
+    ];
+    const fastRequest = fastEndpoints.some(path => url.pathname.endsWith(path)) || /\/api\/admin\/users\/[0-9a-f-]+\/status$/i.test(url.pathname);
+    if (!fastRequest) await pyodideReady;
     return await handleApi(rawUrl, init);
   } catch (error) {
     const status = Number(error?.status) || 500;

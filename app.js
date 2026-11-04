@@ -1,4 +1,4 @@
-import './backend.js?v=20261105-cloud2';
+import './backend.js?v=20261105-cloud4';
 await window.__duoduoBackendReady;
 
 const APP_VERSION = '1.3.0';
@@ -559,7 +559,8 @@ function clearSession() {
 async function logout(render = true) {
   const token = state.token;
   if (token) {
-    try { await fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); } catch {}
+    // Clear the local UI immediately; the Supabase session is revoked in the background.
+    fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
   }
   clearSession();
   if (render) renderAuth('login');
@@ -567,6 +568,7 @@ async function logout(render = true) {
 
 async function boot() {
   if (!state.token) return renderAuth('login');
+  renderWorkspaceLoading('正在恢复登录状态并同步项目数据…');
   try {
     const me = await api('/api/me');
     state.user = { ...me, username: me.username, displayName: me.displayName };
@@ -647,6 +649,8 @@ function renderAuth(mode = 'login') {
         return;
       }
       saveSession(payload.token, payload.user);
+      setBusy(false);
+      renderWorkspaceLoading('正在同步账号与项目数据，首次载入会初始化本地计算引擎…');
       await loadProjects();
       renderProjectList();
       if (payload.firstAdmin) setTimeout(() => toast('首个正式账号已自动设为超级管理员', 'success'), 120);
@@ -689,6 +693,11 @@ function sidebar(active = 'projects') {
         <button type="button" id="logout-btn">退出登录</button>
       </div>
     </aside>`;
+}
+
+function renderWorkspaceLoading(message = '正在载入项目数据…') {
+  const content = `<div class="workspace-loading-page"><div class="workspace-loading-mark">${ICONS.spark}</div><strong>${escapeHtml(message)}</strong><span>请稍候，不需要重复点击或刷新页面。</span></div>`;
+  shell(content, 'projects', false);
 }
 
 function shell(content, active = 'projects', workspace = false) {

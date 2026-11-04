@@ -193,6 +193,12 @@ a { color: inherit; }
 .empty-state { text-align: center; padding: 60px 20px; border: 1px dashed var(--line-strong); border-radius: var(--radius); background: rgba(255,255,255,0.4); }
 .empty-state h3 { margin: 0 0 9px; color: var(--navy); }
 .empty-state p { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+.workspace-loading-page { min-height: 430px; display: grid; place-items: center; align-content: center; gap: 10px; border: 1px dashed var(--line-strong); border-radius: var(--radius); background: rgba(255,255,255,.55); text-align: center; }
+.workspace-loading-mark { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 16px; background: var(--green-soft); color: var(--green); animation: loadingPulse 1.4s ease-in-out infinite alternate; }
+.workspace-loading-mark svg { width: 25px; height: 25px; }
+.workspace-loading-page strong { color: var(--navy); font-size: 14px; }
+.workspace-loading-page span { color: var(--muted); font-size: 10px; }
+@keyframes loadingPulse { from { transform: scale(.94); opacity: .65; } to { transform: scale(1); opacity: 1; } }
 
 .admin-intro { margin-bottom: 18px; }
 .admin-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
