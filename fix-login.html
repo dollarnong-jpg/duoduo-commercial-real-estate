@@ -6,7 +6,8 @@
   <meta name="theme-color" content="#103b33">
   <title>修复登录页 · 多多商业地产</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 80% 10%,rgba(214,168,75,.18),transparent 30%),linear-gradient(135deg,#0d342d,#1b5b4b);color:#fff;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif}.card{width:min(480px,100%);padding:34px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(255,255,255,.08);box-shadow:0 30px 80px rgba(0,0,0,.25);backdrop-filter:blur(12px)}.brand{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.08em}.mark{width:44px;height:44px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.3);border-radius:13px;color:#d6a84b;font-size:21px}.eyebrow{margin-top:30px;color:#d6a84b;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:10px 0 12px;font-size:30px;line-height:1.25}p{margin:0;color:#c8d8d3;font-size:14px;line-height:1.8}.steps{margin:24px 0;padding:16px;border-radius:13px;background:rgba(0,0,0,.13)}.step{display:flex;gap:10px;align-items:center;padding:6px 0;color:#bfd0cb;font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:#d6a84b;flex:0 0 auto}button,.button{display:flex;justify-content:center;align-items:center;width:100%;min-height:48px;border:0;border-radius:12px;background:#d6a84b;color:#17362f;font:700 14px inherit;text-decoration:none;cursor:pointer}.status{margin-top:15px;text-align:center;color:#9eb8b0;font-size:11px;min-height:18px}small{display:block;margin-top:18px;color:#8da9a0;font-size:10px;line-height:1.7}
+    :root{--font-scale:1}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 80% 10%,rgba(214,168,75,.18),transparent 30%),linear-gradient(135deg,#0d342d,#1b5b4b);color:#fff;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif}.card{width:min(480px,100%);padding:34px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(255,255,255,.08);box-shadow:0 30px 80px rgba(0,0,0,.25);backdrop-filter:blur(12px)}.brand{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.08em}.mark{width:44px;height:44px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.3);border-radius:13px;color:#d6a84b;font-size:calc(21px * var(--font-scale))}.eyebrow{margin-top:30px;color:#d6a84b;font-size:calc(12px * var(--font-scale));font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:10px 0 12px;font-size:calc(30px * var(--font-scale));line-height:1.25}p{margin:0;color:#c8d8d3;font-size:calc(14px * var(--font-scale));line-height:1.8}.steps{margin:24px 0;padding:16px;border-radius:13px;background:rgba(0,0,0,.13)}.step{display:flex;gap:10px;align-items:center;padding:6px 0;color:#bfd0cb;font-size:calc(12px * var(--font-scale))}.dot{width:8px;height:8px;border-radius:50%;background:#d6a84b;flex:0 0 auto}button,.button{display:flex;justify-content:center;align-items:center;width:100%;min-height:48px;border:0;border-radius:12px;background:#d6a84b;color:#17362f;font-weight:700;font-size:calc(14px * var(--font-scale));line-height:1.4;text-decoration:none;cursor:pointer}.status{margin-top:15px;text-align:center;color:#9eb8b0;font-size:calc(11px * var(--font-scale));min-height:18px}small{display:block;margin-top:18px;color:#8da9a0;font-size:calc(10px * var(--font-scale));line-height:1.7}
   </style>
 </head>
 <body>
@@ -18,13 +19,19 @@
     <div class="steps">
       <div class="step"><span class="dot"></span>清理旧 Service Worker 与网页缓存</div>
       <div class="step"><span class="dot"></span>清除过期登录凭证</div>
-      <div class="step"><span class="dot"></span>自动打开 v1.3.0 正式登录页</div>
+      <div class="step"><span class="dot"></span>自动打开 v1.4.0 正式登录页</div>
     </div>
-    <a class="button" id="go" href="./?v=20261105-cloud6">立即进入登录页</a>
+    <a class="button" id="go" href="./?v=20261107-type3">立即进入登录页</a>
     <div class="status" id="status">准备清理…</div>
     <small>如果页面没有自动跳转，请点击上方按钮。正式账号首次使用时请选择“注册”，第一个正式账号会自动成为超级管理员。</small>
   </main>
   <script>
+    (function () {
+      try {
+        var savedScale = localStorage.getItem('duoduo_font_scale_v1');
+        if (['1', '1.1', '1.2'].includes(savedScale)) document.documentElement.style.setProperty('--font-scale', savedScale);
+      } catch (_) {}
+    })();
     (async () => {
       const status = document.getElementById('status');
       try {
@@ -42,7 +49,7 @@
         localStorage.removeItem('duoduo_cloud_session_v1');
         status.textContent = '修复完成，正在打开登录页…';
         const target = new URL('./', location.href);
-        target.searchParams.set('v', '20261105-cloud6');
+        target.searchParams.set('v', '20261107-type3');
         target.searchParams.set('fixed', Date.now().toString());
         setTimeout(() => location.replace(target.href), 900);
       } catch (error) {

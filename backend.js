@@ -297,22 +297,24 @@ function isoNow() {
   return new Date().toISOString().slice(0, 19);
 }
 
-const pyodideReady = (async () => {
-  try {
-    setBootText('正在载入本地计算引擎…');
-    if (!window.XLSX) throw new Error('Excel 组件未加载');
-    if (!window.PptxGenJS) throw new Error('PPT 组件未加载');
-    const indexURL = new URL('./pyodide/', import.meta.url).href;
-    // The service worker exposes the two large runtime files as one response
-    // assembled from small same-origin parts. Wait until it controls this page
-    // before Pyodide starts requesting its runtime.
-    await window.__duoduoSWReady;
-    const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
-    const pyodide = await loadPyodide({ indexURL });
-    setBootText('正在初始化投资测算公式…');
-    const engineCode = await (await nativeFetch(new URL('./engine.py', import.meta.url))).text();
-    pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
-    await pyodide.runPythonAsync(`
+let pyodidePromise = null;
+
+function loadPyodideEngine() {
+  if (pyodidePromise) return pyodidePromise;
+  pyodidePromise = (async () => {
+    try {
+      setBootText('正在载入本地计算引擎…');
+      const indexURL = new URL('./pyodide/', import.meta.url).href;
+      // The service worker exposes the two large runtime files as one response
+      // assembled from small same-origin parts. Wait until it controls this page
+      // before Pyodide starts requesting its runtime.
+      await window.__duoduoSWReady;
+      const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
+      const pyodide = await loadPyodide({ indexURL });
+      setBootText('正在初始化投资测算公式…');
+      const engineCode = await (await nativeFetch(new URL('./engine.py', import.meta.url))).text();
+      pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
+      await pyodide.runPythonAsync(`
 import json
 import sys
 sys.path.insert(0, '/home/pyodide')
@@ -327,17 +329,50 @@ def duo_normalize_model(model_json):
 def duo_calculate(model_json, include_sensitivity=True):
     return json.dumps(engine.calculate_model(json.loads(model_json), include_sensitivity=include_sensitivity), ensure_ascii=False)
 `);
-    setBootText('正在载入工作台…');
-    return pyodide;
-  } catch (error) {
-    console.error(error);
-    setBootText('载入失败，请刷新后重试');
+      window.__duoduoPyodide = pyodide;
+      setBootText('正在载入工作台…');
+      return pyodide;
+    } catch (error) {
+      console.error(error);
+      setBootText('载入失败，请刷新后重试');
+      throw error;
+    }
+  })().catch(error => {
+    pyodidePromise = null;
     throw error;
-  }
-})();
+  });
+  return pyodidePromise;
+}
 
-// The application shell can start immediately. Calculation-dependent requests
-// await pyodideReady inside the fetch bridge instead of blocking login/UI render.
+let xlsxLibraryPromise = null;
+let pptxLibraryPromise = null;
+
+function loadVendorScript(src, globalName) {
+  if (window[globalName]) return Promise.resolve(window[globalName]);
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => window[globalName]
+      ? resolve(window[globalName])
+      : reject(new Error(`${globalName} 组件初始化失败`));
+    script.onerror = () => reject(new Error(`${globalName} 组件加载失败，请检查网络后重试`));
+    document.head.appendChild(script);
+  });
+}
+
+function ensureXlsxLibrary() {
+  if (!xlsxLibraryPromise) xlsxLibraryPromise = loadVendorScript(new URL('./vendor/xlsx.full.min.js', import.meta.url).href, 'XLSX');
+  return xlsxLibraryPromise;
+}
+
+function ensurePptxLibrary() {
+  if (!pptxLibraryPromise) pptxLibraryPromise = loadVendorScript(new URL('./vendor/pptxgen.bundle.js', import.meta.url).href, 'PptxGenJS');
+  return pptxLibraryPromise;
+}
+
+// The application shell starts immediately. Calculation and export libraries
+// are loaded only when a request actually needs them.
 window.__duoduoBackendReady = Promise.resolve();
 
 function pyCallJSON(expression, { model, includeSensitivity = true } = {}) {
@@ -347,8 +382,6 @@ function pyCallJSON(expression, { model, includeSensitivity = true } = {}) {
   py.globals.set('__duo_include_sensitivity', Boolean(includeSensitivity));
   return JSON.parse(py.runPython(expression));
 }
-
-pyodideReady.then(py => { window.__duoduoPyodide = py; });
 
 async function calculate(model, includeSensitivity = true) {
   return pyCallJSON('duo_calculate(__duo_model_json, __duo_include_sensitivity)', { model, includeSensitivity });
@@ -377,6 +410,7 @@ function demoModel() {
       mapZoom: 15,
       locationSource: 'address',
       projectType: '购物中心',
+      developmentType: 'new_build',
       revenueModel: 'rent',
       startYear: 2027,
       constructionYears: 2,
@@ -664,7 +698,8 @@ function shopTemplate() {
     ['参数', '填写值', '说明'],
     ['项目名称', '', '项目正式名称'],
     ['项目位置', '广西壮族自治区', '省/市/城区，例如：广西壮族自治区柳州市'],
-    ['项目类型', '购物中心', '购物中心/街区商业/社区商业等'],
+    ['项目开发状态', '新建项目', '新建项目/旧改项目/运营中项目/轻资产运营项目'],
+    ['商业项目形态', '购物中心', '购物中心/街区商业/社区商业等'],
     ['起始年份', 2027, '建设第1年'],
     ['建设期', 2, '年'],
     ['总建筑面积', '', '㎡；可留空，由商铺建筑面积反推'],
@@ -883,10 +918,11 @@ function exportExcel(result) {
   const model = result.model;
   const s = result.summary;
   const formulas = model.formulas || {};
+  const developmentLabels = { new_build: '新建项目', renovation: '旧改 / 存量改造项目', operating: '运营中项目', light_asset: '轻资产运营项目' };
   const wb = XLSX.utils.book_new();
   addSheet(wb, '项目概览', [
     ['多多 · 商业地产投资测算'], [''],
-    ['项目名称', s.projectName], ['项目位置', s.location], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
+    ['项目名称', s.projectName], ['项目位置', s.location], ['项目开发状态', developmentLabels[s.developmentType] || s.developmentType || '新建项目'], ['商业项目形态', model.project.projectType], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
     ['总建筑面积（㎡）', s.grossFloorArea], ['可租赁面积（㎡）', s.leasableArea], ['商铺/楼层数量', s.calculationMode === 'preliminary' ? s.floorCount : s.shopsCount],
     ['项目总投资（万元）', s.totalInvestment], ['稳定期营业收入（万元/年）', s.stableRevenue], ['稳定期NOI（万元/年）', s.stableNoi],
     ['NOI回报率', s.noiYield], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback],
@@ -894,7 +930,7 @@ function exportExcel(result) {
   ], [26, 32, 22, 22]);
   addSheet(wb, '核心参数', [
     ['参数大类', '参数', '数值'],
-    ['项目', '起始年份', model.project.startYear], ['项目', '建设期（年）', model.project.constructionYears],
+    ['项目', '开发状态', developmentLabels[model.project.developmentType] || model.project.developmentType || '新建项目'], ['项目', '起始年份', model.project.startYear], ['项目', '建设期（年）', model.project.constructionYears],
     ['项目', '运营期（年）', model.project.operationYears], ['项目', '建筑面积调节系数', model.project.commonAreaFactor],
     ['成本', '前期工程单价（元/㎡）', model.costs.preconstructionRate], ['成本', '土建工程单价（元/㎡）', model.costs.constructionRate],
     ['成本', '装修单价（元/㎡）', model.costs.fitoutRate], ['成本', '设备单价（元/㎡）', model.costs.equipmentRate],
@@ -1764,7 +1800,11 @@ window.fetch = async function duoduoFetch(input, init = {}) {
       '/api/admin/users', '/api/admin/audit',
     ];
     const fastRequest = fastEndpoints.some(path => url.pathname.endsWith(path)) || /\/api\/admin\/users\/[0-9a-f-]+\/status$/i.test(url.pathname);
-    if (!fastRequest) await pyodideReady;
+    const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|market-comps)$/.test(url.pathname) || /\/export\/xlsx$/.test(url.pathname);
+    const needsPptx = /\/export\/pptx$/.test(url.pathname);
+    if (needsXlsx) await ensureXlsxLibrary();
+    if (needsPptx) await ensurePptxLibrary();
+    if (!fastRequest) await loadPyodideEngine();
     return await handleApi(rawUrl, init);
   } catch (error) {
     const status = Number(error?.status) || 500;

@@ -1,7 +1,7 @@
-import './backend.js?v=20261105-cloud6';
+import './backend.js?v=20261107-type3';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -43,6 +43,7 @@ const FIELD_FORMULAS = {
   'project.constructionYears': { title: '建设期与贷款提款', formula: '总测算期 = 建设期 + 运营期；建设期按0.55、0.45比例提款', functions: ['SUM', 'INDEX'], role: '建设期影响首笔经营年度、利息资本化与现金流时点。' },
   'project.operationYears': { title: '运营期与NPV', formula: '总测算期 = 建设期 + 运营期；NPV = Σ[CFt ÷（1+r）^t]', functions: ['SUM', 'POWER', 'NPV'], role: '延长运营期会改变累计现金流和退出价值时点。' },
   'project.revenueModel': { title: '项目计租方式', formula: '纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', functions: ['IF', 'MAX'], role: '该选择是项目默认结算方式，各业态可单独覆盖。' },
+  'project.developmentType': { title: '项目开发状态', formula: '参考单价 = 城市系数 × 开发状态基准单价 × 商业类型系数', functions: ['ROUND'], role: '新建、旧改、运营中和轻资产项目会采用不同的建安、改造和装修参考基准。' },
   'costs.preconstructionRate': { title: '前期工程费', formula: '前期工程费 = 总建筑面积 × 前期工程单价 ÷ 10000', functions: ['SUM', 'ROUND'], role: '金额单位为万元，计入直接工程费和折旧基数。' },
   'costs.constructionRate': { title: '建安工程费', formula: '建安工程费 = 总建筑面积 × 建安工程单价 ÷ 10000', functions: ['SUM', 'ROUND'], role: '计入直接工程费、预备费、维修费、保险和折旧基数。' },
   'costs.otherEngineeringRate': { title: '其他工程费', formula: '其他工程费 = 总建筑面积 × 其他工程单价 ÷ 10000', functions: ['SUM'], role: '并入前期及建安工程和折旧基数。' },
@@ -398,6 +399,7 @@ const state = {
   adminStatus: 'all',
   adminSearch: '',
   adminLoaded: false,
+  fontScale: localStorage.getItem('duoduo_font_scale_v1') || '1',
 };
 
 let locationGeocodeTimer = null;
@@ -406,6 +408,129 @@ let previewTimer = null;
 
 function safeParse(value) {
   try { return value ? JSON.parse(value) : null; } catch { return null; }
+}
+
+function applyFontScale(value, notify = false) {
+  const scale = ['1', '1.1', '1.2'].includes(String(value)) ? String(value) : '1';
+  state.fontScale = scale;
+  document.documentElement.style.setProperty('--font-scale', scale);
+  localStorage.setItem('duoduo_font_scale_v1', scale);
+  document.querySelectorAll('[data-font-scale]').forEach(button => button.classList.toggle('active', button.dataset.fontScale === scale));
+  if (state.result) requestAnimationFrame(renderResultCharts);
+  if (notify) toast(`界面字号已调整为${scale === '1' ? '标准' : scale === '1.1' ? '大' : '特大'}`, 'success');
+}
+
+const DEVELOPMENT_TYPE_OPTIONS = [
+  { value: 'new_build', label: '新建项目' },
+  { value: 'renovation', label: '旧改 / 存量改造项目' },
+  { value: 'operating', label: '运营中项目' },
+  { value: 'light_asset', label: '轻资产运营项目' },
+];
+
+const DEVELOPMENT_TYPE_LABELS = Object.fromEntries(DEVELOPMENT_TYPE_OPTIONS.map(item => [item.value, item.label]));
+
+const COST_REFERENCE_PROFILES = {
+  new_build: {
+    label: '新建项目',
+    note: '按新建商业物业的土建、机电、消防、公区精装和设施设备完整投入估算。',
+    rates: { preconstructionRate: 250, constructionRate: 3800, fitoutRate: 1300, equipmentRate: 650, otherEngineeringRate: 150 },
+  },
+  renovation: {
+    label: '旧改 / 存量改造',
+    note: '按结构加固、机电更新、消防改造、立面及公区重做估算；开工前需完成结构鉴定和机电评估。',
+    rates: { preconstructionRate: 120, constructionRate: 1800, fitoutRate: 1900, equipmentRate: 750, otherEngineeringRate: 120 },
+  },
+  operating: {
+    label: '运营中项目',
+    note: '按局部改造、设备更新和品牌升级估算；如为收购项目，应另行录入收购对价和承接负债。',
+    rates: { preconstructionRate: 40, constructionRate: 250, fitoutRate: 600, equipmentRate: 250, otherEngineeringRate: 50 },
+  },
+  light_asset: {
+    label: '轻资产运营项目',
+    note: '原则上不发生土建投资，仅预留必要的品牌形象、局部改造和设备补充费用。',
+    rates: { preconstructionRate: 20, constructionRate: 0, fitoutRate: 300, equipmentRate: 120, otherEngineeringRate: 20 },
+  },
+};
+
+const FORMAT_COST_FACTORS = {
+  '购物中心': 1.05,
+  '百货商场': 0.95,
+  '奥特莱斯': 0.92,
+  '街区商业': 0.90,
+  '社区商业': 0.82,
+  '商业综合体': 1.10,
+  '其他': 1.00,
+};
+
+const CITY_COST_FACTORS = [
+  { pattern: /深圳|上海|北京/, factor: 1.28, label: '一线城市' },
+  { pattern: /广州|杭州|南京|苏州|成都|武汉|重庆|西安|天津/, factor: 1.15, label: '重点二线城市' },
+  { pattern: /长沙|郑州|合肥|福州|厦门|青岛|济南|昆明|贵阳|海口/, factor: 1.08, label: '省会及计划单列市' },
+  { pattern: /南宁/, factor: 1.08, label: '南宁' },
+  { pattern: /柳州/, factor: 1.00, label: '柳州' },
+  { pattern: /桂林/, factor: 0.98, label: '桂林' },
+  { pattern: /北海|钦州|防城港/, factor: 0.96, label: '北部湾城市' },
+  { pattern: /玉林|贵港|梧州|百色|贺州|河池|来宾|崇左/, factor: 0.93, label: '广西地级市' },
+];
+
+function roundCostRate(value) {
+  const number = Number(value) || 0;
+  return number === 0 ? 0 : Math.round(number / 10) * 10;
+}
+
+function cityCostProfile(location) {
+  const text = String(location || '').trim();
+  const matched = CITY_COST_FACTORS.find(item => item.pattern.test(text));
+  if (matched) return matched;
+  if (/广西/.test(text)) return { factor: 0.92, label: '广西其他地区' };
+  const cityMatch = text.match(/([^\s省市自治区]{2,10}市)/);
+  return { factor: 0.95, label: cityMatch ? cityMatch[1] : '项目所在地' };
+}
+
+function getCostReference(model = state.current?.model) {
+  const project = model?.project || {};
+  const developmentType = COST_REFERENCE_PROFILES[project.developmentType] ? project.developmentType : 'new_build';
+  const profile = COST_REFERENCE_PROFILES[developmentType];
+  const city = cityCostProfile(project.location);
+  const formatLabel = project.projectType || '其他';
+  const formatFactor = FORMAT_COST_FACTORS[formatLabel] ?? 1;
+  const factor = city.factor * formatFactor;
+  const rates = Object.fromEntries(Object.entries(profile.rates).map(([key, value]) => [key, roundCostRate(value * factor)]));
+  const range = value => {
+    const rate = Number(value) || 0;
+    return { low: roundCostRate(rate * 0.85), high: roundCostRate(rate * 1.15) };
+  };
+  return {
+    developmentType,
+    developmentLabel: profile.label,
+    profileNote: profile.note,
+    cityLabel: city.label,
+    cityFactor: city.factor,
+    formatLabel,
+    formatFactor,
+    factor,
+    rates,
+    ranges: {
+      constructionRate: range(rates.constructionRate),
+      fitoutRate: range(rates.fitoutRate),
+      equipmentRate: range(rates.equipmentRate),
+    },
+  };
+}
+
+function applyCostReference(model, overrides = {}, rerender = false) {
+  if (!model) return null;
+  if (overrides.developmentType) model.project.developmentType = overrides.developmentType;
+  if (overrides.projectType) model.project.projectType = overrides.projectType;
+  if (overrides.location !== undefined) model.project.location = overrides.location;
+  const reference = getCostReference(model);
+  model.costs = model.costs || {};
+  Object.assign(model.costs, reference.rates);
+  state.dirty = true;
+  state.preview = null;
+  updateSaveState();
+  if (rerender) renderWorkspace();
+  return reference;
 }
 
 function escapeHtml(value) {
@@ -620,10 +745,19 @@ function renderAuth(mode = 'login') {
             <button class="auth-submit" type="submit">${isLogin ? '进入工作台' : '提交注册申请'}</button>
           </form>
           ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>首次使用可直接体验：账号 <strong>demo</strong>，密码 <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
+          <div class="auth-font-setting">
+            <span>界面字号</span>
+            <div class="auth-font-options" role="group" aria-label="界面字号调整">
+              <button type="button" data-font-scale="1" class="${state.fontScale === '1' ? 'active' : ''}">标准</button>
+              <button type="button" data-font-scale="1.1" class="${state.fontScale === '1.1' ? 'active' : ''}">大</button>
+              <button type="button" data-font-scale="1.2" class="${state.fontScale === '1.2' ? 'active' : ''}">特大</button>
+            </div>
+          </div>
         </div>
       </section>
     </div>`;
   document.querySelectorAll('[data-auth-mode]').forEach(btn => btn.addEventListener('click', () => renderAuth(btn.dataset.authMode)));
+  document.querySelectorAll('[data-font-scale]').forEach(button => button.addEventListener('click', () => applyFontScale(button.dataset.fontScale, true)));
   document.getElementById('fill-demo')?.addEventListener('click', () => {
     const form = document.getElementById('auth-form');
     form.username.value = 'demo';
@@ -690,6 +824,14 @@ function sidebar(active = 'projects') {
       <div class="user-box">
         <strong>${escapeHtml(state.user?.displayName || state.user?.username || '')}</strong>
         <span>${state.user?.role === 'super_admin' ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : '正式账号 · 云端工作空间'}</span>
+        <div class="font-size-setting">
+          <span class="font-size-setting-title">界面字号</span>
+          <div class="font-size-options" role="group" aria-label="界面字号调整">
+            <button type="button" data-font-scale="1" class="${state.fontScale === '1' ? 'active' : ''}">标准</button>
+            <button type="button" data-font-scale="1.1" class="${state.fontScale === '1.1' ? 'active' : ''}">大</button>
+            <button type="button" data-font-scale="1.2" class="${state.fontScale === '1.2' ? 'active' : ''}">特大</button>
+          </div>
+        </div>
         <button type="button" id="logout-btn">退出登录</button>
       </div>
     </aside>`;
@@ -738,6 +880,7 @@ function bindShell() {
     document.getElementById('sidebar')?.classList.toggle('open', state.sidebarOpen);
   });
   document.getElementById('logout-btn')?.addEventListener('click', () => logout());
+  document.querySelectorAll('[data-font-scale]').forEach(button => button.addEventListener('click', () => applyFontScale(button.dataset.fontScale, true)));
   document.querySelectorAll('[data-nav]').forEach(btn => btn.addEventListener('click', () => {
     const nav = btn.dataset.nav;
     if (nav === 'projects') {
@@ -804,20 +947,21 @@ function renderProjectList() {
 }
 
 function newProjectCard() {
-  return `<div class="project-card new-project-card" id="new-project-card"><div class="new-project-inner"><div class="new-project-icon">${ICONS.plus}</div><strong>创建新项目</strong><div style="margin-top:6px;font-size:10px">从空白项目开始</div></div></div>`;
+  return `<div class="project-card new-project-card" id="new-project-card"><div class="new-project-inner"><div class="new-project-icon">${ICONS.plus}</div><strong>创建新项目</strong><div style="margin-top:6px;font-size:var(--fs-10)">从空白项目开始</div></div></div>`;
 }
 
 function emptyProjectState() {
-  return `<div class="empty-state"><div class="new-project-icon" style="width:58px;height:58px;font-size:30px">${ICONS.plus}</div><h3>还没有测算项目</h3><p>创建第一个项目，系统会用6个步骤带你完成投资测算。</p><button class="btn btn-primary" id="empty-new-project">创建第一个项目</button></div>`;
+  return `<div class="empty-state"><div class="new-project-icon" style="width:58px;height:58px;font-size:var(--fs-30)">${ICONS.plus}</div><h3>还没有测算项目</h3><p>创建第一个项目，系统会用6个步骤带你完成投资测算。</p><button class="btn btn-primary" id="empty-new-project">创建第一个项目</button></div>`;
 }
 
 function projectCard(project) {
   const s = project.summary || {};
   const status = s.status || '待完善';
+  const developmentLabel = DEVELOPMENT_TYPE_LABELS[s.developmentType] || '';
   return `<article class="project-card" data-project-id="${project.id}">
     <div class="project-card-status"><span>●</span>${escapeHtml(status)}</div>
     <h3>${escapeHtml(s.projectName || project.model?.project?.name || '未命名项目')}</h3>
-    <div class="project-location">${escapeHtml(s.location || project.model?.project?.location || '')}</div>
+    <div class="project-location">${escapeHtml(s.location || project.model?.project?.location || '')}${developmentLabel ? ` · ${escapeHtml(developmentLabel)}` : ''}</div>
     <div class="project-metrics">
       <div class="project-metric"><strong>${fmt(s.totalInvestment)}</strong><span>投资总额/万元</span></div>
       <div class="project-metric"><strong>${s.projectIrr == null ? '—' : fmtPct(s.projectIrr)}</strong><span>项目IRR</span></div>
@@ -895,11 +1039,12 @@ function adminProjectTable() {
     <tbody>${projects.map(project => {
       const summary = project.summary || {};
       const owner = adminUserForProject(project) || {};
+    const developmentLabel = DEVELOPMENT_TYPE_LABELS[summary.developmentType] || DEVELOPMENT_TYPE_LABELS[project.model?.project?.developmentType] || '新建项目';
       const modelProject = project.model?.project || {};
       return `<tr>
         <td><strong>${escapeHtml(summary.projectName || project.name || modelProject.name || '未命名项目')}</strong><small class="admin-project-location">${escapeHtml(summary.location || modelProject.location || '未填写位置')}</small></td>
         <td><strong>${escapeHtml(owner.display_name || owner.username || '未知用户')}</strong><small class="admin-date">@${escapeHtml(owner.username || '—')}</small></td>
-        <td>${summary.calculationMode === 'preliminary' ? '初步测算' : '一铺一价'}<small class="admin-date">${summary.calculationMode === 'preliminary' ? `${summary.floorCount || 0} 个楼层` : `${summary.shopsCount || 0} 个铺位`}</small></td>
+        <td>${summary.calculationMode === 'preliminary' ? '初步测算' : '一铺一价'}<small class="admin-date">${escapeHtml(developmentLabel)} · ${summary.calculationMode === 'preliminary' ? `${summary.floorCount || 0} 个楼层` : `${summary.shopsCount || 0} 个铺位`}</small></td>
         <td><strong>${fmt(summary.totalInvestment)}</strong><small class="admin-date">万元</small></td>
         <td><strong>${summary.projectIrr == null ? '—' : fmtPct(summary.projectIrr)}</strong><small class="admin-date">NPV ${fmt(summary.projectNpv)} 万元</small></td>
         <td><span class="admin-date">${escapeHtml(fmtDate(project.updatedAt))}</span></td>
@@ -1044,6 +1189,7 @@ async function openAdminProject(projectId) {
               <div><span>初步结论</span><strong class="admin-status-text">${escapeHtml(summary.status || '待完善')}</strong><small>系统自动判断</small></div>
             </div>
             <div class="admin-project-facts">
+              <span>开发状态：${escapeHtml(DEVELOPMENT_TYPE_LABELS[summary.developmentType] || '新建项目')}</span>
               <span>计租方式：${escapeHtml({ rent: '纯租金', concession: '纯联营扣点', guarantee_or_concession: '保底与扣点取高' }[summary.revenueModel] || '—')}</span>
               <span>测算模式：${summary.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价'}</span>
               <span>总建筑面积：${fmt(summary.grossFloorArea)} ㎡</span>
@@ -1086,7 +1232,8 @@ function openNewProjectModal() {
           <div class="modal-body">
             <div class="field"><label>项目名称</label><input class="input" name="name" required placeholder="例如：柳江沿岸商业中心"></div>
             <div class="field"><label>项目位置</label><input class="input" name="location" value="广西壮族自治区" placeholder="例如：广西壮族自治区柳州市"></div>
-            <div class="field"><label>项目类型</label><select class="select" name="projectType"><option>购物中心</option><option>百货商场</option><option>奥特莱斯</option><option>街区商业</option><option>社区商业</option><option>商业综合体</option><option>其他</option></select></div>
+            <div class="field"><label>项目开发状态</label><select class="select" name="developmentType">${DEVELOPMENT_TYPE_OPTIONS.map(item => `<option value="${item.value}">${item.label}</option>`).join('')}</select></div>
+            <div class="field"><label>商业项目形态</label><select class="select" name="projectType"><option>购物中心</option><option>百货商场</option><option>奥特莱斯</option><option>街区商业</option><option>社区商业</option><option>商业综合体</option><option>其他</option></select></div>
             <div class="field"><label>项目计租方式</label><select class="select" name="revenueModel"><option value="rent">纯租金</option><option value="concession">纯联营扣点</option><option value="guarantee_or_concession">保底与联营扣点取高</option></select></div>
           </div>
           <div class="modal-foot"><button type="button" class="btn btn-secondary" id="modal-cancel">取消</button><button class="btn btn-primary" type="submit">创建并开始</button></div>
@@ -1106,8 +1253,10 @@ function openNewProjectModal() {
       const id = payload.project.id;
       const updated = await api(`/api/projects/${id}`);
       updated.project.model.project.location = form.get('location');
+      updated.project.model.project.developmentType = form.get('developmentType');
       updated.project.model.project.projectType = form.get('projectType');
       updated.project.model.project.revenueModel = form.get('revenueModel');
+      applyCostReference(updated.project.model);
       await api(`/api/projects/${id}`, { method: 'PUT', body: { model: updated.project.model } });
       state.adminLoaded = false;
       close();
@@ -1123,7 +1272,7 @@ function openGuideModal() {
     <div class="modal-backdrop" id="modal-backdrop">
       <div class="modal" style="width:min(680px,100%)">
         <div class="modal-head"><div><h2>使用说明</h2><p>只需准备项目和商铺数据，其余由系统自动计算。</p></div><button class="modal-close" id="modal-close">×</button></div>
-        <div class="modal-body" style="line-height:1.8;color:var(--muted);font-size:12px">
+        <div class="modal-body" style="line-height:1.8;color:var(--muted);font-size:var(--fs-12)">
           <p><strong style="color:var(--navy)">1. 项目信息：</strong>填写项目名称、位置、总建筑面积和土地价款。</p>
           <p><strong style="color:var(--navy)">2. 成本参数：</strong>可选择参考模板，再按本地造价、装修和公共费用调整。</p>
           <p><strong style="color:var(--navy)">3. 铺位数据：</strong>下载模板，粘贴铺位号、建筑面积、实际租赁面积、楼层和业态后导入。</p>
@@ -1368,6 +1517,38 @@ function openFunctionGlossary() {
   document.getElementById('function-glossary-backdrop').addEventListener('click', event => { if (event.target.id === 'function-glossary-backdrop') close(); });
 }
 
+function renderCostReferencePanel() {
+  const reference = getCostReference();
+  const rangeText = range => range.low === range.high ? fmt(range.low) : `${fmt(range.low)}–${fmt(range.high)}`;
+  return `<div class="cost-reference-card" id="cost-reference-panel">
+    <div class="cost-reference-head">
+      <div><span class="eyebrow">Location cost benchmark</span><h3>${escapeHtml(reference.cityLabel)} · ${escapeHtml(reference.developmentLabel)} · ${escapeHtml(reference.formatLabel)}</h3><p>${escapeHtml(reference.profileNote)}</p></div>
+      <button type="button" class="btn btn-secondary btn-sm" data-apply-cost-reference>重新应用参考价</button>
+    </div>
+    <div class="cost-reference-rates">
+      <div><span>建安工程参考</span><strong>${fmt(reference.rates.constructionRate)}</strong><small>元/㎡ · 建议复核 ${rangeText(reference.ranges.constructionRate)}</small></div>
+      <div><span>装修改造参考</span><strong>${fmt(reference.rates.fitoutRate)}</strong><small>元/㎡ · 建议复核 ${rangeText(reference.ranges.fitoutRate)}</small></div>
+      <div><span>设施设备参考</span><strong>${fmt(reference.rates.equipmentRate)}</strong><small>元/㎡ · 建议复核 ${rangeText(reference.ranges.equipmentRate)}</small></div>
+    </div>
+    <div class="cost-reference-note">系统按“城市系数 × 开发状态基准 × 商业形态系数”自动带入；参考区间按基准单价的 ±15% 展示，最终应以属地造价指标、设计概算和现场鉴定为准。手工调整会保留到下次切换项目位置或开发状态。</div>
+  </div>`;
+}
+
+function refreshCostReferencePreview() {
+  const current = document.getElementById('cost-reference-panel');
+  if (!current) return;
+  current.outerHTML = renderCostReferencePanel();
+  bindCostReferenceAction();
+}
+
+function bindCostReferenceAction() {
+  document.querySelector('[data-apply-cost-reference]')?.addEventListener('click', () => {
+    const reference = applyCostReference(state.current.model, {}, true);
+    if (reference) toast('已重新应用所在地和开发状态参考价', 'success');
+    scheduleLivePreview();
+  });
+}
+
 function renderProjectStep() {
   const m = state.current.model;
   const preliminary = (m.calculationMode || 'preliminary') === 'preliminary';
@@ -1385,13 +1566,15 @@ function renderProjectStep() {
       <div class="form-grid">
         ${textField('项目名称', 'project.name', { placeholder: '例如：柳江沿岸商业中心' })}
         ${locationField()}
-        ${selectField('项目类型', 'project.projectType', ['购物中心', '百货商场', '奥特莱斯', '街区商业', '社区商业', '商业综合体', '其他'])}
+        ${selectField('项目开发状态', 'project.developmentType', DEVELOPMENT_TYPE_OPTIONS, { help: '不同状态会自动匹配新建土建、旧改改造或运营提升的参考造价' })}
+        ${selectField('商业项目形态', 'project.projectType', ['购物中心', '百货商场', '奥特莱斯', '街区商业', '社区商业', '商业综合体', '其他'])}
         ${selectField('项目计租方式', 'project.revenueModel', [{value:'rent',label:'纯租金'},{value:'concession',label:'纯联营扣点'},{value:'guarantee_or_concession',label:'保底与联营扣点取高'}], { help: '业态可在铺位数据页单独覆盖项目规则' })}
         ${textField('建设起始年份', 'project.startYear', { type: 'number', unit: '年' })}
         ${textField('建设期', 'project.constructionYears', { type: 'number', unit: '年' })}
         ${textField('运营测算期', 'project.operationYears', { type: 'number', unit: '年' })}
       </div>
     </div>
+    ${renderCostReferencePanel()}
     <div class="form-section">
       <div class="section-title">面积与土地</div>
       <div class="form-grid">
@@ -1416,17 +1599,15 @@ function renderProjectStep() {
 }
 
 function renderCostStep() {
-  const presets = [
-    { name: '社区商业', values: { preconstructionRate: 180, constructionRate: 3200, fitoutRate: 850, equipmentRate: 450, otherEngineeringRate: 100 } },
-    { name: '街区商业', values: { preconstructionRate: 220, constructionRate: 3600, fitoutRate: 1100, equipmentRate: 550, otherEngineeringRate: 130 } },
-    { name: '购物中心', values: { preconstructionRate: 280, constructionRate: 4200, fitoutRate: 1600, equipmentRate: 800, otherEngineeringRate: 180 } },
-  ];
+  const presets = ['社区商业', '街区商业', '购物中心', '商业综合体'];
+  const reference = getCostReference();
   return `
-    <div class="callout">${ICONS.info}<div>系统预填的是参考量级，不代表${escapeHtml(jurisdictionName())}本地实际造价。可先选择项目类型，再根据造价咨询或目标成本调整。</div></div>
+    <div class="callout">${ICONS.info}<div>当前参考为“${escapeHtml(reference.cityLabel)} · ${escapeHtml(reference.developmentLabel)} · ${escapeHtml(reference.formatLabel)}”。系统已自动套用${escapeHtml(DEVELOPMENT_TYPE_LABELS[reference.developmentType] || '新建项目')}的造价逻辑，以下单价仍可按目标成本、设计概算和现场鉴定结果逐项调整。</div></div>
     ${formulaPanel('工程投资与流动资金公式', '分项工程投资 = 总建筑面积 × 分项单价 ÷ 10000\n直接工程费 = 前期 + 建安 + 公共配套 + 装修 + 设备 + 其他工程\n预备费 = 直接工程费 × 预备费率\n铺底流动资金 = 稳定运营成本估算 × 铺底比例', ['SUM', 'ROUND', 'MAX'], '金额单位均为万元；修改任一单价后，投资、折旧、税费和现金流会联动更新。')}
+    ${renderCostReferencePanel()}
     <div class="preset-row">
-      <span style="font-size:10px;color:var(--muted);padding:8px 2px">参考模板：</span>
-      ${presets.map((preset, i) => `<button class="preset" data-preset="${i}">${preset.name}</button>`).join('')}
+      <span style="font-size:var(--fs-10);color:var(--muted);padding:8px 2px">按商业形态重算：</span>
+      ${presets.map(preset => `<button class="preset" data-reference-format="${preset}">${preset}</button>`).join('')}
     </div>
     <div class="form-section">
       <div class="section-title">工程及装修投资单价</div>
@@ -2114,7 +2295,7 @@ function renderResultsStep() {
   const kpiClass = value => value > 0 ? 'positive' : value < 0 ? 'negative' : '';
   return `
     <div class="result-hero">
-      <div class="result-hero-top"><div><span class="result-status">${escapeHtml(s.status)}</span><h2>${escapeHtml(s.projectName || '商业项目')}</h2><p>${escapeHtml(s.location || '')}｜总建筑面积 ${fmt(s.grossFloorArea)}㎡｜可租赁面积 ${fmt(s.leasableArea)}㎡｜${s.calculationMode === 'preliminary' ? `${fmt(s.floorCount)}个楼层` : `${fmt(s.shopsCount)}个铺位`}</p></div><div style="color:#c9dad5;font-size:10px;text-align:right">${s.calculationMode === 'preliminary' ? '初步楼层均价测算' : '一铺一价精细测算'}<br>${new Date().toLocaleDateString('zh-CN')}</div></div>
+      <div class="result-hero-top"><div><span class="result-status">${escapeHtml(s.status)}</span><h2>${escapeHtml(s.projectName || '商业项目')}</h2><p>${escapeHtml(s.location || '')}｜总建筑面积 ${fmt(s.grossFloorArea)}㎡｜可租赁面积 ${fmt(s.leasableArea)}㎡｜${s.calculationMode === 'preliminary' ? `${fmt(s.floorCount)}个楼层` : `${fmt(s.shopsCount)}个铺位`}</p></div><div style="color:#c9dad5;font-size:var(--fs-10);text-align:right">${s.calculationMode === 'preliminary' ? '初步楼层均价测算' : '一铺一价精细测算'}<br>${new Date().toLocaleDateString('zh-CN')}</div></div>
     </div>
     <div class="kpi-grid">
       ${kpiCard('项目总投资', fmt(s.totalInvestment), '万元', '')}
@@ -2203,6 +2384,13 @@ function bindStepInputs() {
         if (value === 'false') value = false;
       }
       setPath(state.current.model, path, value);
+      if (path === 'project.developmentType' || path === 'project.projectType') {
+        const reference = applyCostReference(state.current.model);
+        toast(`已按${reference.cityLabel} · ${reference.developmentLabel}更新参考造价`, 'success');
+        renderWorkspace();
+        scheduleLivePreview();
+        return;
+      }
       const formulaCurrent = input.closest('.field')?.querySelector('.formula-current');
       if (formulaCurrent) formulaCurrent.textContent = `当前：${input.value || '未填写'}`;
       if (path === 'project.location') {
@@ -2212,6 +2400,8 @@ function bindStepInputs() {
         if (state.current.model.market) state.current.model.market.lastAnalysis = null;
         state.marketAnalysis = null;
         state.marketError = null;
+        applyCostReference(state.current.model);
+        refreshCostReferencePreview();
         clearTimeout(locationGeocodeTimer);
         setMapStatus('正在识别地址…', 'loading');
         locationGeocodeTimer = setTimeout(() => {
@@ -2227,6 +2417,7 @@ function bindStepInputs() {
       }
     });
   });
+  bindCostReferenceAction();
   document.getElementById('open-map-picker')?.addEventListener('click', openMapPicker);
   document.getElementById('reset-formula-defaults')?.addEventListener('click', () => {
     state.current.model.formulas = { ...DEFAULT_FORMULAS };
@@ -2266,18 +2457,11 @@ function updateSaveState() {
 }
 
 function bindCostPresets() {
-  const presets = [
-    { preconstructionRate: 180, constructionRate: 3200, fitoutRate: 850, equipmentRate: 450, otherEngineeringRate: 100 },
-    { preconstructionRate: 220, constructionRate: 3600, fitoutRate: 1100, equipmentRate: 550, otherEngineeringRate: 130 },
-    { preconstructionRate: 280, constructionRate: 4200, fitoutRate: 1600, equipmentRate: 800, otherEngineeringRate: 180 },
-  ];
-  document.querySelectorAll('[data-preset]').forEach(btn => btn.addEventListener('click', () => {
-    const preset = presets[Number(btn.dataset.preset)];
-    Object.assign(state.current.model.costs, preset);
-    state.dirty = true;
-    toast('已应用参考模板，请根据实际项目调整', 'success');
-    renderWorkspace();
+  document.querySelectorAll('[data-reference-format]').forEach(btn => btn.addEventListener('click', () => {
+    const reference = applyCostReference(state.current.model, { projectType: btn.dataset.referenceFormat }, true);
+    toast(`已按${reference.formatLabel}重算参考造价，请根据实际项目调整`, 'success');
   }));
+  bindCostReferenceAction();
 }
 
 function setMapStatus(text, mode = '') {
@@ -2408,7 +2592,7 @@ function openMapPicker() {
 
   const showResults = results => {
     if (!results?.length) {
-      resultsEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:10px">未找到匹配地址，请尝试更具体的道路或地标名称。</div>';
+      resultsEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:var(--fs-10)">未找到匹配地址，请尝试更具体的道路或地标名称。</div>';
       resultsEl.classList.add('show');
       return;
     }
@@ -2426,7 +2610,7 @@ function openMapPicker() {
     const query = document.getElementById('map-search-input').value.trim();
     if (query.length < 2) return;
     if (!quiet) {
-      resultsEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:10px">正在搜索…</div>';
+      resultsEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:var(--fs-10)">正在搜索…</div>';
       resultsEl.classList.add('show');
     }
     try {
@@ -2439,7 +2623,7 @@ function openMapPicker() {
         resultsEl.classList.remove('show');
       }
     } catch (error) {
-      resultsEl.innerHTML = `<div style="padding:12px;color:var(--red);font-size:10px">${escapeHtml(error.message)}</div>`;
+      resultsEl.innerHTML = `<div style="padding:12px;color:var(--red);font-size:var(--fs-10)">${escapeHtml(error.message)}</div>`;
       resultsEl.classList.add('show');
     }
   };
@@ -2470,9 +2654,11 @@ function openMapPicker() {
     state.marketAnalysis = null;
     state.marketError = null;
     if (picked.address) project.location = picked.address;
+    applyCostReference(state.current.model);
     state.dirty = true;
     close();
     renderWorkspace();
+    scheduleLivePreview();
     toast('项目位置已更新', 'success');
   });
   if (!hasCoordinates && project.location && project.location.length >= 3) setTimeout(() => search(true), 120);
@@ -2681,6 +2867,7 @@ function bindShopsStep() {
     if (!preset) return;
     state.current.model.project.revenueModel = 'guarantee_or_concession';
     state.current.model.project.projectType = btn.dataset.settlementPreset === 'department' ? '百货商场' : '奥特莱斯';
+    applyCostReference(state.current.model);
     state.current.model.categories.forEach(cat => {
       const rule = preset.categories[cat.name];
       if (rule) Object.assign(cat, rule, { revenueMode: 'inherit' });
@@ -2901,7 +3088,8 @@ function drawRevenueChart(canvas, rows) {
   ctx.strokeStyle = '#e9e5dd';
   ctx.fillStyle = '#929a96';
   ctx.lineWidth = 1;
-  ctx.font = '9px Arial';
+  const scale = Number(state.fontScale) || 1;
+  ctx.font = `${9 * scale}px Arial`;
   ctx.textAlign = 'right';
   for (let i = 0; i <= 4; i++) {
     const value = minY + (maxY - minY) * i / 4;
@@ -2945,9 +3133,10 @@ function drawDonut(canvas, items) {
     start += angle;
   });
   ctx.beginPath(); ctx.arc(centerX, centerY, inner, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
-  ctx.textAlign = 'center'; ctx.fillStyle = '#103b33'; ctx.font = '600 22px Arial';
+  const scale = Number(state.fontScale) || 1;
+  ctx.textAlign = 'center'; ctx.fillStyle = '#103b33'; ctx.font = `600 ${22 * scale}px Arial`;
   ctx.fillText(formatAxis(total), centerX, centerY - 2);
-  ctx.fillStyle = '#7a8580'; ctx.font = '9px Arial'; ctx.fillText('万元', centerX, centerY + 15);
+  ctx.fillStyle = '#7a8580'; ctx.font = `${9 * scale}px Arial`; ctx.fillText('万元', centerX, centerY + 15);
 }
 
 window.addEventListener('resize', () => {
@@ -2968,4 +3157,5 @@ document.addEventListener('click', event => {
   }
 });
 
+applyFontScale(state.fontScale);
 boot();

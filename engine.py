@@ -40,6 +40,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "mapZoom": 12,
             "locationSource": "",
             "projectType": "购物中心",
+            "developmentType": "new_build",
             "revenueModel": "rent",
             "startYear": datetime.now().year + 1,
             "constructionYears": 2,
@@ -868,6 +869,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         "summary": {
             "projectName": project.get("name"),
             "location": project.get("location"),
+            "developmentType": project.get("developmentType"),
             "calculationMode": calculation_mode,
             "shopsCount": shops_count,
             "floorCount": floor_count,
@@ -1064,6 +1066,13 @@ def build_analysis(
     if noi_yield < max(0.05, discount - 0.02):
         recommendations.append("投资回报率偏低，建议压缩非必要公共空间投入，提高可租赁面积占比和首层优质铺位租金。")
     recommendations.append(f"正式决策前，应取得{jurisdiction_name(model)}属地最新的税务、市政配套、人防、水电气增容和报建收费标准。")
+    development_type = str(model.get("project", {}).get("developmentType") or "new_build")
+    if development_type == "renovation":
+        recommendations.append("旧改项目应在投资决策前完成结构安全鉴定、消防改造可行性、机电容量和停业施工组织评估，并预留不可预见改造费用。")
+    elif development_type == "operating":
+        recommendations.append("运营中项目应区分资产收购与股权收购口径，补充收购对价、承接负债、租约继承、改造停业损失和过渡期运营成本。")
+    elif development_type == "light_asset":
+        recommendations.append("轻资产项目原则上不建议计入新建土建投资，应重点核算品牌、设计、局部改造、筹备团队和履约保证金占用。")
     if status == "通过初筛":
         recommendations.append("项目已达到当前假设下的初筛门槛，可进入产品定位、招商落位和融资方案深化阶段。")
     return {"status": status, "bullets": bullets, "recommendations": recommendations}

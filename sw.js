@@ -1,9 +1,8 @@
-const CACHE_NAME = 'duoduo-cre-v21-20261105';
+const CACHE_NAME = 'duoduo-cre-v24-20261107';
 const CORE = [
-  './', './index.html', './styles.css?v=20261105-cloud6', './app.js?v=20261105-cloud6',
-  './backend.js?v=20261105-cloud6', './cloud-config.js?v=20261105-cloud6', './pyodide-loader.js?v=20261105-cloud6', './engine.py',
+  './', './index.html', './styles.css?v=20261107-type3', './app.js?v=20261107-type3',
+  './backend.js?v=20261107-type3', './cloud-config.js?v=20261107-type3', './pyodide-loader.js?v=20261107-type3', './engine.py',
   './pyodide/pyodide.mjs', './pyodide/pyodide.asm.js', './pyodide/pyodide-lock.json', './pyodide/chunk-manifest.json',
-  './vendor/xlsx.full.min.js', './vendor/pptxgen.bundle.js',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'
 ];
 const CORE_URLS = CORE.map(path => new URL(path, self.registration.scope).href);
