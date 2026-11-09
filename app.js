@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-payroll1';
+import './backend.js?v=20261110-orgactions1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.10.7';
+const APP_VERSION = '1.10.8';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -2308,7 +2308,7 @@ function renderOrganizationSection(model, preview) {
   const annualCost = payrollTotals.companyCost + recruitmentTraining;
   return `<div class="form-section budget-section">
     <div class="section-title">组织架构、岗位与人员成本</div>
-    <div class="section-note">按“部门 → 岗位”两级维护组织架构。岗位月薪是税前应发基本工资；系统据此计算税前年度工资、个人和单位社保公积金、个人所得税、实发工资及企业人员成本。</div>
+    <div class="section-note">按“部门 → 岗位”两级维护组织架构。表格第二列提供“新增岗位 / 删除岗位 / 删除部门”操作；岗位月薪是税前应发基本工资，系统据此计算税前年度工资、个人和单位社保公积金、个人所得税、实发工资及企业人员成本。</div>
     ${formulaPanel('岗位工资、个税与社保公式', '税前年度工资 = Σ(岗位编制人数 × 税前应发月薪 × 年度薪资月数)\n个人社保公积金 = Σ(税前应发月薪 × 12 × 个人社保公积金比例)\n单位社保公积金 = Σ(税前应发月薪 × 12 × 单位社保公积金比例)\n年度应纳税所得额（每人）= 税前年度工资 - 个人社保公积金 - 个税起征点×12 - 专项附加扣除×12\n个人所得税 = MAX(0, 应纳税所得额 × 适用税率 - 速算扣除数)\n实发工资 = 税前年度工资 - 个人社保公积金 - 个人所得税\n企业人员成本 = 税前年度工资 + 单位社保公积金\n含招聘培训人员成本 = 企业人员成本 + 招聘培训费', ['SUM','MAX','IF'], '12/13/15薪影响年度应税工资，但社保公积金按每月缴费基数缴纳12个月。当前以税前月薪作为月缴费基数；社保、公积金比例和缴费基数上下限必须按项目属地最新政策及员工实际情况调整。')}
     <div class="callout soft payroll-caliber-note">${ICONS.info}<div><strong>当前为“税前应发工资”口径。</strong>项目位置：${escapeHtml(payrollLocation)}。默认单位社保公积金 ${fmtPct(Number(organization.socialInsuranceRate || 0))}、个人社保公积金 ${fmtPct(Number(organization.employeeSocialInsuranceRate || 0))} 仅为测算参考，不能视为当地法定统一比例。个税按中国综合所得七级年度超额累进税率估算；实际应以项目属地缴费基数上下限、险种明细、公积金政策和年度汇算为准。</div></div>
     <div class="form-grid">
@@ -2329,8 +2329,9 @@ function renderOrganizationSection(model, preview) {
       </div>
       <div class="section-note">个人所得税 = 年度应纳税所得额 × 适用税率 - 速算扣除数。税率表按中国居民个人综合所得年度税率展示；系统用于年度投资测算，正式申报以累计预扣预缴和年度汇算结果为准。</div>
     </details>
+    <div class="org-structure-tools"><span>部门操作：新增部门；岗位操作：在对应部门行点击“新增岗位”，在岗位行点击“删除岗位”。</span><button class="btn btn-secondary btn-sm" type="button" data-add-department>${ICONS.plus}<span>新增部门</span></button></div>
     <div class="data-table-wrap budget-table-wrap org-structure-wrap">
-      <table class="data-table budget-table org-structure-table"><thead><tr><th>部门 / 岗位</th><th class="num">编制人数</th><th class="num">税前应发月薪（元）</th><th class="num">税前年度工资（万元）</th><th class="num">个人社保公积金（万元）</th><th class="num">个人所得税（万元）</th><th class="num">实发工资（万元）</th><th class="num">单位社保公积金（万元）</th><th class="num">企业人员成本（万元）</th><th>岗位职责说明</th><th class="num">操作</th></tr></thead><tbody>
+      <table class="data-table budget-table org-structure-table"><thead><tr><th>部门 / 岗位</th><th class="org-actions">操作</th><th class="num">编制人数</th><th class="num">税前应发月薪（元）</th><th class="num">税前年度工资（万元）</th><th class="num">个人社保公积金（万元）</th><th class="num">个人所得税（万元）</th><th class="num">实发工资（万元）</th><th class="num">单位社保公积金（万元）</th><th class="num">企业人员成本（万元）</th><th>岗位职责说明</th></tr></thead><tbody>
         ${departments.map((dept, i) => {
           const positions = Array.isArray(dept.positions) ? dept.positions : [];
           const deptHeadcount = positions.reduce((sum, position) => sum + Number(position.headcount || 0), 0);
@@ -2339,6 +2340,7 @@ function renderOrganizationSection(model, preview) {
           const deptPayroll = organizationPayrollTotals(positions.length ? positions : [dept], organization);
           return `<tr class="org-department-row">
             <td><span class="org-level-tag">部门</span><input class="table-input text-left" data-path="organization.departments.${i}.name" data-type="text" value="${escapeHtml(dept.name || '')}"></td>
+            <td class="org-actions"><button class="btn btn-secondary btn-sm" type="button" data-add-position="${i}">${ICONS.plus}<span>新增岗位</span></button><button class="btn btn-ghost btn-sm danger-text" type="button" data-remove-department="${i}">${ICONS.trash}<span>删除部门</span></button></td>
             <td class="num"><strong>${fmt(deptHeadcount)}</strong></td>
             <td class="num"><strong>${fmt(deptAvgSalary, 2)}</strong></td>
             <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="grossPayroll">${fmt(deptPayroll.grossPayroll, 2)}</strong></td>
@@ -2348,10 +2350,10 @@ function renderOrganizationSection(model, preview) {
             <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="employerSocialInsurance">${fmt(deptPayroll.employerSocial, 2)}</strong></td>
             <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="annualCost">${fmt(deptPayroll.companyCost, 2)}</strong></td>
             <td><input class="table-input text-left" data-path="organization.departments.${i}.note" data-type="text" value="${escapeHtml(dept.note || '')}"></td>
-            <td class="num org-actions"><button class="btn btn-ghost btn-sm" type="button" data-add-position="${i}">${ICONS.plus}岗位</button><button class="btn btn-ghost btn-sm" type="button" data-remove-department="${i}">${ICONS.trash}</button></td>
           </tr>
           ${positions.map((position, j) => { const payroll = organizationPositionPayroll(position, organization); return `<tr class="org-position-row">
             <td><span class="org-position-branch">└ 岗位</span><input class="table-input text-left" data-path="organization.departments.${i}.positions.${j}.name" data-type="text" value="${escapeHtml(position.name || '')}"></td>
+            <td class="org-actions"><button class="btn btn-ghost btn-sm danger-text" type="button" data-remove-position="${i}" data-position-index="${j}">${ICONS.trash}<span>删除岗位</span></button></td>
             <td class="num"><input class="table-input" data-path="organization.departments.${i}.positions.${j}.headcount" data-type="number" type="number" step="1" value="${position.headcount ?? 0}"></td>
             <td class="num"><input class="table-input" data-path="organization.departments.${i}.positions.${j}.avgMonthlySalary" data-type="number" type="number" step="100" value="${position.avgMonthlySalary ?? 0}"></td>
             <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="grossPayroll">${fmt(payroll.grossPayroll, 2)}</strong></td>
@@ -2361,7 +2363,6 @@ function renderOrganizationSection(model, preview) {
             <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="employerSocialInsurance">${fmt(payroll.employerSocial, 2)}</strong></td>
             <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="annualCost">${fmt(payroll.companyCost, 2)}</strong></td>
             <td><input class="table-input text-left" data-path="organization.departments.${i}.positions.${j}.note" data-type="text" value="${escapeHtml(position.note || '')}"></td>
-            <td class="num org-actions"><button class="btn btn-ghost btn-sm" type="button" data-remove-position="${i}" data-position-index="${j}">${ICONS.trash}</button></td>
           </tr>`; }).join('')}
         `; }).join('') || '<tr><td colspan="11" class="empty-table-cell">尚未设置部门和岗位</td></tr>'}
       </tbody></table>
@@ -2648,12 +2649,12 @@ function bindOperationsBudgets() {
   document.getElementById('download-budget-template')?.addEventListener('click', () => downloadFile('/api/templates/operating-budget', '商业地产运营成本预算导入模板.xlsx'));
   document.getElementById('choose-budget-file')?.addEventListener('click', () => budgetFile.click());
   budgetFile?.addEventListener('change', () => budgetFile.files[0] && importOperatingBudget(budgetFile.files[0]));
-  document.getElementById('add-department')?.addEventListener('click', () => {
+  document.querySelectorAll('#add-department, [data-add-department]').forEach(button => button.addEventListener('click', () => {
     model.organization ||= { socialInsuranceRate: 0.28, employeeSocialInsuranceRate: 0.105, individualIncomeTaxThresholdMonthly: 5000, specialAdditionalDeductionMonthly: 0, annualSalaryMonths: 12, recruitmentTrainingRate: 0.02, departments: [] };
     model.organization.departments ||= [];
     model.organization.departments.push({ name: '新增部门', note: '', positions: [{ name: '新增岗位', headcount: 1, avgMonthlySalary: 8000, note: '' }] });
     state.dirty = true; renderWorkspace(); scheduleLivePreview();
-  });
+  }));
   document.querySelectorAll('[data-add-position]').forEach(btn => btn.addEventListener('click', () => {
     const department = model.organization.departments[Number(btn.dataset.addPosition)];
     if (!department) return;

@@ -506,14 +506,18 @@ a { color: inherit; }
 .shop-detail-table { min-width:1280px; }
 .rent-source { display:block; margin-top:3px; color:var(--green); font-size:var(--fs-8); font-weight:600; }
 .org-structure-wrap { max-height:760px; }
-.org-structure-table { min-width:1580px; }
+.org-structure-table { min-width:1660px; }
+.org-structure-table th:first-child, .org-structure-table td:first-child { min-width:300px; width:300px; }
+.org-structure-table th.org-actions, .org-structure-table td.org-actions { min-width:190px; width:190px; }
 .org-department-row td { background:#edf5f1; border-top:2px solid #c8dcd3; }
 .org-department-row .table-input { background:#fff; font-weight:700; color:var(--navy); }
 .org-position-row td:first-child { padding-left:26px; }
 .org-level-tag { display:inline-flex; margin-right:6px; padding:3px 6px; border-radius:999px; background:var(--green); color:#fff; font-size:var(--fs-8); font-weight:700; }
 .org-position-branch { display:inline-block; width:54px; color:var(--green); font-size:var(--fs-8); font-weight:700; }
 .org-actions { white-space:nowrap; }
-.org-actions .btn { padding:5px 6px; }
+.org-actions .btn { display:inline-flex; align-items:center; gap:3px; padding:5px 7px; font-size:var(--fs-9); }
+.org-actions .btn + .btn { margin-left:4px; }
+.danger-text { color:#a4493f !important; }
 .payroll-caliber-note { align-items:flex-start; margin:12px 0; }
 .payroll-caliber-note strong { color:var(--navy); }
 .payroll-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; margin-top:14px; }
@@ -526,6 +530,9 @@ a { color: inherit; }
 .payroll-tax-details summary span { color:var(--muted); font-size:var(--fs-8); font-weight:400; }
 .payroll-tax-details .section-note { padding:0 14px 13px; }
 .payroll-tax-table { min-width:620px; }
+.org-structure-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0 0; padding:10px 12px; border:1px solid #d8e5de; border-radius:10px; background:#f4f9f6; }
+.org-structure-tools span { color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
+.org-structure-tools .btn { flex:0 0 auto; }
 
 details.advanced { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; background: #fff; }
 details.advanced summary { list-style: none; cursor: pointer; padding: 14px 16px; color: var(--navy); font-size: var(--fs-12); font-weight: 700; display: flex; align-items: center; justify-content: space-between; }
