@@ -153,6 +153,9 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
         },
         "organization": {
             "socialInsuranceRate": 0.28,
+            "employeeSocialInsuranceRate": 0.105,
+            "individualIncomeTaxThresholdMonthly": 5000.0,
+            "specialAdditionalDeductionMonthly": 0.0,
             "annualSalaryMonths": 12.0,
             "annualBonusMonths": 0.0,
             "recruitmentTrainingRate": 0.02,
@@ -560,12 +563,19 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     maintenance_budget = model.get("maintenanceBudget") if isinstance(model.get("maintenanceBudget"), dict) else {}
     departments = [item for item in organization.get("departments", []) if isinstance(item, dict)]
     social_insurance_rate = max(0.0, as_float(organization.get("socialInsuranceRate")))
+    employee_social_insurance_rate = max(0.0, as_float(organization.get("employeeSocialInsuranceRate")))
+    iit_threshold_monthly = max(0.0, as_float(organization.get("individualIncomeTaxThresholdMonthly"), 5000.0))
+    special_additional_deduction_monthly = max(0.0, as_float(organization.get("specialAdditionalDeductionMonthly")))
     annual_salary_months = max(1.0, as_float(organization.get("annualSalaryMonths"), 12.0))
     recruitment_training_rate = max(0.0, as_float(organization.get("recruitmentTrainingRate")))
     organization_breakdown = []
     position_breakdown = []
     structured_headcount = 0
     structured_personnel_cost = 0.0
+    structured_gross_payroll = 0.0
+    structured_employer_social = 0.0
+    structured_employee_social = 0.0
+    structured_individual_income_tax = 0.0
     for department in departments:
         department_name = str(department.get("name") or "未命名部门")
         department_positions = []
@@ -577,17 +587,47 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 continue
             position_headcount = max(0.0, as_float(position.get("headcount")))
             monthly_salary = max(0.0, as_float(position.get("avgMonthlySalary", position.get("monthlySalary"))))
-            position_cost = position_headcount * monthly_salary * annual_salary_months * (1 + social_insurance_rate) / 10000
+            gross_salary_per_person = monthly_salary * annual_salary_months
+            # 月薪为税前应发工资；社保公积金按每月缴费基数缴纳12个月。
+            # 13/15薪等年度多薪只增加年度应税工资，不重复增加12个月社保缴费次数。
+            social_insurance_base_monthly = monthly_salary
+            employee_social_per_person = social_insurance_base_monthly * 12 * employee_social_insurance_rate
+            employer_social_per_person = social_insurance_base_monthly * 12 * social_insurance_rate
+            taxable_income_per_person = max(
+                0.0,
+                gross_salary_per_person
+                - employee_social_per_person
+                - iit_threshold_monthly * 12
+                - special_additional_deduction_monthly * 12,
+            )
+            iit_per_person = individual_income_tax_annual(taxable_income_per_person)
+            gross_payroll = position_headcount * gross_salary_per_person / 10000
+            employer_social = position_headcount * employer_social_per_person / 10000
+            employee_social = position_headcount * employee_social_per_person / 10000
+            individual_income_tax = position_headcount * iit_per_person / 10000
+            net_salary = max(0.0, gross_payroll - employee_social - individual_income_tax)
+            position_cost = gross_payroll + employer_social
             headcount += position_headcount
             annual_cost += position_cost
             salary_area += position_headcount * monthly_salary
+            structured_gross_payroll += gross_payroll
+            structured_employer_social += employer_social
+            structured_employee_social += employee_social
+            structured_individual_income_tax += individual_income_tax
             position_record = {
                 "department": department_name,
                 "name": str(position.get("name") or "未命名岗位"),
                 "headcount": position_headcount,
                 "avgMonthlySalary": monthly_salary,
+                "socialInsuranceBaseMonthly": social_insurance_base_monthly,
                 "annualSalaryMonths": annual_salary_months,
                 "annualCost": position_cost,
+                "grossPayroll": gross_payroll,
+                "employerSocialInsurance": employer_social,
+                "employeeSocialInsurance": employee_social,
+                "individualIncomeTax": individual_income_tax,
+                "netSalary": net_salary,
+                "taxableIncomePerPerson": taxable_income_per_person,
                 "note": str(position.get("note") or ""),
             }
             department_positions.append(position_record)
@@ -602,6 +642,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "avgMonthlySalary": safe_div(salary_area, headcount),
             "annualSalaryMonths": annual_salary_months,
             "annualCost": annual_cost,
+            "grossPayroll": sum(item["grossPayroll"] for item in department_positions),
+            "employerSocialInsurance": sum(item["employerSocialInsurance"] for item in department_positions),
+            "employeeSocialInsurance": sum(item["employeeSocialInsurance"] for item in department_positions),
+            "individualIncomeTax": sum(item["individualIncomeTax"] for item in department_positions),
+            "netSalary": sum(item["netSalary"] for item in department_positions),
             "note": str(department.get("note") or ""),
             "positions": department_positions,
         })
@@ -1355,6 +1400,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableHeadcount": structured_headcount,
             "staffCostMode": staff_cost_mode,
             "stableStaffCost": stable_staff_cost,
+            "annualGrossPayroll": structured_gross_payroll,
+            "annualEmployerSocialInsurance": structured_employer_social,
+            "annualEmployeeSocialInsurance": structured_employee_social,
+            "annualIndividualIncomeTax": structured_individual_income_tax,
+            "annualNetPayroll": max(0.0, structured_gross_payroll - structured_employee_social - structured_individual_income_tax),
+            "annualRecruitmentTrainingCost": structured_recruitment_training,
             "stableOfficeCost": stable_office_cost,
             "stableLeasingCost": stable_leasing_cost,
             "stableMarketingCost": stable_marketing_cost,
@@ -1431,6 +1482,25 @@ def growth_factor_for_year(
         steps = periods // interval
         return (1 + step_rate) ** steps
     return (1 + annual_rate) ** periods
+
+
+ANNUAL_COMPREHENSIVE_TAX_BRACKETS = [
+    (36000.0, 0.03, 0.0),
+    (144000.0, 0.10, 2520.0),
+    (300000.0, 0.20, 16920.0),
+    (420000.0, 0.25, 31920.0),
+    (660000.0, 0.30, 52920.0),
+    (960000.0, 0.35, 85920.0),
+    (float("inf"), 0.45, 181920.0),
+]
+
+
+def individual_income_tax_annual(taxable_income: float) -> float:
+    taxable = max(0.0, taxable_income)
+    for upper_limit, rate, quick_deduction in ANNUAL_COMPREHENSIVE_TAX_BRACKETS:
+        if taxable <= upper_limit:
+            return max(0.0, taxable * rate - quick_deduction)
+    return 0.0
 
 
 def npv(rate: float, cashflows: list[float]) -> float:

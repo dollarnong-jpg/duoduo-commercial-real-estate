@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-org3';
+import './backend.js?v=20261110-payroll1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.10.6';
+const APP_VERSION = '1.10.7';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -145,7 +145,10 @@ const FIELD_FORMULAS = {
   'ownerRent.growthRate': { title: '业主租金递增率', formula: '复利 = 首年租金×(1+r)^(n-1)；阶梯 = 每N年上调一次', functions: ['POWER', 'IF'], role: '用于复利、单利和阶梯递增。' },
   'ownerRent.annualIncrease': { title: '业主租金每年增加额', formula: '第n年业主租金 = 首年租金 + 每年增加额×(n-1)', functions: ['SUM'], role: '用于固定金额递增方式，单位为万元/年。' },
   'ownerRent.stepYears': { title: '业主租金递增周期', formula: '阶梯递增 = 每N年按递增率上调一次', functions: ['INT', 'POWER'], role: '用于每N年阶梯递增方式。' },
-  'organization.socialInsuranceRate': { title: '社保公积金比例', formula: '部门年成本 = 人数 × 月薪 × 年度薪资月数 ×（1 + 社保公积金比例）', functions: ['SUM'], role: '社保公积金比例越高，年度人员成本越高。' },
+  'organization.socialInsuranceRate': { title: '单位社保公积金比例', formula: '单位社保公积金 = Σ(税前月薪 × 12 × 单位社保公积金比例)', functions: ['SUM'], role: '单位承担的养老、医疗、失业、工伤、生育和住房公积金综合比例；默认值仅为测算参考。' },
+  'organization.employeeSocialInsuranceRate': { title: '个人社保公积金比例', formula: '个人社保公积金 = Σ(税前月薪 × 12 × 个人社保公积金比例)', functions: ['SUM'], role: '从员工税前工资中代扣，用于计算实发工资；不额外增加企业人员成本。' },
+  'organization.individualIncomeTaxThresholdMonthly': { title: '个税起征点', formula: '年度应纳税所得额 = 税前工资 - 个人社保公积金 - 起征点×12 - 专项附加扣除×12', functions: ['MAX'], role: '中国综合所得基本减除费用通常为5000元/月，最终以适用税法为准。' },
+  'organization.specialAdditionalDeductionMonthly': { title: '专项附加扣除', formula: '年度专项附加扣除 = 月扣除额 × 12', functions: ['SUM'], role: '可填每个岗位平均的子女教育、住房贷款/租金、赡养老人等月扣除额。' },
   'organization.annualSalaryMonths': { title: '年度薪资月数', formula: '年度工资 = 平均月薪 × 年度薪资月数', functions: ['SUM'], role: '可填写12薪、13薪、14薪或15薪，影响年度工资和人员成本。' },
   'organization.recruitmentTrainingRate': { title: '招聘培训费', formula: '招聘培训费 = 年度工资成本 × 招聘培训费率', functions: ['SUM'], role: '用于招聘、培训、团队建设等人员相关支出。' },
   'officeBudget.officeRentAnnual': { title: '办公室租金', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '直接计入年度办公行政成本。' },
@@ -224,8 +227,8 @@ const FORMULA_GUIDES = {
     adjust: '上下限应覆盖悲观和乐观情景，通常从±10%开始；步长5%适合初筛。若某个变量跨越NPV由负转正的临界点，应进一步细化该变量。'
   },
   organization: {
-    how: '先确定部门和编制人数，再按平均月薪 × 年度薪资月数 ×（1+社保公积金比例）计算部门年度成本，汇总后加入招聘培训费。年度薪资月数可填12、13、14或15薪。',
-    adjust: '按定编定岗方案填写人数和岗位平均月薪，再按劳动合同和年终奖政策设置年度薪资月数。社保公积金按项目属地政策设置，重点比较人员成本对NOI和现金流的影响。'
+    how: '先确定部门和岗位编制，再以税前应发月薪计算税前年度工资；个人和单位社保公积金按税前月薪作为月缴费基数×12个月计算；个税以年度工资减去个人社保公积金、起征点和专项附加扣除后的应纳税所得额，适用中国综合所得七级超额累进税率；最后得到员工实发工资和企业人员成本。年度薪资月数可填12、13、14或15薪。',
+    adjust: '按定编定岗方案填写人数和税前应发月薪，按劳动合同及年终奖政策设置年度薪资月数。单位、个人社保公积金比例和缴费基数必须按项目属地最新政策、险种明细和员工情况调整；当前默认值不是任何城市法定统一标准。重点比较企业人员成本、员工实发工资及其对NOI和现金流的影响。'
   },
   ownerRent: {
     how: '土地和物业租赁均可选择按面积单价或按月度总额计价。按面积时，月租金=面积×元/㎡/月÷10000；按总额时直接使用月租金。随后分别乘支付月数，并按合同选择不复递增、复利、单利、固定金额或每N年阶梯递增。',
@@ -2198,20 +2201,80 @@ function renderDetailedPricing(m, shops, preview) {
 }
 
 
-function organizationPositionAnnualCost(position, organization) {
+const ANNUAL_COMPREHENSIVE_TAX_BRACKETS = [
+  [36000, 0.03, 0],
+  [144000, 0.10, 2520],
+  [300000, 0.20, 16920],
+  [420000, 0.25, 31920],
+  [660000, 0.30, 52920],
+  [960000, 0.35, 85920],
+  [Infinity, 0.45, 181920],
+];
+
+const ANNUAL_COMPREHENSIVE_TAX_BRACKET_LABELS = [
+  ['不超过 36,000', '3%', '0'],
+  ['36,000 – 144,000', '10%', '2,520'],
+  ['144,000 – 300,000', '20%', '16,920'],
+  ['300,000 – 420,000', '25%', '31,920'],
+  ['420,000 – 660,000', '30%', '52,920'],
+  ['660,000 – 960,000', '35%', '85,920'],
+  ['超过 960,000', '45%', '181,920'],
+];
+
+function individualIncomeTaxAnnual(taxableIncome) {
+  const taxable = Math.max(0, Number(taxableIncome || 0));
+  const bracket = ANNUAL_COMPREHENSIVE_TAX_BRACKETS.find(([limit]) => taxable <= limit) || ANNUAL_COMPREHENSIVE_TAX_BRACKETS.at(-1);
+  return Math.max(0, taxable * bracket[1] - bracket[2]);
+}
+
+function organizationPositionPayroll(position, organization = {}) {
   const headcount = Number(position.headcount || 0);
-  const salary = Number(position.avgMonthlySalary || 0);
-  const social = Number(organization.socialInsuranceRate || 0);
-  const annualSalaryMonths = Number(organization.annualSalaryMonths || (12 + Number(organization.annualBonusMonths || 0)) || 12);
-  return headcount * salary * annualSalaryMonths * (1 + social) / 10000;
+  const monthlySalary = Number(position.avgMonthlySalary || 0);
+  const salaryMonths = Number(organization.annualSalaryMonths ?? 12);
+  const employerRate = Number(organization.socialInsuranceRate ?? 0.28);
+  const employeeRate = Number(organization.employeeSocialInsuranceRate ?? 0.105);
+  const thresholdMonthly = Number(organization.individualIncomeTaxThresholdMonthly ?? 5000);
+  const specialDeductionMonthly = Number(organization.specialAdditionalDeductionMonthly ?? 0);
+  const grossPerPerson = monthlySalary * salaryMonths;
+  const socialInsuranceBaseMonthly = monthlySalary;
+  const employeeSocialPerPerson = socialInsuranceBaseMonthly * 12 * employeeRate;
+  const employerSocialPerPerson = socialInsuranceBaseMonthly * 12 * employerRate;
+  const taxablePerPerson = Math.max(0, grossPerPerson - employeeSocialPerPerson - thresholdMonthly * 12 - specialDeductionMonthly * 12);
+  const iitPerPerson = individualIncomeTaxAnnual(taxablePerPerson);
+  const grossPayroll = headcount * grossPerPerson / 10000;
+  const employeeSocial = headcount * employeeSocialPerPerson / 10000;
+  const individualIncomeTax = headcount * iitPerPerson / 10000;
+  const employerSocial = headcount * employerSocialPerPerson / 10000;
+  return {
+    socialInsuranceBaseMonthly,
+    grossPayroll,
+    employeeSocial,
+    individualIncomeTax,
+    netSalary: Math.max(0, grossPayroll - employeeSocial - individualIncomeTax),
+    employerSocial,
+    companyCost: grossPayroll + employerSocial,
+  };
+}
+
+function organizationPayrollTotals(positions, organization) {
+  return (positions || []).reduce((totals, position) => {
+    const payroll = organizationPositionPayroll(position, organization);
+    totals.grossPayroll += payroll.grossPayroll;
+    totals.employeeSocial += payroll.employeeSocial;
+    totals.individualIncomeTax += payroll.individualIncomeTax;
+    totals.netSalary += payroll.netSalary;
+    totals.employerSocial += payroll.employerSocial;
+    totals.companyCost += payroll.companyCost;
+    return totals;
+  }, { grossPayroll: 0, employeeSocial: 0, individualIncomeTax: 0, netSalary: 0, employerSocial: 0, companyCost: 0 });
 }
 
 function organizationAnnualCost(department, organization) {
   const positions = Array.isArray(department.positions) ? department.positions : [];
   if (positions.length) {
-    return positions.reduce((sum, position) => sum + organizationPositionAnnualCost(position, organization), 0);
+    return positions.reduce((sum, position) => sum + organizationPositionPayroll(position, organization).companyCost, 0);
   }
-  return organizationPositionAnnualCost(department, organization);
+  return organizationPositionPayroll(department, organization).companyCost;
 }
 
 function renderOperatingBudgetImport() {
@@ -2229,47 +2292,91 @@ function renderOperatingBudgetImport() {
 
 function renderOrganizationSection(model, preview) {
   const organization = model.organization || (model.organization = {});
+  if (organization.socialInsuranceRate == null) organization.socialInsuranceRate = 0.28;
+  if (organization.employeeSocialInsuranceRate == null) organization.employeeSocialInsuranceRate = 0.105;
+  if (organization.individualIncomeTaxThresholdMonthly == null) organization.individualIncomeTaxThresholdMonthly = 5000;
+  if (organization.specialAdditionalDeductionMonthly == null) organization.specialAdditionalDeductionMonthly = 0;
   const departments = organization.departments || (organization.departments = []);
-  const headcount = departments.reduce((sum, dept) => sum + (Array.isArray(dept.positions) ? dept.positions : []).reduce((n, position) => n + Number(position.headcount || 0), 0), 0);
-  const salaryCost = departments.reduce((sum, dept) => sum + organizationAnnualCost(dept, organization), 0);
-  const annualCost = salaryCost + salaryCost * Number(organization.recruitmentTrainingRate || 0);
+  const payrollLocation = String(model.project?.location || '项目所在地').trim();
+  const allPositions = departments.flatMap(dept => {
+    const positions = Array.isArray(dept.positions) ? dept.positions : [];
+    return positions.length ? positions : [dept];
+  });
+  const headcount = allPositions.reduce((sum, position) => sum + Number(position.headcount || 0), 0);
+  const payrollTotals = organizationPayrollTotals(allPositions, organization);
+  const recruitmentTraining = payrollTotals.companyCost * Number(organization.recruitmentTrainingRate || 0);
+  const annualCost = payrollTotals.companyCost + recruitmentTraining;
   return `<div class="form-section budget-section">
     <div class="section-title">组织架构、岗位与人员成本</div>
-    <div class="section-note">按“部门 → 岗位”两级维护组织架构。每个岗位分别填写编制人数、平均月薪和职责，系统自动汇总部门编制、岗位年薪和人员成本。</div>
-    ${formulaPanel('部门与岗位人员成本公式', '岗位年成本 = 岗位编制人数 × 岗位平均月薪 × 年度薪资月数 ×（1 + 社保公积金比例）÷10000\n部门年成本 = Σ部门内各岗位年成本\n年度人员成本 = Σ部门年成本 + 招聘培训费\n招聘培训费 = 年度工资成本 × 招聘培训费率', ['SUM', 'ROUND'], '岗位平均月薪按元/月录入；年度薪资月数可填写12、13、14、15薪。保安、保洁、物业工程根据部门和岗位关键词自动归入对应运营成本。')}
+    <div class="section-note">按“部门 → 岗位”两级维护组织架构。岗位月薪是税前应发基本工资；系统据此计算税前年度工资、个人和单位社保公积金、个人所得税、实发工资及企业人员成本。</div>
+    ${formulaPanel('岗位工资、个税与社保公式', '税前年度工资 = Σ(岗位编制人数 × 税前应发月薪 × 年度薪资月数)\n个人社保公积金 = Σ(税前应发月薪 × 12 × 个人社保公积金比例)\n单位社保公积金 = Σ(税前应发月薪 × 12 × 单位社保公积金比例)\n年度应纳税所得额（每人）= 税前年度工资 - 个人社保公积金 - 个税起征点×12 - 专项附加扣除×12\n个人所得税 = MAX(0, 应纳税所得额 × 适用税率 - 速算扣除数)\n实发工资 = 税前年度工资 - 个人社保公积金 - 个人所得税\n企业人员成本 = 税前年度工资 + 单位社保公积金\n含招聘培训人员成本 = 企业人员成本 + 招聘培训费', ['SUM','MAX','IF'], '12/13/15薪影响年度应税工资，但社保公积金按每月缴费基数缴纳12个月。当前以税前月薪作为月缴费基数；社保、公积金比例和缴费基数上下限必须按项目属地最新政策及员工实际情况调整。')}
+    <div class="callout soft payroll-caliber-note">${ICONS.info}<div><strong>当前为“税前应发工资”口径。</strong>项目位置：${escapeHtml(payrollLocation)}。默认单位社保公积金 ${fmtPct(Number(organization.socialInsuranceRate || 0))}、个人社保公积金 ${fmtPct(Number(organization.employeeSocialInsuranceRate || 0))} 仅为测算参考，不能视为当地法定统一比例。个税按中国综合所得七级年度超额累进税率估算；实际应以项目属地缴费基数上下限、险种明细、公积金政策和年度汇算为准。</div></div>
     <div class="form-grid">
-      ${textField('社保公积金综合比例', 'organization.socialInsuranceRate', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('单位社保公积金比例', 'organization.socialInsuranceRate', { type: 'number', unit: '%', scale: 0.01, help: '单位承担的养老、医疗、失业、工伤、生育及公积金综合比例' })}
+      ${textField('个人社保公积金比例', 'organization.employeeSocialInsuranceRate', { type: 'number', unit: '%', scale: 0.01, help: '从员工税前工资中代扣的个人部分' })}
       ${textField('年度薪资月数', 'organization.annualSalaryMonths', { type: 'number', unit: '薪/年', help: '常用12薪、13薪、14薪、15薪' })}
+      ${textField('个税起征点', 'organization.individualIncomeTaxThresholdMonthly', { type: 'number', unit: '元/月', help: '中国综合所得基本减除费用通常为5000元/月' })}
+      ${textField('专项附加扣除', 'organization.specialAdditionalDeductionMonthly', { type: 'number', unit: '元/人/月', help: '子女教育、住房贷款/租金、赡养老人等平均月扣除额' })}
       ${textField('招聘培训费率', 'organization.recruitmentTrainingRate', { type: 'number', unit: '%', scale: 0.01 })}
     </div>
+    <details class="advanced payroll-tax-details">
+      <summary>个人所得税七级税率表（年度综合所得）<span>查看税率、速算扣除数及计算方式</span></summary>
+      <div class="data-table-wrap" style="max-height:none">
+        <table class="data-table payroll-tax-table">
+          <thead><tr><th>年度应纳税所得额（元）</th><th class="num">税率</th><th class="num">速算扣除数（元）</th></tr></thead>
+          <tbody>${ANNUAL_COMPREHENSIVE_TAX_BRACKET_LABELS.map(([range, rate, deduction]) => `<tr><td>${escapeHtml(range)}</td><td class="num">${escapeHtml(rate)}</td><td class="num">${escapeHtml(deduction)}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="section-note">个人所得税 = 年度应纳税所得额 × 适用税率 - 速算扣除数。税率表按中国居民个人综合所得年度税率展示；系统用于年度投资测算，正式申报以累计预扣预缴和年度汇算结果为准。</div>
+    </details>
     <div class="data-table-wrap budget-table-wrap org-structure-wrap">
-      <table class="data-table budget-table org-structure-table"><thead><tr><th>部门 / 岗位</th><th class="num">编制人数</th><th class="num">平均月薪（元）</th><th class="num">年度成本（万元）</th><th>岗位职责说明</th><th class="num">操作</th></tr></thead><tbody>
+      <table class="data-table budget-table org-structure-table"><thead><tr><th>部门 / 岗位</th><th class="num">编制人数</th><th class="num">税前应发月薪（元）</th><th class="num">税前年度工资（万元）</th><th class="num">个人社保公积金（万元）</th><th class="num">个人所得税（万元）</th><th class="num">实发工资（万元）</th><th class="num">单位社保公积金（万元）</th><th class="num">企业人员成本（万元）</th><th>岗位职责说明</th><th class="num">操作</th></tr></thead><tbody>
         ${departments.map((dept, i) => {
           const positions = Array.isArray(dept.positions) ? dept.positions : [];
           const deptHeadcount = positions.reduce((sum, position) => sum + Number(position.headcount || 0), 0);
           const deptSalaryArea = positions.reduce((sum, position) => sum + Number(position.headcount || 0) * Number(position.avgMonthlySalary || 0), 0);
           const deptAvgSalary = deptHeadcount ? deptSalaryArea / deptHeadcount : 0;
-          const deptCost = organizationAnnualCost(dept, organization);
+          const deptPayroll = organizationPayrollTotals(positions.length ? positions : [dept], organization);
           return `<tr class="org-department-row">
             <td><span class="org-level-tag">部门</span><input class="table-input text-left" data-path="organization.departments.${i}.name" data-type="text" value="${escapeHtml(dept.name || '')}"></td>
             <td class="num"><strong>${fmt(deptHeadcount)}</strong></td>
-            <td class="num"><strong>${fmt(deptAvgSalary)}</strong></td>
-            <td class="num"><strong>${fmt(deptCost, 1)}</strong></td>
+            <td class="num"><strong>${fmt(deptAvgSalary, 2)}</strong></td>
+            <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="grossPayroll">${fmt(deptPayroll.grossPayroll, 2)}</strong></td>
+            <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="employeeSocialInsurance">${fmt(deptPayroll.employeeSocial, 2)}</strong></td>
+            <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="individualIncomeTax">${fmt(deptPayroll.individualIncomeTax, 2)}</strong></td>
+            <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="netSalary">${fmt(deptPayroll.netSalary, 2)}</strong></td>
+            <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="employerSocialInsurance">${fmt(deptPayroll.employerSocial, 2)}</strong></td>
+            <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="annualCost">${fmt(deptPayroll.companyCost, 2)}</strong></td>
             <td><input class="table-input text-left" data-path="organization.departments.${i}.note" data-type="text" value="${escapeHtml(dept.note || '')}"></td>
             <td class="num org-actions"><button class="btn btn-ghost btn-sm" type="button" data-add-position="${i}">${ICONS.plus}岗位</button><button class="btn btn-ghost btn-sm" type="button" data-remove-department="${i}">${ICONS.trash}</button></td>
           </tr>
-          ${positions.map((position, j) => `<tr class="org-position-row">
+          ${positions.map((position, j) => { const payroll = organizationPositionPayroll(position, organization); return `<tr class="org-position-row">
             <td><span class="org-position-branch">└ 岗位</span><input class="table-input text-left" data-path="organization.departments.${i}.positions.${j}.name" data-type="text" value="${escapeHtml(position.name || '')}"></td>
             <td class="num"><input class="table-input" data-path="organization.departments.${i}.positions.${j}.headcount" data-type="number" type="number" step="1" value="${position.headcount ?? 0}"></td>
             <td class="num"><input class="table-input" data-path="organization.departments.${i}.positions.${j}.avgMonthlySalary" data-type="number" type="number" step="100" value="${position.avgMonthlySalary ?? 0}"></td>
-            <td class="num"><strong>${fmt(organizationPositionAnnualCost(position, organization), 1)}</strong></td>
+            <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="grossPayroll">${fmt(payroll.grossPayroll, 2)}</strong></td>
+            <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="employeeSocialInsurance">${fmt(payroll.employeeSocial, 2)}</strong></td>
+            <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="individualIncomeTax">${fmt(payroll.individualIncomeTax, 2)}</strong></td>
+            <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="netSalary">${fmt(payroll.netSalary, 2)}</strong></td>
+            <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="employerSocialInsurance">${fmt(payroll.employerSocial, 2)}</strong></td>
+            <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="annualCost">${fmt(payroll.companyCost, 2)}</strong></td>
             <td><input class="table-input text-left" data-path="organization.departments.${i}.positions.${j}.note" data-type="text" value="${escapeHtml(position.note || '')}"></td>
             <td class="num org-actions"><button class="btn btn-ghost btn-sm" type="button" data-remove-position="${i}" data-position-index="${j}">${ICONS.trash}</button></td>
-          </tr>`).join('')}
-        `; }).join('') || '<tr><td colspan="6" class="empty-table-cell">尚未设置部门和岗位</td></tr>'}
+          </tr>`; }).join('')}
+        `; }).join('') || '<tr><td colspan="11" class="empty-table-cell">尚未设置部门和岗位</td></tr>'}
       </tbody></table>
     </div>
-    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-department" type="button">${ICONS.plus}<span>新增部门</span></button><span>合计编制 <strong>${fmt(headcount)}</strong> 人｜年度薪资及社保 <strong>${fmt(salaryCost, 1)}</strong> 万元｜含招聘培训合计 <strong>${fmt(annualCost, 1)}</strong> 万元｜${model.operations?.staffCostMode === 'area' ? '当前未用于成本测算' : '已用于管理团队成本测算'}</span></div>
+    <div class="payroll-summary-grid">
+      <div><span>合计编制</span><strong data-payroll-summary="stableHeadcount">${fmt(headcount)}</strong><em>人</em></div>
+      <div><span>税前年度工资</span><strong data-payroll-summary="annualGrossPayroll">${fmt(payrollTotals.grossPayroll, 2)}</strong><em>万元</em></div>
+      <div><span>个人社保公积金</span><strong data-payroll-summary="annualEmployeeSocialInsurance">${fmt(payrollTotals.employeeSocial, 2)}</strong><em>万元</em></div>
+      <div><span>个人所得税</span><strong data-payroll-summary="annualIndividualIncomeTax">${fmt(payrollTotals.individualIncomeTax, 2)}</strong><em>万元</em></div>
+      <div><span>员工实发工资</span><strong data-payroll-summary="annualNetPayroll">${fmt(payrollTotals.netSalary, 2)}</strong><em>万元</em></div>
+      <div><span>单位社保公积金</span><strong data-payroll-summary="annualEmployerSocialInsurance">${fmt(payrollTotals.employerSocial, 2)}</strong><em>万元</em></div>
+      <div><span>企业人员成本</span><strong data-payroll-summary="companyCost">${fmt(payrollTotals.companyCost, 2)}</strong><em>万元</em></div>
+      <div class="highlight"><span>含招聘培训合计</span><strong data-payroll-summary="stableStaffCost">${fmt(annualCost, 2)}</strong><em>万元</em></div>
+    </div>
+    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-department" type="button">${ICONS.plus}<span>新增部门</span></button><span>招聘培训费 <strong data-payroll-summary="annualRecruitmentTrainingCost">${fmt(recruitmentTraining, 2)}</strong> 万元｜${model.operations?.staffCostMode === 'area' ? '当前未用于成本测算' : '已按企业人员成本及招聘培训费计入管理团队成本'}</span></div>
   </div>`;
 }
 
@@ -2481,6 +2588,7 @@ function refreshMarketingWeights() {
 
 function updateOperatingPreviewDom(result) {
   const breakdown = result?.operatingCostBreakdown || [];
+  updatePayrollPreviewDom(result);
   if (!breakdown.length) return;
   const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
   const values = new Map(breakdown.map(item => [item.name, Number(item.value || 0)]));
@@ -2499,6 +2607,41 @@ function updateOperatingPreviewDom(result) {
   if (totalEl) totalEl.textContent = `${fmt(total, 1)} 万元/年`;
 }
 
+function updatePayrollPreviewDom(result) {
+  if (!result) return;
+  const summary = result.summary || {};
+  const summaryValues = {
+    stableHeadcount: summary.stableHeadcount ?? 0,
+    annualGrossPayroll: summary.annualGrossPayroll ?? 0,
+    annualEmployeeSocialInsurance: summary.annualEmployeeSocialInsurance ?? 0,
+    annualIndividualIncomeTax: summary.annualIndividualIncomeTax ?? 0,
+    annualNetPayroll: summary.annualNetPayroll ?? 0,
+    annualEmployerSocialInsurance: summary.annualEmployerSocialInsurance ?? 0,
+    annualRecruitmentTrainingCost: summary.annualRecruitmentTrainingCost ?? 0,
+    companyCost: Number(summary.annualGrossPayroll || 0) + Number(summary.annualEmployerSocialInsurance || 0),
+    stableStaffCost: summary.stableStaffCost ?? 0,
+  };
+  document.querySelectorAll('[data-payroll-summary]').forEach(el => {
+    const value = summaryValues[el.dataset.payrollSummary];
+    if (value != null) el.textContent = fmt(value, el.dataset.payrollSummary === 'stableHeadcount' ? 0 : 2);
+  });
+  const departmentFields = ['grossPayroll', 'employeeSocialInsurance', 'individualIncomeTax', 'netSalary', 'employerSocialInsurance', 'annualCost'];
+  (result.organizationBreakdown || []).forEach((department, departmentIndex) => {
+    departmentFields.forEach(field => {
+      document.querySelectorAll(`[data-payroll-dept="${departmentIndex}"][data-payroll-field="${field}"]`).forEach(el => {
+        el.textContent = fmt(department[field] ?? 0, 2);
+      });
+    });
+    (department.positions || []).forEach((position, positionIndex) => {
+      departmentFields.forEach(field => {
+        document.querySelectorAll(`[data-payroll-position="${departmentIndex}:${positionIndex}"][data-payroll-field="${field}"]`).forEach(el => {
+          el.textContent = fmt(position[field] ?? 0, 2);
+        });
+      });
+    });
+  });
+}
+
 function bindOperationsBudgets() {
   const model = state.current.model;
   const budgetFile = document.getElementById('budget-file');
@@ -2506,7 +2649,7 @@ function bindOperationsBudgets() {
   document.getElementById('choose-budget-file')?.addEventListener('click', () => budgetFile.click());
   budgetFile?.addEventListener('change', () => budgetFile.files[0] && importOperatingBudget(budgetFile.files[0]));
   document.getElementById('add-department')?.addEventListener('click', () => {
-    model.organization ||= { socialInsuranceRate: 0.28, annualSalaryMonths: 12, recruitmentTrainingRate: 0.02, departments: [] };
+    model.organization ||= { socialInsuranceRate: 0.28, employeeSocialInsuranceRate: 0.105, individualIncomeTaxThresholdMonthly: 5000, specialAdditionalDeductionMonthly: 0, annualSalaryMonths: 12, recruitmentTrainingRate: 0.02, departments: [] };
     model.organization.departments ||= [];
     model.organization.departments.push({ name: '新增部门', note: '', positions: [{ name: '新增岗位', headcount: 1, avgMonthlySalary: 8000, note: '' }] });
     state.dirty = true; renderWorkspace(); scheduleLivePreview();
@@ -2789,7 +2932,7 @@ function renderOperationsStep() {
         ${textField('物业运营参考单价', 'operations.propertyOpsCost', { type: 'number', unit: '元/㎡/月', help: '仅在物业基础运营直接金额未填写时用于自动核算' })}
         ${textField('公共能耗参考单价', 'operations.energyCost', { type: 'number', unit: '元/㎡/月', help: '仅在公共能耗直接金额未填写时用于自动核算' })}
         ${selectField('人员成本来源', 'operations.staffCostMode', [{ value: 'organization', label: '按组织架构薪资倒推' }, { value: 'area', label: '按面积快速估算' }], { help: '推荐使用组织架构薪资倒推；面积估算仅用于前期快速判断' })}
-        ${staffCostMode === 'area' ? textField('商管团队成本', 'operations.staffCostPerSqm', { type: 'number', unit: '元/㎡/月' }) : `<div class="staff-cost-derived"><span>当前由人力资源倒推</span><strong>${fmt(organizationAnnual, 1)} 万元/年</strong><small>编制、月薪、年度薪资月数及社保变动后自动更新</small></div>`}
+        ${staffCostMode === 'area' ? textField('商管团队成本', 'operations.staffCostPerSqm', { type: 'number', unit: '元/㎡/月' }) : `<div class="staff-cost-derived"><span>当前由人力资源倒推</span><strong data-payroll-summary="stableStaffCost">${fmt(organizationAnnual, 2)} 万元/年</strong><small>按税前月薪、年度薪资月数、个人及单位社保公积金、个税和招聘培训费自动更新</small></div>`}
         ${textField('行政办公参考单价', 'operations.adminCostPerSqm', { type: 'number', unit: '元/㎡/月', help: '办公预算金额合计为0时才使用该参考单价' })}
         ${textField('日常维修参考费率', 'operations.repairRate', { type: 'number', unit: '%', scale: 0.01, help: '仅在未填写日常维修直接金额时使用' })}
         ${textField('保险参考费率', 'operations.insuranceRate', { type: 'number', unit: '%', scale: 0.01, help: '仅在未填写保险直接金额时使用' })}
@@ -3100,7 +3243,7 @@ function renderOperatingResultCards() {
       <h3>年度运营成本构成</h3>
       <div class="operating-result-kpis">
         <div><span>编制人数</span><strong>${fmt(s.stableHeadcount)} 人</strong></div>
-        <div><span>人员成本</span><strong>${fmt(s.stableStaffCost, 1)} 万/年</strong></div>
+        <div><span>企业人员成本</span><strong>${fmt(s.stableStaffCost, 2)} 万/年</strong></div>
         <div><span>办公行政</span><strong>${fmt(s.stableOfficeCost, 1)} 万/年</strong></div>
         <div><span>招商费用</span><strong>${fmt(s.stableLeasingCost, 1)} 万/年</strong></div>
         <div><span>管理费收入</span><strong>${fmt(s.stablePropertyFeeIncome, 1)} 万/年</strong></div>
@@ -3110,9 +3253,18 @@ function renderOperatingResultCards() {
       <div class="operating-cost-bars">${breakdown.map((item, i) => `<div class="operating-cost-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(2, Number(item.value || 0) / Math.max(total, 1) * 100)}%;background:${donutColor(i)}"></i></div><strong>${fmt(item.value, 1)}</strong><em>${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</em></div>`).join('')}</div>
       <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong>${fmt(total, 1)} 万元/年</strong></div>
     </div>
-    <div class="card">
+    <div class="card payroll-result-card">
       <h3>组织架构与人员成本</h3>
-      <div class="data-table-wrap" style="max-height:520px"><table class="data-table"><thead><tr><th>部门</th><th>岗位构成</th><th class="num">人数</th><th class="num">年度成本</th></tr></thead><tbody>${organization.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${(item.positions || []).map(position => `<span class="tag">${escapeHtml(position.name)}${Number(position.headcount) > 1 ? ` × ${fmt(position.headcount)}` : ''}</span>`).join(' ')}</td><td class="num">${fmt(item.headcount)}</td><td class="num">${fmt(item.annualCost, 1)}万</td></tr>`).join('')}</tbody></table></div>
+      <div class="payroll-result-summary">
+        <div><span>税前年度工资</span><strong>${fmt(s.annualGrossPayroll, 2)}</strong><em>万元</em></div>
+        <div><span>个人社保公积金</span><strong>${fmt(s.annualEmployeeSocialInsurance, 2)}</strong><em>万元</em></div>
+        <div><span>个人所得税</span><strong>${fmt(s.annualIndividualIncomeTax, 2)}</strong><em>万元</em></div>
+        <div><span>员工实发工资</span><strong>${fmt(s.annualNetPayroll, 2)}</strong><em>万元</em></div>
+        <div><span>单位社保公积金</span><strong>${fmt(s.annualEmployerSocialInsurance, 2)}</strong><em>万元</em></div>
+        <div><span>含招聘培训企业成本</span><strong>${fmt(s.stableStaffCost, 2)}</strong><em>万元</em></div>
+      </div>
+      <div class="data-table-wrap" style="max-height:520px"><table class="data-table payroll-result-table"><thead><tr><th>部门</th><th>岗位构成</th><th class="num">人数</th><th class="num">税前工资</th><th class="num">个人社保</th><th class="num">个税</th><th class="num">实发</th><th class="num">单位社保</th><th class="num">企业成本</th></tr></thead><tbody>${organization.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${(item.positions || []).map(position => `<span class="tag">${escapeHtml(position.name)}${Number(position.headcount) > 1 ? ` × ${fmt(position.headcount)}` : ''}</span>`).join(' ')}</td><td class="num">${fmt(item.headcount)}</td><td class="num">${fmt(item.grossPayroll, 2)}万</td><td class="num">${fmt(item.employeeSocialInsurance, 2)}万</td><td class="num">${fmt(item.individualIncomeTax, 2)}万</td><td class="num">${fmt(item.netSalary, 2)}万</td><td class="num">${fmt(item.employerSocialInsurance, 2)}万</td><td class="num"><strong>${fmt(item.annualCost, 2)}万</strong></td></tr>`).join('')}</tbody></table></div>
+      <span class="table-subnote">工资均为税前应发口径；社保公积金按税前月薪×12个月×配置比例估算；招聘培训费在企业人员成本之外另计。比例与缴费基数必须按项目属地政策复核。</span>
     </div>
   </div>
   <div class="card marketing-allocation-card">
