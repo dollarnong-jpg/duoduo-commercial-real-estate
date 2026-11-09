@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-propservice1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-period1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1048,6 +1048,7 @@ function operatingBudgetTemplate() {
     ['请在黄色或空白单元格中填写，不要修改工作表名称和表头。'],
     ['导入后会覆盖当前项目的组织架构、办公、招商、营销和维保预算；不填写的工作表保持原值。'],
     ['费用优先按金额填写，权重和占比由系统自动计算，无需手工凑100%。金额单位均为万元/年，工资单位为元/月。'],
+    ['办公预算和招商预算可按年或按月录入：按年录入时系统自动÷12得到月均；按月录入时自动×12得到年度金额。'],
     ['组织架构中的“税前应发基本月薪”是员工税前工资，不是实发工资。系统会继续计算个人社保公积金、个人所得税、实发工资、单位社保公积金和企业人员成本。'],
     ['社保公积金比例、个税起征点和专项附加扣除必须按项目属地最新政策及员工实际情况调整；模板默认值仅为测算示例。'],
     ['物业服务模式表可分别设置物业工程、保安、保洁为自营、第三方常驻外包或第三方非常驻服务；三种模式均以岗位成本为基础，第三方模式另计综合管理费。'],
@@ -1112,8 +1113,16 @@ function operatingBudgetTemplate() {
     [''],
     ['填写说明', '服务模式可填：自营、第三方常驻外包、第三方非常驻服务。', '', '', '非驻场折算比例只在第三方非常驻模式使用；综合管理费率建议包含管理费、利润、保险、装备、培训及税费。'],
   ], [20, 26, 24, 28, 90]);
-  addSheet(wb, '办公预算', [['费用项目', '年度金额（万元）', '说明'], ...OFFICE_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
-  addSheet(wb, '招商预算', [['费用项目', '年度金额（万元）', '说明'], ...LEASING_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
+  addSheet(wb, '办公预算', [['费用项目', '录入周期', '录入金额（万元/期）', '说明'], ...OFFICE_BUDGET_DEFS.map(([label]) => [label, '按年', 0, ''])] , [26, 16, 22, 50]);
+  addSheet(wb, '招商预算', [['费用项目', '录入周期', '录入金额（万元/期）', '说明'], ...LEASING_BUDGET_DEFS.map(([label]) => [label, '按年', 0, ''])] , [26, 16, 22, 50]);
+  addSheet(wb, '招商渠道核算', [
+    ['参数', '填写值', '单位', '说明'],
+    ['渠道及代理费核算方式', '按金额', '', '可填“按金额”或“按渠道面积和首年月租金”'],
+    ['渠道招商面积比例', 50, '%', '按项目总建筑面积计算渠道招商面积，例如2,000㎡×50%=1,000㎡'],
+    ['首年月租金单价', 0, '元/㎡/月', '填0时自动采用项目平均月租金'],
+    ['首年月租金倍数', 1, '个月', '1表示1个月租金，1.5表示1.5个月租金'],
+    ['说明', '渠道及代理费=项目总建筑面积×渠道面积比例×首年月租金单价×月租金倍数÷10000', '', '首开招商佣金已在项目投资中单列，如为同一笔合同请勿重复计入。'],
+  ], [30, 24, 18, 100]);
   addSheet(wb, '营销常规预算', [
     ['营销类别', '年度金额（万元）', '费用内容'],
     ['营销推广', 80, '节庆活动、主题推广、异业合作及日常营销执行'],
@@ -1223,21 +1232,41 @@ function parseOperatingBudgetWorkbook(base64, filename) {
     }
   }
 
-  function parseAmountSheet(sheetName, defs, target) {
+  const channelRows = getTemplateRows(wb, '招商渠道核算');
+  const channelHeader = findHeaderRow(channelRows, { label: ['参数'], value: ['填写值'] }, ['label', 'value']);
+  if (channelHeader >= 0) {
+    const indexes = headerIndexes(channelRows[channelHeader], { label: ['参数'], value: ['填写值'] });
+    for (const row of channelRows.slice(channelHeader + 1)) {
+      const label = normalizeHeader(rowValue(row, indexes, 'label'));
+      const raw = rowValue(row, indexes, 'value');
+      if (!label || raw === '') continue;
+      if (label.includes('核算方式')) leasingBudget.channelCalculationMode = normalizeHeader(raw).includes('面积') ? 'area_rent' : 'amount';
+      else if (label.includes('面积比例')) leasingBudget.channelAreaRatio = Math.min(1, Math.max(0, safeNumber(raw) / 100));
+      else if (label.includes('租金单价')) leasingBudget.channelRentPerSqmMonth = Math.max(0, safeNumber(raw));
+      else if (label.includes('租金倍数')) leasingBudget.channelCommissionMonths = Math.max(0, safeNumber(raw));
+    }
+  }
+
+  function parseAmountSheet(sheetName, defs, target, periodTarget = null) {
     const rows = getTemplateRows(wb, sheetName);
-    const header = findHeaderRow(rows, { name: ['费用项目', '维保项目', '营销类别', '开业专项'], amount: ['年度金额', '首年金额'] }, ['name', 'amount']);
+    const header = findHeaderRow(rows, { name: ['费用项目', '维保项目', '营销类别', '开业专项'], amount: ['录入金额', '年度金额', '首年金额'] }, ['name', 'amount']);
     if (header < 0) return;
-    const indexes = headerIndexes(rows[header], { name: ['费用项目', '维保项目', '营销类别', '开业专项'], amount: ['年度金额', '首年金额'], note: ['说明', '费用内容'] });
+    const indexes = headerIndexes(rows[header], { name: ['费用项目', '维保项目', '营销类别', '开业专项'], amount: ['录入金额', '年度金额', '首年金额'], period: ['录入周期', '周期'], note: ['说明', '费用内容'] });
     const keyByLabel = Object.fromEntries(defs.map(([label, key]) => [normalizeHeader(label), key]));
     for (const row of rows.slice(header + 1)) {
       const label = String(rowValue(row, indexes, 'name') || '').trim();
       const key = keyByLabel[normalizeHeader(label)];
       if (!key) continue;
-      target[key] = safeNumber(rowValue(row, indexes, 'amount'));
+      const rawPeriod = normalizeHeader(rowValue(row, indexes, 'period'));
+      const isMonthly = rawPeriod.includes('月') && !rawPeriod.includes('年');
+      target[key] = safeNumber(rowValue(row, indexes, 'amount')) * (isMonthly ? 12 : 1);
+      if (periodTarget) periodTarget[key] = isMonthly ? 'monthly' : 'annual';
     }
   }
-  parseAmountSheet('办公预算', OFFICE_BUDGET_DEFS, officeBudget);
-  parseAmountSheet('招商预算', LEASING_BUDGET_DEFS, leasingBudget);
+  officeBudget.inputPeriods = {};
+  leasingBudget.inputPeriods = {};
+  parseAmountSheet('办公预算', OFFICE_BUDGET_DEFS, officeBudget, officeBudget.inputPeriods);
+  parseAmountSheet('招商预算', LEASING_BUDGET_DEFS, leasingBudget, leasingBudget.inputPeriods);
   parseAmountSheet('维保预算', MAINTENANCE_BUDGET_DEFS, maintenanceBudget);
   const annualMarketingAmounts = {};
   const openingMarketingAmounts = {};
@@ -1300,6 +1329,10 @@ function exportExcel(result) {
     ['运营', '租金阶梯递增率', model.operations.rentStepRate], ['运营', '首年管理费单价', model.revenues.propertyFee],
     ['运营', '管理费递增方式', growthModeLabels[formulas.propertyFeeGrowthMode] || formulas.propertyFeeGrowthMode], ['运营', '管理费年递增率', model.operations.propertyFeeGrowth],
     ['运营', '管理费递增周期（阶梯）', model.operations.propertyFeeStepYears], ['运营', '管理费阶梯递增率', model.operations.propertyFeeStepRate],
+    ['运营成本', '办公行政年度金额（万元/年）', s.stableOfficeCost || 0], ['运营成本', '办公行政月均金额（万元/月）', s.monthlyOfficeCost || 0],
+    ['招商费用', '渠道核算方式', s.channelCalculationMode === 'area_rent' ? '渠道面积×首年月租金×倍数' : '直接金额'], ['招商费用', '渠道招商面积比例', s.channelAreaRatio || 0],
+    ['招商费用', '渠道招商面积（㎡）', s.channelArea || 0], ['招商费用', '采用首年月租金（元/㎡/月）', s.channelRentPerSqmMonth || 0],
+    ['招商费用', '首年月租金倍数', s.channelCommissionMonths || 0], ['招商费用', '渠道及代理费年度金额（万元/年）', s.annualChannelFee || 0], ['招商费用', '渠道及代理费月均（万元/月）', s.monthlyChannelFee || 0],
     ['运营成本参考', '运营标准', model.operations.opexPreset?.standard || 'standard'], ['运营成本参考', '管理模式', model.operations.opexPreset?.managementMode || 'mixed'],
     ['运营成本参考', '所在地参考', model.operations.opexPreset?.locationLabel || model.project.location],
     ...(result.propertyServiceBreakdown || []).map(item => ['物业服务', `${item.name}模式`, item.modeLabel || PROPERTY_SERVICE_MODE_LABELS[item.mode] || item.mode]),
@@ -1353,11 +1386,28 @@ function exportExcel(result) {
   setSheetColumnNumberFormat(propertyServiceWs, [3], '0');
   const officeBudgetTotal = (result.officeBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
   const leasingBudgetTotal = (result.leasingBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
-  addSheet(wb, '办公与招商预算', [
-    ['类别','费用项目','年度金额（万元）','自动权重'],
-    ...(result.officeBreakdown || []).map(x => ['办公行政', x.name, x.value, officeBudgetTotal ? Number(x.value || 0) / officeBudgetTotal : 0]),
-    ...(result.leasingBreakdown || []).map(x => ['招商费用', x.name, x.value, leasingBudgetTotal ? Number(x.value || 0) / leasingBudgetTotal : 0])
-  ], [16, 30, 20, 16]);
+  const officePeriods = model.officeBudget?.inputPeriods || {};
+  const leasingPeriods = model.leasingBudget?.inputPeriods || {};
+  const officeKeyByName = Object.fromEntries(OFFICE_BUDGET_DEFS.map(([label, key]) => [label, key]));
+  const leasingKeyByName = Object.fromEntries(LEASING_BUDGET_DEFS.map(([label, key]) => [label, key]));
+  const officeExportRows = (result.officeBreakdown || []).map(x => {
+    const key = officeKeyByName[x.name];
+    const period = officePeriods[key] === 'monthly' ? '按月' : '按年';
+    return ['办公行政', x.name, period, period === '按月' ? Number(x.value || 0) / 12 : x.value, Number(x.value || 0) / 12, x.value, officeBudgetTotal ? Number(x.value || 0) / officeBudgetTotal : 0, ''];
+  });
+  const leasingExportRows = (result.leasingBreakdown || []).map(x => {
+    const key = leasingKeyByName[x.name];
+    const formulaMode = key === 'channelFeeAnnual' && x.calculationMode === 'area_rent';
+    const period = formulaMode ? '面积公式' : leasingPeriods[key] === 'monthly' ? '按月' : '按年';
+    return ['招商费用', x.name, period, formulaMode || period === '按年' ? x.value : Number(x.value || 0) / 12, Number(x.value || 0) / 12, x.value, leasingBudgetTotal ? Number(x.value || 0) / leasingBudgetTotal : 0, formulaMode ? `渠道面积${Number(x.channelArea || 0).toFixed(2)}㎡；首年月租金${Number(x.rentPerSqmMonth || 0).toFixed(2)}元/㎡；${Number(x.commissionMonths || 0).toFixed(2)}倍` : ''];
+  });
+  const officeLeasingWs = addSheet(wb, '办公与招商预算', [
+    ['类别','费用项目','录入周期','录入金额（万元/期）','月度金额（万元/月）','年度金额（万元/年）','自动权重','说明'],
+    ...officeExportRows,
+    ...leasingExportRows,
+  ], [16, 30, 14, 22, 22, 22, 16, 60]);
+  setSheetColumnNumberFormat(officeLeasingWs, [3, 4, 5], '0.00');
+  setSheetColumnNumberFormat(officeLeasingWs, [6], '0.00%');
   addSheet(wb, '年度营销预算分解', [
     ['常规年度营销预算'],
     ['营销类别','年度金额（万元）','自动权重','费用内容'],
@@ -1405,6 +1455,8 @@ function exportExcel(result) {
     ['人员', '企业人员成本及招聘培训', '企业人员成本=税前年度工资+单位社保公积金；含招聘培训成本=企业人员成本×(1+招聘培训费率)', ['SUM','IF'], '企业实际承担的是税前工资、单位社保公积金，以及另计的招聘培训支出；个人社保和个税从员工税前工资中代扣，不重复增加企业成本。', '将组织架构倒推的企业人员成本与属地薪酬水平、招聘计划和培训预算交叉核对。', 'organization.recruitmentTrainingRate', model.organization?.recruitmentTrainingRate, '企业人员成本直接进入年度运营成本和NOI。'],
     ['物业', '物业服务模式与第三方管理费', '自营=岗位基础成本+自营招聘培训；第三方常驻=岗位基础成本×(1+综合管理费率)；第三方非常驻=岗位基础成本×非驻场折算比例×(1+综合管理费率)', ['IF','SUM','MIN'], '系统先按部门/岗位自动归集物业工程、保安、保洁岗位，以岗位工资和单位社保成本为基础，再按服务模式增加招聘培训费或第三方综合管理费。', '自营适合直接管理团队；第三方常驻适合稳定驻场服务；非常驻适合巡检和专项服务。第三方综合管理费率应按合同覆盖管理费、利润、保险、装备、培训及税费。', 'propertyService.security.managementFeeRate', model.propertyService?.security?.managementFeeRate, '服务模式直接影响人员与服务成本、NOI、NPV和IRR。'],
     ['人员', '人员成本来源', '按组织架构=Σ企业人员成本+招聘培训费；按面积=总建筑面积×人员成本单价×12', ['IF','SUM'], '选择组织架构模式后，管理团队及物业人员成本由HR薪资明细倒推。', '前期可用面积快速估算，招商运营阶段应使用组织架构薪资成本。', 'operations.staffCostMode', model.operations?.staffCostMode || 'organization', '决定管理团队人员成本采用薪资倒推还是面积估算。'],
+    ['成本录入', '年度与月度金额换算', '按年录入：月度金额=录入金额÷12；年度金额=录入金额。按月录入：年度金额=录入金额×12；月度金额=录入金额', ['IF','SUM'], '办公预算和招商预算可逐项选择年度或月度录入，系统统一转成年化金额参与NOI和现金流。', '同一张表可混合年度和月度录入。切换周期只换算显示口径，不改变年化金额；重新输入金额后才会改变年化值。', 'officeBudget.inputPeriods', '逐项设置', '影响运营成本、NOI、NPV和IRR。'],
+    ['招商', '渠道面积与首年月租金佣金', '渠道招商面积=项目总建筑面积×渠道面积比例；渠道及代理费=渠道招商面积×首年月租金单价×月租金倍数÷10000', ['IF','SUM'], '例如项目总建筑面积2,000㎡、渠道比例50%，渠道面积为1,000㎡；再乘合同首年月租金单价和佣金月数。', '渠道面积比例按实际招商委托范围设置；首年月租金单价填0时自动采用项目当前平均租金。首开招商佣金已在投资中单列，如为同一合同避免重复计入。', 'leasingBudget.channelCalculationMode', model.leasingBudget?.channelCalculationMode, '渠道佣金会直接增加年度招商费用和运营成本。'],
     ['办公', '年度办公行政成本', '租金+水电通讯+IT软件+办公用品+差旅招待+其他', ['SUM'], '逐项汇总年度办公行政预算。', '按行政预算和已签合同调整；办公室租金、IT服务和差旅标准应与团队规模匹配。', 'officeBudget.officeRentAnnual', model.officeBudget?.officeRentAnnual, '办公成本直接扣减NOI。'],
     ['招商', '年度招商费用', '渠道代理+活动+物料+差旅+平台+其他；续租佣金按周期另计', ['SUM','MOD','IF'], '年度固定招商预算与续租佣金分开计算，避免重复。', '按招商策略和渠道政策填写；首开佣金、年度招商费用和续租佣金分别管理。', 'leasingBudget.channelFeeAnnual', model.leasingBudget?.channelFeeAnnual, '招商费用直接扣减运营现金流。'],
     ['营销', '年度营销金额与自动权重', '常规年度=营销推广+商业美陈+媒体宣传+会员营销；首年=常规年度+导视导览+开业美陈；自动权重=单项金额÷对应合计', ['SUM','IF'], '营销费用全部由用户按金额录入，系统不再按权重倒推预算。常规四项每年发生，开业两项只在运营第1年计入。', '直接按年度推广计划、合同和报价填写金额。权重用于检查结构，不需要手工调整；某项金额变化后，合计、占比、NOI和现金流会自动重算。', 'marketingBudget.annualItems', '按金额录入', '营销费用直接扣减NOI；开业专项只影响首年现金流。'],

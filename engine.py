@@ -225,6 +225,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "officeSuppliesAnnual": 8.0,
             "travelEntertainmentAnnual": 15.0,
             "otherAnnual": 10.0,
+            "inputPeriods": {},
         },
         "leasingBudget": {
             "channelFeeAnnual": 120.0,
@@ -233,6 +234,11 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "travelAnnual": 10.0,
             "platformAnnual": 8.0,
             "otherAnnual": 5.0,
+            "inputPeriods": {},
+            "channelCalculationMode": "amount",
+            "channelAreaRatio": 0.50,
+            "channelRentPerSqmMonth": 0.0,
+            "channelCommissionMonths": 1.0,
         },
         "marketingBudget": {
             "amountMode": True,
@@ -737,18 +743,6 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     structured_office_cost = sum(item["value"] for item in office_breakdown)
     for item in office_breakdown:
         item["share"] = safe_div(item["value"], structured_office_cost)
-    leasing_items = [
-        ("渠道及代理费", "channelFeeAnnual"),
-        ("招商活动", "eventsAnnual"),
-        ("招商物料", "materialsAnnual"),
-        ("招商差旅", "travelAnnual"),
-        ("招商平台及系统", "platformAnnual"),
-        ("其他招商费用", "otherAnnual"),
-    ]
-    leasing_breakdown = [{"name": name, "value": max(0.0, as_float(leasing_budget.get(key)))} for name, key in leasing_items]
-    structured_leasing_cost = sum(item["value"] for item in leasing_breakdown)
-    for item in leasing_breakdown:
-        item["share"] = safe_div(item["value"], structured_leasing_cost)
     maintenance_items = [
         ("电梯维保", "elevatorAnnual"),
         ("暖通空调维保", "hvacAnnual"),
@@ -893,6 +887,44 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             monthly = sum(shop["monthlyRevenue"] for shop in group_shops)
             floor_calc.append({"building": building, "name": floor_name, "buildingArea": sum(shop["buildingArea"] for shop in group_shops), "leasableArea": sum(shop["leasableArea"] for shop in group_shops), "rentArea": rent_area, "rentAreaBasis": "mixed", "avgRent": safe_div(monthly, rent_area), "monthlyRent": sum(shop["monthlyRent"] for shop in group_shops), "monthlyConcession": sum(shop["concessionRevenue"] for shop in group_shops), "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, rent_area)})
     land_area = as_float(project.get("landArea"))
+
+    leasing_items = [
+        ("渠道及代理费", "channelFeeAnnual"),
+        ("招商活动", "eventsAnnual"),
+        ("招商物料", "materialsAnnual"),
+        ("招商差旅", "travelAnnual"),
+        ("招商平台及系统", "platformAnnual"),
+        ("其他招商费用", "otherAnnual"),
+    ]
+    channel_mode = str(leasing_budget.get("channelCalculationMode") or "amount")
+    if channel_mode not in {"amount", "area_rent"}:
+        channel_mode = "amount"
+    channel_area_ratio = min(1.0, max(0.0, as_float(leasing_budget.get("channelAreaRatio"), 0.50)))
+    channel_area = gba * channel_area_ratio
+    project_average_rent = safe_div(total_monthly_revenue, total_rent_area)
+    channel_rent_override = max(0.0, as_float(leasing_budget.get("channelRentPerSqmMonth")))
+    channel_reference_rent = channel_rent_override if channel_rent_override > 0 else project_average_rent
+    channel_commission_months = max(0.0, as_float(leasing_budget.get("channelCommissionMonths"), 1.0))
+    channel_area_fee = channel_area * channel_reference_rent * channel_commission_months / 10000
+    channel_fee_annual = channel_area_fee if channel_mode == "area_rent" else max(0.0, as_float(leasing_budget.get("channelFeeAnnual")))
+    leasing_breakdown = []
+    for name, key in leasing_items:
+        amount = channel_fee_annual if key == "channelFeeAnnual" else max(0.0, as_float(leasing_budget.get(key)))
+        item = {"name": name, "value": amount}
+        if key == "channelFeeAnnual":
+            item.update({
+                "calculationMode": channel_mode,
+                "areaRatio": channel_area_ratio,
+                "channelArea": channel_area,
+                "rentPerSqmMonth": channel_reference_rent,
+                "rentOverride": channel_rent_override,
+                "commissionMonths": channel_commission_months,
+                "monthlyEquivalent": amount / 12,
+            })
+        leasing_breakdown.append(item)
+    structured_leasing_cost = sum(item["value"] for item in leasing_breakdown)
+    for item in leasing_breakdown:
+        item["share"] = safe_div(item["value"], structured_leasing_cost)
 
     land_price = max(0.0, as_float(project.get("landPrice")))
     deed_tax = land_price * as_float(taxes.get("deedTax"))
@@ -1350,6 +1382,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_outsourced_management_fee = as_float(stable_row.get("outsourcedManagementFee"))
     stable_active_recruitment_training = as_float(stable_row.get("recruitmentTrainingCost"))
     stable_service_total = sum(as_float(item.get("serviceCost")) for item in property_service_breakdown)
+    channel_leasing_item = next((item for item in leasing_breakdown if item.get("name") == "渠道及代理费"), {})
+    stable_channel_fee_annual = as_float(channel_leasing_item.get("value"))
     marketing_allocation = []
     opening_marketing_allocation = []
     if bool(marketing_budget.get("amountMode", True)):
@@ -1496,7 +1530,15 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "annualCleaningServiceCost": next((as_float(item.get("serviceCost")) for item in property_service_breakdown if item.get("key") == "cleaning"), 0.0),
             "annualPropertyServiceTotal": stable_service_total,
             "stableOfficeCost": stable_office_cost,
+            "monthlyOfficeCost": stable_office_cost / 12,
             "stableLeasingCost": stable_leasing_cost,
+            "annualChannelFee": stable_channel_fee_annual,
+            "monthlyChannelFee": stable_channel_fee_annual / 12,
+            "channelCalculationMode": channel_leasing_item.get("calculationMode", "amount"),
+            "channelArea": as_float(channel_leasing_item.get("channelArea")),
+            "channelAreaRatio": as_float(channel_leasing_item.get("areaRatio")),
+            "channelRentPerSqmMonth": as_float(channel_leasing_item.get("rentPerSqmMonth")),
+            "channelCommissionMonths": as_float(channel_leasing_item.get("commissionMonths")),
             "stableMarketingCost": stable_marketing_cost,
             "annualMarketingBudget": annual_marketing_total,
             "openingMarketingItemsCost": opening_marketing_total,

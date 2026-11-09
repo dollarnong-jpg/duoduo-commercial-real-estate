@@ -568,6 +568,21 @@ a { color: inherit; }
 .property-service-result-row > div:not(.service-result-title) > span { display:block; color:var(--muted); font-size:var(--fs-8); }
 .property-service-result-row > div:not(.service-result-title) > strong { display:block; margin-top:4px; color:var(--navy); font-size:var(--fs-10); }
 .property-service-result-row > div.highlight { background:#fbf5e8; border-radius:7px; padding:7px 8px; border-left-color:#d9c38e; }
+.channel-calculation-card { margin:12px 0; padding:13px; border:1px solid #d8e5de; border-radius:11px; background:#f8fbf9; }
+.channel-calculation-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.channel-calculation-head > div { min-width:0; }
+.channel-calculation-head strong { display:block; color:var(--navy); font-size:var(--fs-12); }
+.channel-calculation-head span { display:block; margin-top:3px; color:var(--muted); font-size:var(--fs-8); line-height:1.45; }
+.channel-calculation-head .select { flex:0 0 260px; width:260px; }
+.channel-calculation-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:12px; }
+.channel-calculation-results { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:10px; }
+.channel-calculation-results > div { padding:9px 10px; border:1px solid #e1e9e5; border-radius:9px; background:#fff; }
+.channel-calculation-results > div.highlight { border-color:#d9c38e; background:#fbf5e8; }
+.channel-calculation-results span { display:block; color:var(--muted); font-size:var(--fs-8); }
+.channel-calculation-results strong { display:inline-block; margin-top:4px; color:var(--navy); font-size:var(--fs-12); }
+.channel-calculation-results em { margin-left:3px; color:var(--muted); font-size:var(--fs-8); font-style:normal; }
+.channel-amount-mode-note { margin-top:11px; padding:9px 10px; border-radius:8px; background:#edf5f1; color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
+.formula-period-tag { display:inline-flex; padding:4px 8px; border-radius:999px; background:var(--green-soft); color:var(--green); font-size:var(--fs-8); font-weight:700; }
 .org-structure-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0 0; padding:10px 12px; border:1px solid #d8e5de; border-radius:10px; background:#f4f9f6; }
 .org-structure-tools span { color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
 .org-structure-tools .btn { flex:0 0 auto; }
@@ -846,6 +861,7 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .budget-table .table-input { width:100%; min-width:70px; }
 .budget-table .text-left { min-width:130px; text-align:left; }
 .budget-table td strong { color:var(--navy); font-size: var(--fs-10); }
+.cost-method-label { display:block; margin-top:4px; color:var(--muted); font-size:var(--fs-8); line-height:1.4; }
 .budget-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:11px; color:var(--muted); font-size: var(--fs-10); }
 .budget-toolbar strong { color:var(--navy); font-size: var(--fs-12); }
 .auto-weight { display:inline-flex; align-items:center; justify-content:center; min-width:64px; padding:5px 8px; border-radius:999px; background:var(--green-soft); color:var(--green); font-size:var(--fs-9); font-weight:700; }
@@ -899,8 +915,8 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .payroll-result-card { grid-column:1 / -1; }
 .marketing-allocation-card { margin-bottom:16px; }
 @media (max-width:760px) { .payroll-summary-grid { grid-template-columns:1fr 1fr; } }
-@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } }
-@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } }
+@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } }
+@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } }
 .market-detection-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:9px; margin:18px 0; }
 .market-detection-stats > div { padding:12px; border-radius:11px; border:1px solid var(--line); background:#fffdf9; }
 .market-detection-stats span { display:block; color:var(--muted); font-size: var(--fs-8); }

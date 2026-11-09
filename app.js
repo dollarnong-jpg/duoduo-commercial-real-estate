@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-propservice1';
+import './backend.js?v=20261110-period1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -209,6 +209,10 @@ for (const service of PROPERTY_SERVICE_DEFINITIONS) {
     role: '仅第三方常驻或非常驻模式使用。该费率应结合物业服务合同，覆盖管理费、利润、保险、培训、装备及税费。'
   };
 }
+FIELD_FORMULAS['leasingBudget.channelCalculationMode'] = { title: '渠道及代理费核算方式', formula: '按金额：渠道费=直接录入金额；按面积：渠道费=总建筑面积×渠道面积比例×首年月租金单价×月租金倍数÷10000', functions: ['IF','SUM'], role: '用于区分固定代理费和按招商面积及租金计算的渠道佣金。' };
+FIELD_FORMULAS['leasingBudget.channelAreaRatio'] = { title: '渠道招商面积比例', formula: '渠道招商面积 = 项目总建筑面积 × 渠道招商面积比例', functions: ['SUM'], role: '例如项目总建筑面积2,000㎡、渠道比例50%，则渠道招商面积为1,000㎡。' };
+FIELD_FORMULAS['leasingBudget.channelRentPerSqmMonth'] = { title: '渠道首年月租金单价', formula: '首年月租金总额 = 渠道招商面积 × 首年月租金单价 × 月租金倍数', functions: ['SUM'], role: '填0时系统自动采用项目当前平均月租金；也可填写合同约定的渠道租金单价。' };
+FIELD_FORMULAS['leasingBudget.channelCommissionMonths'] = { title: '渠道月租金倍数', formula: '渠道佣金 = 渠道招商面积 × 首年月租金单价 × 月租金倍数 ÷ 10000', functions: ['SUM'], role: '1倍表示1个月租金，1.5倍表示1.5个月租金。' };
 const FUNCTION_DEFINITIONS = {
   'IF': { syntax: 'IF(条件, 条件成立时的值, 条件不成立时的值)', meaning: '条件判断函数。系统先判断条件，再选择对应的计算结果。', example: 'IF(运营年=1, 首年出租率, 稳定期出租率)', note: '调整出租率、稳定年或计租方式时，首先会检查 IF 的条件和边界。' },
   'SUM': { syntax: 'SUM(数值1, 数值2, …) 或 Σ', meaning: '把多个分项金额或比率相加，形成合计。', example: '项目总投资 = SUM(土地, 工程, 装修, 预备费, 开办费, 流动资金)', note: '漏项会直接造成投资或收入低估；新增费用时应检查是否已纳入对应 SUM。' },
@@ -272,12 +276,12 @@ const FORMULA_GUIDES = {
     adjust: '分别核对土地和物业租赁合同的计价方式、面积、单价或月租金总额、支付月数、递增方式、递增率、免租期、解约责任和发票税率。按面积计价时，应确保面积口径与合同一致。'
   },
   office: {
-    how: '将办公室租金、水电通讯、IT软件、办公用品、差旅招待和其他行政费用逐项按金额相加，形成年度办公行政成本；每项的自动权重=单项金额÷办公预算合计。',
-    adjust: '优先使用年度行政预算或已签合同。办公室租金和人员编制、办公面积要匹配；系统软件和IT费用应与数字化运营计划一致。只改金额，不要手工调整占比。'
+    how: '每项办公费用可选择按年或按月录入。按年录入时月均=年度÷12；按月录入时年度=月度×12。系统按年化金额汇总办公行政成本，并计算每项权重。',
+    adjust: '优先使用年度行政预算或已签合同。可在同一张表中混合使用年度和月度口径；切换录入周期只改变显示口径，重新输入金额才改变年化值。'
   },
   leasing: {
-    how: '年度招商费用由渠道代理费、招商活动、招商物料、招商差旅、平台系统和其他费用按金额相加；每项自动权重=单项金额÷年度招商预算；续租佣金按续租周期另行计算。',
-    adjust: '按招商策略和渠道政策填写金额。首开招商佣金、年度招商费用和续租佣金要分开，避免重复计算；招商预算应与开业率、出租率和租户结构目标匹配。'
+    how: '招商费用支持按年或按月录入。渠道及代理费可直接填金额，也可按“项目总建筑面积×渠道面积比例×首年月租金单价×月租金倍数”计算；其他招商项目按年化金额汇总，权重自动反算。',
+    adjust: '渠道面积比例按项目总建筑面积设置；首年月租金单价填0时自动采用项目当前平均租金。首开招商佣金已在投资中单列，如本表为同一笔渠道合同，应避免重复计入。'
   },
   marketing: {
     how: '常规年度直接按金额录入营销推广、商业美陈、媒体宣传、会员营销四项，系统汇总年度营销总额；每项自动权重=单项金额÷四项合计。开业第1年再额外加入导视导览和开业美陈两项专项金额。',
@@ -2515,7 +2519,87 @@ function renderPropertyServiceSection(model, preview) {
   </div>`;
 }
 
+function projectGrossBuildingArea(model) {
+  const project = model?.project || {};
+  const floors = model?.floors || [];
+  const shops = model?.shops || [];
+  return Number(project.gbaOverride || 0)
+    || floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0)
+    || shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0) * (1 + Number(project.commonAreaFactor || 0));
+}
+
+function estimatedProjectAverageRent(model, preview) {
+  const previewRent = Number(preview?.summary?.averageRent || 0);
+  if (previewRent > 0) return previewRent;
+  const categoryRent = new Map((model.categories || []).map(item => [item.name, Number(item.rent || 0)]));
+  const shops = model.shops || [];
+  if (shops.length) {
+    let area = 0;
+    let rentValue = 0;
+    shops.forEach(shop => {
+      const basis = resolvedRentAreaBasis(shop, model);
+      const shopArea = basis === 'building' ? Number(shop.buildingArea || 0) : Number(shop.leasableArea || 0);
+      const rent = shop.rentOverride != null && Number(shop.rentOverride) > 0 ? Number(shop.rentOverride) : Number(categoryRent.get(shop.category) || 0);
+      area += shopArea;
+      rentValue += shopArea * rent;
+    });
+    if (area > 0 && rentValue > 0) return rentValue / area;
+  }
+  let floorArea = 0;
+  let floorRentValue = 0;
+  (model.floors || []).forEach(floor => {
+    const basis = resolvedRentAreaBasis(floor, model);
+    const area = basis === 'building' ? Number(floor.buildingArea || 0) : Number(floor.leasableArea || 0);
+    floorArea += area;
+    floorRentValue += area * Number(floor.avgRent || 0);
+  });
+  return floorArea > 0 ? floorRentValue / floorArea : 0;
+}
+
+function leasingBudgetAnalysis(model, preview) {
+  const leasing = model.leasingBudget || (model.leasingBudget = {});
+  const channelMode = leasing.channelCalculationMode === 'area_rent' ? 'area_rent' : 'amount';
+  const areaRatio = Math.min(1, Math.max(0, Number(leasing.channelAreaRatio ?? 0.50)));
+  const gba = projectGrossBuildingArea(model);
+  const channelArea = gba * areaRatio;
+  const averageRent = estimatedProjectAverageRent(model, preview);
+  const rentOverride = Math.max(0, Number(leasing.channelRentPerSqmMonth || 0));
+  const referenceRent = rentOverride > 0 ? rentOverride : averageRent;
+  const commissionMonths = Math.max(0, Number(leasing.channelCommissionMonths ?? 1));
+  const areaFormulaFee = channelArea * referenceRent * commissionMonths / 10000;
+  const channelFeeAnnual = channelMode === 'area_rent' ? areaFormulaFee : Math.max(0, Number(leasing.channelFeeAnnual || 0));
+  const otherAnnual = ['eventsAnnual', 'materialsAnnual', 'travelAnnual', 'platformAnnual', 'otherAnnual']
+    .reduce((sum, key) => sum + Math.max(0, Number(leasing[key] || 0)), 0);
+  return {
+    channelMode,
+    areaRatio,
+    gba,
+    channelArea,
+    averageRent,
+    referenceRent,
+    commissionMonths,
+    areaFormulaFee,
+    channelFeeAnnual,
+    monthlyChannelFee: channelFeeAnnual / 12,
+    totalAnnual: channelFeeAnnual + otherAnnual,
+  };
+}
+
+function budgetInputPeriod(container, key) {
+  return container?.inputPeriods?.[key] === 'monthly' ? 'monthly' : 'annual';
+}
+
+function budgetPeriodAmount(annualAmount, period) {
+  return period === 'monthly' ? Number(annualAmount || 0) / 12 : Number(annualAmount || 0);
+}
+
+function budgetPeriodOptions(selected) {
+  return `<option value="annual" ${selected === 'annual' ? 'selected' : ''}>按年录入</option><option value="monthly" ${selected === 'monthly' ? 'selected' : ''}>按月录入</option>`;
+}
+
 function renderOfficeBudgetSection(model) {
+  const officeBudget = model.officeBudget || (model.officeBudget = {});
+  officeBudget.inputPeriods ||= {};
   const items = [
     { label: '办公室租金', key: 'officeRentAnnual', note: '办公室、办公场地及配套租金' },
     { label: '水电及通讯费', key: 'utilitiesAnnual', note: '办公水电、网络、电话及邮寄' },
@@ -2524,24 +2608,29 @@ function renderOfficeBudgetSection(model) {
     { label: '差旅及业务招待', key: 'travelEntertainmentAnnual', note: '差旅、接待、业务拓展' },
     { label: '其他办公费用', key: 'otherAnnual', note: '培训、团建及其他行政支出' },
   ];
-  const total = items.reduce((sum, item) => sum + Number(model.officeBudget?.[item.key] || 0), 0);
+  const total = items.reduce((sum, item) => sum + Number(officeBudget[item.key] || 0), 0);
   return `<div class="form-section budget-section">
     <div class="section-title">办公及行政费用</div>
-    <div class="section-note">全部按年度金额录入。自动权重由“单项金额 ÷ 办公行政预算合计”计算，作为结构分析结果，不需要手工凑100%。</div>
-    ${formulaPanel('办公及行政费用公式', '办公行政成本 = 办公室租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他办公费用\n自动权重 = 单项年度金额 ÷ 办公行政成本合计', ['SUM'], '优先按年度行政预算或已签合同填写金额；调整后直接进入运营成本和NOI。')}
+    <div class="section-note">每项可选择“按年录入”或“按月录入”。系统统一换算为年度金额进入成本测算，同时展示月度金额；自动权重按年化金额计算。</div>
+    ${formulaPanel('办公及行政费用月度/年度换算公式', '按年录入：月度金额 = 录入金额 ÷ 12；年度金额 = 录入金额\n按月录入：年度金额 = 录入金额 × 12；月度金额 = 录入金额\n办公行政成本 = 办公室租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他办公费用\n自动权重 = 单项年度金额 ÷ 办公行政成本合计', ['SUM','IF'], '同一项目可以混合使用年度和月度录入。切换周期只改变显示口径，不改变已存的年化总额；随后重新输入金额才会改年化值。')}
     <div class="data-table-wrap budget-table-wrap">
-      <table class="data-table budget-table" data-share-table><thead><tr><th>费用项目</th><th class="num">年度金额（万元）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+      <table class="data-table budget-table budget-period-table" data-share-table><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（万元/期）</th><th class="num">月度金额（万元/月）</th><th class="num">年度金额（万元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
         ${items.map(item => {
-          const amount = Number(model.officeBudget?.[item.key] || 0);
-          return `<tr><td><strong>${escapeHtml(item.label)}</strong></td><td class="num"><input class="table-input" data-path="officeBudget.${item.key}" data-type="number" type="number" step="0.1" value="${amount}"></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? amount / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
+          const annual = Number(officeBudget[item.key] || 0);
+          const period = budgetInputPeriod(officeBudget, item.key);
+          const entered = budgetPeriodAmount(annual, period);
+          return `<tr data-annualized-row data-annual-value="${annual}"><td><strong>${escapeHtml(item.label)}</strong><small class="cost-method-label">金额录入 · 年/月换算</small></td><td><select class="table-select period-select" data-path="officeBudget.inputPeriods.${item.key}" data-type="text" data-budget-period="true">${budgetPeriodOptions(period)}</select></td><td class="num"><input class="table-input" data-path="officeBudget.${item.key}" data-type="number" data-annualize="true" data-period-path="officeBudget.inputPeriods.${item.key}" type="number" step="0.01" value="${roundDisplayValue(entered, 2)}"></td><td class="num"><strong data-budget-monthly>${fmt(annual / 12, 2)}</strong></td><td class="num"><strong data-budget-annual>${fmt(annual, 2)}</strong></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? annual / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
         }).join('')}
       </tbody></table>
     </div>
-    <div class="budget-toolbar"><span>办公及行政费用合计</span><span><strong data-share-total>${fmt(total, 1)}</strong> 万元/年</span></div>
+    <div class="budget-toolbar"><span>办公及行政费用合计</span><span><strong data-share-total>${fmt(total, 2)}</strong> 万元/年｜月均 <strong data-budget-total-monthly>${fmt(total / 12, 2)}</strong> 万元/月</span></div>
   </div>`;
 }
 
-function renderLeasingBudgetSection(model) {
+function renderLeasingBudgetSection(model, preview) {
+  const leasingBudget = model.leasingBudget || (model.leasingBudget = {});
+  leasingBudget.inputPeriods ||= {};
+  const channel = leasingBudgetAnalysis(model, preview);
   const items = [
     { label: '渠道及代理费', key: 'channelFeeAnnual', note: '渠道佣金、代理服务及品牌推荐' },
     { label: '招商活动', key: 'eventsAnnual', note: '招商推介会、品牌对接及路演' },
@@ -2550,20 +2639,44 @@ function renderLeasingBudgetSection(model) {
     { label: '招商平台及系统', key: 'platformAnnual', note: '招商数据库、线上平台及系统服务' },
     { label: '其他招商费用', key: 'otherAnnual', note: '其他年度招商专项支出' },
   ];
-  const total = items.reduce((sum, item) => sum + Number(model.leasingBudget?.[item.key] || 0), 0);
+  const total = channel.totalAnnual;
+  const channelPeriod = budgetInputPeriod(leasingBudget, 'channelFeeAnnual');
+  const channelEntered = budgetPeriodAmount(Number(leasingBudget.channelFeeAnnual || 0), channelPeriod);
   return `<div class="form-section budget-section">
     <div class="section-title">年度招商费用预算</div>
-    <div class="section-note">本区域全部按年度金额录入；首开招商佣金在投资测算中单列，续租佣金按周期另计。自动权重仅用于检查费用结构。</div>
-    ${formulaPanel('年度招商费用公式', '招商费用 = 渠道代理费 + 招商活动 + 招商物料 + 招商差旅 + 招商平台系统 + 其他\n自动权重 = 单项年度金额 ÷ 年度招商预算合计\n续租佣金 = 月租金 × 续租佣金月数 × 当年出租率', ['SUM','MOD','IF'], '按招商计划和渠道政策填写金额；续租佣金在运营期周期性发生，避免与年度固定招商预算重复。')}
+    <div class="section-note">招商费用可按年或按月录入。渠道及代理费还支持按“渠道招商面积 × 首年月租金 × 月租金倍数”核算；首开招商佣金已在项目投资中单列，如本表为同一笔合同，请勿重复计入。</div>
+    ${formulaPanel('招商费用、月度/年度换算与渠道面积佣金公式', '按年录入：月度金额 = 录入金额 ÷ 12；年度金额 = 录入金额\n按月录入：年度金额 = 录入金额 × 12；月度金额 = 录入金额\n渠道招商面积 = 项目总建筑面积 × 渠道招商面积比例\n渠道及代理费 = 渠道招商面积 × 首年月租金单价 × 月租金倍数 ÷ 10000\n招商费用 = 渠道代理费 + 招商活动 + 招商物料 + 招商差旅 + 招商平台系统 + 其他\n自动权重 = 单项年度金额 ÷ 年度招商预算合计', ['SUM','IF','MOD'], '渠道面积比例按项目总建筑面积设置；首年月租金单价填0时自动采用项目当前平均月租金。月租金倍数示例：1倍=1个月租金，1.5倍=1.5个月租金。')}
+    <div class="channel-calculation-card">
+      <div class="channel-calculation-head"><div><strong>渠道及代理费核算方式</strong><span>按金额直接录入，或按渠道面积和首年月租金自动计算</span></div><select class="select" data-path="leasingBudget.channelCalculationMode" data-type="text" data-channel-mode="true"><option value="amount" ${channel.channelMode === 'amount' ? 'selected' : ''}>直接按金额录入</option><option value="area_rent" ${channel.channelMode === 'area_rent' ? 'selected' : ''}>按渠道面积×首年月租金×倍数</option></select></div>
+      ${channel.channelMode === 'area_rent' ? `<div class="channel-calculation-grid">
+        <label class="service-control"><span>渠道招商面积比例</span><div class="input-affix compact"><input class="table-input" data-path="leasingBudget.channelAreaRatio" data-type="number" data-scale="0.01" type="number" step="1" value="${roundDisplayValue(channel.areaRatio * 100, 2)}"><span>%</span></div></label>
+        <label class="service-control"><span>首年月租金单价（0=自动）</span><div class="input-affix compact"><input class="table-input" data-path="leasingBudget.channelRentPerSqmMonth" data-type="number" type="number" step="0.01" value="${roundDisplayValue(Number(leasingBudget.channelRentPerSqmMonth || 0), 2)}"><span>元/㎡/月</span></div></label>
+        <label class="service-control"><span>首年月租金倍数</span><div class="input-affix compact"><input class="table-input" data-path="leasingBudget.channelCommissionMonths" data-type="number" type="number" step="0.1" value="${roundDisplayValue(Number(leasingBudget.channelCommissionMonths ?? 1), 2)}"><span>个月</span></div></label>
+      </div>
+      <div class="channel-calculation-results">
+        <div><span>项目总建筑面积</span><strong data-channel-field="gba">${fmtArea(channel.gba)}</strong><em>㎡</em></div>
+        <div><span>渠道招商面积</span><strong data-channel-field="channelArea">${fmtArea(channel.channelArea)}</strong><em>㎡</em></div>
+        <div><span>采用首年月租金</span><strong data-channel-field="referenceRent">${fmt(channel.referenceRent, 2)}</strong><em>元/㎡/月</em></div>
+        <div class="highlight"><span>渠道及代理费</span><strong data-channel-field="channelFeeAnnual">${fmt(channel.channelFeeAnnual, 2)}</strong><em>万元/年</em></div>
+      </div>` : `<div class="channel-amount-mode-note">当前按直接金额核算。可在下方渠道及代理费行选择年度或月度录入，系统自动换算月度和年度金额。</div>`}
+    </div>
     <div class="data-table-wrap budget-table-wrap">
-      <table class="data-table budget-table" data-share-table><thead><tr><th>费用项目</th><th class="num">年度金额（万元）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+      <table class="data-table budget-table budget-period-table" data-share-table><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（万元/期）</th><th class="num">月度金额（万元/月）</th><th class="num">年度金额（万元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
         ${items.map(item => {
-          const amount = Number(model.leasingBudget?.[item.key] || 0);
-          return `<tr><td><strong>${escapeHtml(item.label)}</strong></td><td class="num"><input class="table-input" data-path="leasingBudget.${item.key}" data-type="number" type="number" step="0.1" value="${amount}"></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? amount / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
+          if (item.key === 'channelFeeAnnual') {
+            const enteredCell = channel.channelMode === 'area_rent'
+              ? `<strong data-lease-channel-amount>${fmt(channel.channelFeeAnnual, 2)}</strong><small class="table-subnote">按面积公式自动计算</small>`
+              : `<input class="table-input" data-path="leasingBudget.channelFeeAnnual" data-type="number" data-annualize="true" data-period-path="leasingBudget.inputPeriods.channelFeeAnnual" type="number" step="0.01" value="${roundDisplayValue(channelEntered, 2)}">`;
+            return `<tr data-annualized-row data-channel-row data-annual-value="${channel.channelFeeAnnual}"><td><strong>${escapeHtml(item.label)}</strong><small class="cost-method-label">${channel.channelMode === 'area_rent' ? '渠道面积 × 首年月租金 × 倍数' : '金额录入 · 年/月换算'}</small></td><td>${channel.channelMode === 'area_rent' ? '<span class="formula-period-tag">面积公式</span>' : `<select class="table-select period-select" data-path="leasingBudget.inputPeriods.channelFeeAnnual" data-type="text" data-budget-period="true">${budgetPeriodOptions(channelPeriod)}</select>`}</td><td class="num">${enteredCell}</td><td class="num"><strong data-budget-monthly>${fmt(channel.channelFeeAnnual / 12, 2)}</strong></td><td class="num"><strong data-budget-annual>${fmt(channel.channelFeeAnnual, 2)}</strong></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? channel.channelFeeAnnual / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
+          }
+          const annual = Number(leasingBudget[item.key] || 0);
+          const period = budgetInputPeriod(leasingBudget, item.key);
+          const entered = budgetPeriodAmount(annual, period);
+          return `<tr data-annualized-row data-annual-value="${annual}"><td><strong>${escapeHtml(item.label)}</strong><small class="cost-method-label">预算金额 · 年/月换算</small></td><td><select class="table-select period-select" data-path="leasingBudget.inputPeriods.${item.key}" data-type="text" data-budget-period="true">${budgetPeriodOptions(period)}</select></td><td class="num"><input class="table-input" data-path="leasingBudget.${item.key}" data-type="number" data-annualize="true" data-period-path="leasingBudget.inputPeriods.${item.key}" type="number" step="0.01" value="${roundDisplayValue(entered, 2)}"></td><td class="num"><strong data-budget-monthly>${fmt(annual / 12, 2)}</strong></td><td class="num"><strong data-budget-annual>${fmt(annual, 2)}</strong></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? annual / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
         }).join('')}
       </tbody></table>
     </div>
-    <div class="budget-toolbar"><span>年度招商费用合计</span><span><strong data-share-total>${fmt(total, 1)}</strong> 万元/年</span></div>
+    <div class="budget-toolbar"><span>年度招商费用合计</span><span><strong data-share-total>${fmt(total, 2)}</strong> 万元/年｜月均 <strong data-budget-total-monthly>${fmt(total / 12, 2)}</strong> 万元/月</span></div>
   </div>`;
 }
 
@@ -2690,14 +2803,24 @@ function renderOperatingCostSummary(preview) {
 function refreshShareTables() {
   document.querySelectorAll('[data-share-table]').forEach(table => {
     const rows = [...table.querySelectorAll('tbody tr')];
-    const values = rows.map(row => Number(row.querySelector('input[type="number"]')?.value || 0));
+    const values = rows.map(row => {
+      if (row.dataset.annualValue != null && row.dataset.annualValue !== '') return Number(row.dataset.annualValue || 0);
+      return Number(row.querySelector('input[type="number"]')?.value || 0);
+    });
     const total = values.reduce((sum, value) => sum + value, 0);
     rows.forEach((row, index) => {
       const weight = row.querySelector('[data-auto-weight]');
       if (weight) weight.textContent = fmtPct(total > 0 ? values[index] / total : 0);
+      if (row.dataset.annualizedRow != null) row.dataset.annualValue = String(values[index]);
+      const monthlyEl = row.querySelector('[data-budget-monthly]');
+      const annualEl = row.querySelector('[data-budget-annual]');
+      if (monthlyEl) monthlyEl.textContent = fmt(values[index] / 12, 2);
+      if (annualEl) annualEl.textContent = fmt(values[index], 2);
     });
     const totalEl = table.closest('.budget-section')?.querySelector('[data-share-total]');
-    if (totalEl) totalEl.textContent = fmt(total, 1);
+    if (totalEl) totalEl.textContent = fmt(total, 2);
+    const monthlyTotalEl = table.closest('.budget-section')?.querySelector('[data-budget-total-monthly]');
+    if (monthlyTotalEl) monthlyTotalEl.textContent = fmt(total / 12, 2);
   });
 }
 
@@ -2725,6 +2848,7 @@ function updateOperatingPreviewDom(result) {
   const breakdown = result?.operatingCostBreakdown || [];
   updatePayrollPreviewDom(result);
   updatePropertyServicePreviewDom(result);
+  updateChannelPreviewDom(result);
   if (!breakdown.length) return;
   const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
   const values = new Map(breakdown.map(item => [item.name, Number(item.value || 0)]));
@@ -2741,6 +2865,32 @@ function updateOperatingPreviewDom(result) {
   });
   const totalEl = document.querySelector('[data-operating-total]');
   if (totalEl) totalEl.textContent = `${fmt(total, 1)} 万元/年`;
+}
+
+function updateChannelPreviewDom(result) {
+  if (!result) return;
+  const summary = result.summary || {};
+  const values = {
+    gba: summary.grossFloorArea ?? 0,
+    channelArea: summary.channelArea ?? 0,
+    referenceRent: summary.channelRentPerSqmMonth ?? 0,
+    channelFeeAnnual: summary.annualChannelFee ?? 0,
+  };
+  document.querySelectorAll('[data-channel-field]').forEach(el => {
+    const value = values[el.dataset.channelField];
+    if (value != null) el.textContent = el.dataset.channelField === 'gba' || el.dataset.channelField === 'channelArea' ? fmtArea(value) : fmt(value, 2);
+  });
+  const channelRow = document.querySelector('[data-channel-row]');
+  if (channelRow) {
+    channelRow.dataset.annualValue = String(values.channelFeeAnnual);
+    const amount = channelRow.querySelector('[data-lease-channel-amount]');
+    if (amount) amount.textContent = fmt(values.channelFeeAnnual, 2);
+    const monthly = channelRow.querySelector('[data-budget-monthly]');
+    const annual = channelRow.querySelector('[data-budget-annual]');
+    if (monthly) monthly.textContent = fmt(values.channelFeeAnnual / 12, 2);
+    if (annual) annual.textContent = fmt(values.channelFeeAnnual, 2);
+    refreshShareTables();
+  }
 }
 
 function updatePayrollPreviewDom(result) {
@@ -3115,7 +3265,7 @@ function renderOperationsStep() {
     ${renderOrganizationSection(state.current.model, state.preview)}
     ${renderPropertyServiceSection(state.current.model, state.preview)}
     ${renderOfficeBudgetSection(state.current.model)}
-    ${renderLeasingBudgetSection(state.current.model)}
+    ${renderLeasingBudgetSection(state.current.model, state.preview)}
     ${renderMarketingBudgetSection(state.current.model, state.preview)}
     ${renderMaintenanceBudgetSection(state.current.model, state.preview)}
     ${renderAnnualCostAdjustmentSection(state.current.model)}
@@ -3492,7 +3642,13 @@ function bindStepInputs() {
       const scale = Number(input.dataset.scale || 1);
       let value = input.value;
       if (input.type === 'checkbox') value = input.checked;
-      else if (type === 'number') value = value === '' ? 0 : Number(value) * scale;
+      else if (type === 'number') {
+        value = value === '' ? 0 : Number(value) * scale;
+        if (input.dataset.annualize === 'true') {
+          const period = getPath(state.current.model, input.dataset.periodPath || '');
+          if (period === 'monthly') value *= 12;
+        }
+      }
       if (type === 'number' && (['project.gbaOverride', 'project.landArea'].includes(path) || /(?:buildingArea|leasableArea)$/.test(path))) {
         value = roundAreaValue(value);
       }
@@ -3501,6 +3657,17 @@ function bindStepInputs() {
         if (value === 'false') value = false;
       }
       setPath(state.current.model, path, value);
+      if (input.dataset.annualize === 'true') {
+        const annualizedRow = input.closest('[data-annualized-row]');
+        if (annualizedRow) annualizedRow.dataset.annualValue = String(value);
+      }
+      if (input.dataset.budgetPeriod === 'true' || input.dataset.channelMode === 'true') {
+        state.dirty = true;
+        state.preview = null;
+        renderWorkspace();
+        scheduleLivePreview();
+        return;
+      }
       if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode', 'formulas.rentGrowthMode', 'formulas.propertyFeeGrowthMode'].includes(path)) {
         state.dirty = true;
         state.preview = null;
