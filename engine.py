@@ -105,6 +105,11 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
         },
         "operations": {
             "rentGrowth": 0.03,
+            "rentStepYears": 3,
+            "rentStepRate": 0.05,
+            "propertyFeeGrowth": 0.03,
+            "propertyFeeStepYears": 3,
+            "propertyFeeStepRate": 0.05,
             "occupancyY1": 0.70,
             "occupancyY2": 0.85,
             "stableOccupancy": 0.95,
@@ -232,6 +237,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
         },
         "formulas": {
             "rentGrowthMode": "compound",
+            "propertyFeeGrowthMode": "compound",
             "buildingDepreciationYears": 20,
             "fitoutDepreciationYears": 5,
             "equipmentDepreciationYears": 10,
@@ -854,12 +860,31 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         free_factor = 1 - as_float(operations.get("rentFreeMonths")) / 12 if op_year == 1 else 1
         growth_mode = str(formulas.get("rentGrowthMode") or "compound")
         rent_growth_periods = op_year - 1
-        rent_growth_factor = (1 + as_float(operations.get("rentGrowth")) * rent_growth_periods) if growth_mode == "simple" else (1 + as_float(operations.get("rentGrowth"))) ** rent_growth_periods
-        sales_growth_factor = (1 + as_float(operations.get("salesGrowth")) * rent_growth_periods) if growth_mode == "simple" else (1 + as_float(operations.get("salesGrowth"))) ** rent_growth_periods
+        rent_growth_factor = growth_factor_for_year(
+            op_year,
+            growth_mode,
+            as_float(operations.get("rentGrowth")),
+            as_float(operations.get("rentStepYears"), 3.0),
+            as_float(operations.get("rentStepRate")),
+        )
+        sales_growth_mode = growth_mode if growth_mode in {"simple", "compound", "none"} else "compound"
+        sales_growth_factor = growth_factor_for_year(
+            op_year,
+            sales_growth_mode,
+            as_float(operations.get("salesGrowth")),
+        )
+        property_fee_growth_mode = str(formulas.get("propertyFeeGrowthMode") or "compound")
+        property_fee_growth_factor = growth_factor_for_year(
+            op_year,
+            property_fee_growth_mode,
+            as_float(operations.get("propertyFeeGrowth")),
+            as_float(operations.get("propertyFeeStepYears"), 3.0),
+            as_float(operations.get("propertyFeeStepRate")),
+        )
         guarantee_gross = total_monthly_guarantee * 12 * occupancy * free_factor * rent_growth_factor / 10000
         concession_gross = total_monthly_concession * 12 * occupancy * free_factor * sales_growth_factor / 10000
         rent_gross = guarantee_gross + concession_gross
-        property_gross = gla * as_float(revenues.get("propertyFee")) * 12 * occupancy / 10000
+        property_gross = gla * as_float(revenues.get("propertyFee")) * 12 * occupancy * property_fee_growth_factor / 10000
         other_gross = (
             rent_gross * as_float(revenues.get("otherIncomeRatio"))
             + as_float(revenues.get("parkingSpaces")) * as_float(revenues.get("parkingMonthly")) * 12 * occupancy / 10000
@@ -995,6 +1020,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "guaranteeRevenue": guarantee_gross,
                 "concessionRevenue": concession_gross,
                 "propertyRevenue": property_gross,
+                "rentGrowthFactor": rent_growth_factor,
+                "propertyFeeGrowthFactor": property_fee_growth_factor,
                 "otherRevenue": other_gross,
                 "operatingCost": operating_cost_net,
                 "propertyOpsCost": property_ops,
@@ -1051,6 +1078,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         stable_row = next((row for row in reversed(annual_rows) if row.get("opYear", 0) > 0), {})
     stable_noi = as_float(stable_row.get("noi"))
     stable_revenue = as_float(stable_row.get("revenue"))
+    stable_property_fee_income = as_float(stable_row.get("propertyRevenue"))
     stable_staff_cost = as_float(stable_row.get("staffCost"))
     stable_office_cost = as_float(stable_row.get("officeCost"))
     stable_leasing_cost = as_float(stable_row.get("leasingCost"))
@@ -1187,6 +1215,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "investmentPerGba": safe_div(total_investment * 10000, gba),
             "investmentPerGla": safe_div(total_investment * 10000, gla),
             "stableRevenue": stable_revenue,
+            "stablePropertyFeeIncome": stable_property_fee_income,
             "stableNoi": stable_noi,
             "stableNoiMargin": safe_div(stable_noi, stable_revenue),
             "stableHeadcount": structured_headcount,
@@ -1247,6 +1276,26 @@ def occupancy_for_year(op_year: int, operations: dict[str, Any]) -> float:
     if op_year < int(operations.get("stableYear") or 3):
         return as_float(operations.get("occupancyY2"))
     return as_float(operations.get("stableOccupancy"))
+
+
+def growth_factor_for_year(
+    op_year: int,
+    mode: str,
+    annual_rate: float,
+    step_years: float = 1.0,
+    step_rate: float = 0.0,
+) -> float:
+    periods = max(0, op_year - 1)
+    normalized_mode = str(mode or "compound")
+    if normalized_mode == "none":
+        return 1.0
+    if normalized_mode == "simple":
+        return 1 + annual_rate * periods
+    if normalized_mode == "step":
+        interval = max(1, int(step_years or 1))
+        steps = periods // interval
+        return (1 + step_rate) ** steps
+    return (1 + annual_rate) ** periods
 
 
 def npv(rate: float, cashflows: list[float]) -> float:

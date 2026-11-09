@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-rentfix4';
+import './backend.js?v=20261109-rentgrowth1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.10.3';
+const APP_VERSION = '1.10.4';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -17,6 +17,7 @@ const STEPS = [
 
 const DEFAULT_FORMULAS = {
   rentGrowthMode: 'compound',
+  propertyFeeGrowthMode: 'compound',
   buildingDepreciationYears: 20,
   fitoutDepreciationYears: 5,
   equipmentDepreciationYears: 10,
@@ -59,7 +60,12 @@ const FIELD_FORMULAS = {
   'operations.stableOccupancy': { title: '稳定期出租率', formula: '稳定期出租率 = 输入值；运营年 ≥ 稳定起始年时启用', functions: ['IF'], role: '决定稳定期NOI和退出价值。' },
   'operations.stableYear': { title: '稳定期起始年', formula: 'IF(运营年 < 稳定期起始年, 第二年出租率, 稳定期出租率)', functions: ['IF'], role: '控制出租率爬坡持续时间。' },
   'operations.rentFreeMonths': { title: '首年免租', formula: '首年有效租金 = 满租租金 × 出租率 ×（1 - 免租月数 ÷ 12）', functions: ['IF'], role: '仅影响首个运营年，不改变合同租金单价。' },
-  'operations.rentGrowth': { title: '租金增长', formula: '复利：租金 ×（1 + 增长率）^（运营年 - 1）；单利：租金 ×［1 + 增长率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '增长方式可在“公式参数”中选择复利或单利。' },
+  'operations.rentGrowth': { title: '租金年递增率', formula: '每年复利：租金 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：租金 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '用于每年复利或每年单利递增；阶梯递增使用单独的递增周期和递增率。' },
+  'operations.rentStepYears': { title: '租金递增周期', formula: '阶梯递增：每 N 个运营年上调一次租金', functions: ['INT', 'POWER'], role: '例如填3，表示第1—3年不变，第4年开始按阶梯递增率上调。' },
+  'operations.rentStepRate': { title: '租金阶梯递增率', formula: '租金因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '仅在“每N年阶梯递增”模式下生效。' },
+  'operations.propertyFeeGrowth': { title: '管理费年递增率', formula: '每年复利：管理费 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：管理费 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '管理费与租金分别递增，可设置不同增长方式。' },
+  'operations.propertyFeeStepYears': { title: '管理费递增周期', formula: '阶梯递增：每 N 个运营年上调一次管理费', functions: ['INT', 'POWER'], role: '仅在管理费“每N年阶梯递增”模式下生效。' },
+  'operations.propertyFeeStepRate': { title: '管理费阶梯递增率', formula: '管理费因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '用于每N年调整一次商业管理费单价。' },
   'operations.salesGrowth': { title: '联营销售额增长', formula: '联营扣点收入 = 销售基数 × 扣点率 × 销售额增长因子', functions: ['POWER', 'MAX'], role: '仅影响联营扣点收入；纯租金模式不产生此项。' },
   'operations.collectionRate': { title: '租金收缴率', formula: '坏账损失 = 不含税营业收入 ×（1 - 租金收缴率）', functions: ['SUM'], role: '收缴率越低，运营成本和现金流压力越大。' },
   'operations.renewalCycle': { title: '续租周期', formula: '续租佣金年度 = 运营年 MOD 续租周期 = 0', functions: ['MOD', 'IF'], role: '用于测算续租佣金和招商费用发生时点。' },
@@ -109,6 +115,7 @@ const FIELD_FORMULAS = {
   'valuation.exitCapRate': { title: '资本化率退出法', formula: '退出价值 = 期末NOI ÷ 退出资本化率 ×（1 - 退出税费率）', functions: ['MAX', 'IF'], role: '在“公式参数”中选择NOI资本化率法时使用。' },
   'valuation.includeExit': { title: '期末退出价值', formula: '项目现金流 = NOI - 资本化改造 - 所得税 + 期末退出价值', functions: ['IF'], role: '关闭后不计算期末退出价值。' },
   'formulas.rentGrowthMode': { title: '租金增长方式', formula: '复利 = POWER(1+g,n)；单利 = 1 + g×n', functions: ['POWER', 'IF'], role: '决定租金和销售额随运营年份的增长曲线。' },
+  'formulas.propertyFeeGrowthMode': { title: '管理费增长方式', formula: '不复递增 / 每年复利 / 每年单利 / 每N年阶梯递增', functions: ['POWER', 'IF'], role: '管理费增长与租金增长分别设置，便于匹配物业服务合同。' },
   'formulas.buildingDepreciationYears': { title: '建筑折旧年限', formula: '建筑年折旧 = 建筑工程投资 ÷ 建筑折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
   'formulas.fitoutDepreciationYears': { title: '装修折旧年限', formula: '装修年折旧 = 装修投资 ÷ 装修折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
   'formulas.equipmentDepreciationYears': { title: '设备折旧年限', formula: '设备年折旧 = 设备投资 ÷ 设备折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
@@ -172,6 +179,7 @@ const FUNCTION_DEFINITIONS = {
   'MAX': { syntax: 'MAX(数值1, 数值2, …)', meaning: '取多个数值中的最大值，常用于保底与扣点取高、零值下限。', example: '月收益 = MAX(保底月租金, 联营扣点月收入)', note: '如果希望保底条款优先，确保保底收入被正确录入；取高模式不会同时重复计算两项收入。' },
   'MIN': { syntax: 'MIN(数值1, 数值2, …)', meaning: '取多个数值中的最小值，常用于进项税抵扣上限、条件溢价封顶。', example: '进项税 = MIN(销项税, 可抵扣进项税估算)', note: 'MIN 的上限值如果设得过低，会压低抵扣或溢价；应核对税法上限和项目招商政策。' },
   'POWER': { syntax: 'POWER(底数, 指数)', meaning: '乘幂函数，用于复利增长和折现计算。', example: '第n年租金 = 首年租金 × POWER(1+增长率, n)', note: '复利增长前低后高；如果项目租约采用固定递增额，应切换为单利或直接按租约录入。' },
+  'INT': { syntax: 'INT(数值)', meaning: '向下取整，用于计算已经过去的完整递增周期。', example: 'INT((运营年-1)÷3)', note: '每N年阶梯递增时，未满一个完整周期不会提前上调。' },
   'ROUND': { syntax: 'ROUND(数值, 小数位数)', meaning: '按指定小数位四舍五入，通常用于金额、面积和比率展示。', example: 'ROUND(总投资, 2)', note: '显示取整不应改变底层计算；系统计算保留原始精度，表格展示时才取整。' },
   'NPV': { syntax: 'NPV = Σ[CFt ÷ POWER(1+r, t)]', meaning: '净现值，把每一年现金流按折现率折算到当前时点后相加。', example: 'NPV = CF1/(1+r)^1 + CF2/(1+r)^2 + …', note: '折现率越高，未来现金流越不值钱；NPV大于0表示达到或超过门槛收益。' },
   'IRR': { syntax: 'IRR：使 NPV(IRR)=0 的折现率', meaning: '内部收益率，是项目自身能够承受的折现率。系统通过二分法不断逼近解。', example: '若IRR=10%，且企业要求8%，说明项目超过门槛。', note: '现金流没有正负交替或全部同号时，IRR可能无解；此时优先看NPV。' },
@@ -192,8 +200,8 @@ const FORMULA_GUIDES = {
     adjust: '以造价咨询、工程量清单、已签合同或同类项目对标为依据。先调整建安和装修单价，再调整预备费和非必要公共投入，比较投资变化对NPV和IRR的影响。'
   },
   operations: {
-    how: '先确定出租率和租金增长，再按面积、业态系数、铺位条件计算租金；同步计算物业费、停车和多经收入。运营成本按面积、单价、出租率和爬坡系数计算，最后得到NOI和年度现金流。',
-    adjust: '出租率按招商计划，租金按市场样本和租约递增，运营成本按物业预算。建议每次只调整一个变量，并比较NPV敏感性结果；若NPV对租金最敏感，应优先优化首层租金和招商组合。'
+    how: '先确定出租率和租金增长，再按面积、业态系数、铺位条件计算租金；管理费单价按独立的管理费递增规则逐年计算，再叠加停车和多经收入。运营成本按面积、单价、出租率和爬坡系数计算，最后得到NOI和年度现金流。',
+    adjust: '出租率按招商计划，租金和管理费分别按合同递增条款设置。每年复利/单利适合逐年调整，每N年阶梯递增适合“每3年上调5%”之类的合同。每次只调整一个变量，并比较NPV敏感性结果。'
   },
   taxes: {
     how: '先按含税收入计算销项税，再用可抵扣成本和进项税率计算进项税，得到增值税净额及附加税；随后计算房产税、土地使用税、印花税和企业所得税。',
@@ -252,6 +260,7 @@ function formulaGuideFor(path, info) {
   };
   if (path.startsWith('formulas.sensitivity')) return FORMULA_GUIDES.sensitivity;
   if (path.includes('DepreciationYears') || path.includes('taxLossCarryforwardYears')) return FORMULA_GUIDES.depreciation;
+  if (path.includes('propertyFeeGrowthMode')) return FORMULA_GUIDES.operations;
   if (path.includes('rentGrowthMode')) return FORMULA_GUIDES.operations;
   if (path.includes('loanRepaymentMethod')) return FORMULA_GUIDES.finance;
   if (path.includes('exitValueMethod') || path.includes('exitRevenueMultiple')) return FORMULA_GUIDES.valuation;
@@ -2679,21 +2688,31 @@ function updateOperatingReferenceValues() {
 function renderOperationsStep() {
   const model = state.current.model;
   const staffCostMode = model.operations?.staffCostMode || 'organization';
+  const rentGrowthMode = model.formulas?.rentGrowthMode || 'compound';
+  const propertyFeeGrowthMode = model.formulas?.propertyFeeGrowthMode || 'compound';
+  const growthOptions = [
+    { value: 'none', label: '不递增' },
+    { value: 'compound', label: '每年复利递增' },
+    { value: 'simple', label: '每年单利递增' },
+    { value: 'step', label: '每N年阶梯递增' },
+  ];
   const organizationSalary = (model.organization?.departments || []).reduce((sum, dept) => sum + organizationAnnualCost(dept, model.organization || {}), 0);
   const organizationAnnual = organizationSalary + organizationSalary * Number(model.organization?.recruitmentTrainingRate || 0);
   return `
     <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会按“${fmt(state.current.model.project.operationYears || 20)}年招商运营年限”自动形成现金流、税费和投资收益。</div></div>
     <div class="form-section">
       <div class="section-title">租金与出租率</div>
-      ${formulaPanel('出租率、租金增长与收入公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n首年免租系数 = 1 - 免租月数 ÷ 12\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 增长因子', ['IF', 'POWER', 'SUM'], '首年出租率、稳定出租率、免租月数和增长率均可直接调整。')}
+      ${formulaPanel('出租率、租金及管理费递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子\n管理费收入 = 管理费单价 × 计租面积 × 12 × 出租率 × 管理费递增因子', ['IF', 'POWER', 'INT', 'SUM'], '租金和管理费可分别设置增长方式；阶梯递增示例：每3年递增5%，第1—3年不变，第4年开始上调。')}
       <div class="form-grid">
         ${textField('首年出租率', 'operations.occupancyY1', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('第二年出租率', 'operations.occupancyY2', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('稳定期出租率', 'operations.stableOccupancy', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('稳定期起始运营年', 'operations.stableYear', { type: 'number', unit: '年' })}
         ${textField('首年免租月数', 'operations.rentFreeMonths', { type: 'number', unit: '月' })}
-        ${textField('租金年增长率', 'operations.rentGrowth', { type: 'number', unit: '%', scale: 0.01 })}
-        ${selectField('租金增长方式', 'formulas.rentGrowthMode', [{value:'compound',label:'复利增长'},{value:'simple',label:'单利增长'}], { help: '复利：租金×(1+g)^n；单利：租金×(1+g×n)' })}
+        ${selectField('租金递增方式', 'formulas.rentGrowthMode', growthOptions, { help: '每年复利/单利按年递增；每N年阶梯递增只在周期到达时上调。' })}
+        ${rentGrowthMode === 'step'
+          ? `${textField('租金递增周期', 'operations.rentStepYears', { type: 'number', unit: '年', help: '例如3年；第1—3年不变，第4年开始按阶梯递增率上调' })}${textField('租金阶梯递增率', 'operations.rentStepRate', { type: 'number', unit: '%', scale: 0.01 })}`
+          : textField('租金年递增率', 'operations.rentGrowth', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('联营销售额年增长率', 'operations.salesGrowth', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('租金收缴率', 'operations.collectionRate', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('续租周期', 'operations.renewalCycle', { type: 'number', unit: '年' })}
@@ -2704,7 +2723,11 @@ function renderOperationsStep() {
       <div class="section-title">收入与运营成本</div>
       ${formulaPanel('收入、运营成本与NOI公式', '营业收入 = 租金收入 + 物业费 + 多经收入 + 停车收入\n运营成本 = 物业 + 能耗 + 商管 + 行政 + 营销 + 维修 + 保险 + 坏账 + 其他\nNOI = 不含税营业收入 - 不含税运营成本 - 税费', ['SUM', 'MAX', 'MIN'], '所有运营参数均可直接修改，结果会联动更新。')}
       <div class="form-grid">
-        ${textField('物业管理费', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月' })}
+        ${textField('首年物业管理费/商业管理费', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月', help: '作为第1年管理费单价，后续按管理费递增规则逐年调整' })}
+        ${selectField('管理费递增方式', 'formulas.propertyFeeGrowthMode', growthOptions, { help: '管理费与租金分开递增，便于分别匹配租赁合同和物业服务合同。' })}
+        ${propertyFeeGrowthMode === 'step'
+          ? `${textField('管理费递增周期', 'operations.propertyFeeStepYears', { type: 'number', unit: '年' })}${textField('管理费阶梯递增率', 'operations.propertyFeeStepRate', { type: 'number', unit: '%', scale: 0.01 })}`
+          : textField('管理费年递增率', 'operations.propertyFeeGrowth', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('多经收入占租金比例', 'revenues.otherIncomeRatio', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('停车位数量', 'revenues.parkingSpaces', { type: 'number', unit: '个', optional: true })}
         ${textField('停车月租', 'revenues.parkingMonthly', { type: 'number', unit: '元/位/月', optional: true })}
@@ -3025,6 +3048,7 @@ function renderOperatingResultCards() {
         <div><span>人员成本</span><strong>${fmt(s.stableStaffCost, 1)} 万/年</strong></div>
         <div><span>办公行政</span><strong>${fmt(s.stableOfficeCost, 1)} 万/年</strong></div>
         <div><span>招商费用</span><strong>${fmt(s.stableLeasingCost, 1)} 万/年</strong></div>
+        <div><span>管理费收入</span><strong>${fmt(s.stablePropertyFeeIncome, 1)} 万/年</strong></div>
         <div><span>营销费用</span><strong>${fmt(s.stableMarketingCost, 1)} 万/年</strong></div>
         <div><span>维保费用</span><strong>${fmt(s.stableMaintenanceCost, 1)} 万/年</strong></div>
       </div>
@@ -3077,7 +3101,7 @@ function bindStepInputs() {
         if (value === 'false') value = false;
       }
       setPath(state.current.model, path, value);
-      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode'].includes(path)) {
+      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode', 'formulas.rentGrowthMode', 'formulas.propertyFeeGrowthMode'].includes(path)) {
         state.dirty = true;
         state.preview = null;
         renderWorkspace();
