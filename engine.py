@@ -41,6 +41,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "locationSource": "",
             "projectType": "购物中心",
             "developmentType": "new_build",
+            "rentAreaBasis": "leasable",
             "revenueModel": "rent",
             "startYear": datetime.now().year + 1,
             "constructionYears": 2,
@@ -74,10 +75,10 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
         },
         "shops": [],
         "floors": [
-            {"name": "B1", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0},
-            {"name": "1F", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0},
-            {"name": "2F", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0},
-            {"name": "3F", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0},
+            {"building": "1号楼", "name": "B1", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0, "rentAreaBasis": "inherit"},
+            {"building": "1号楼", "name": "1F", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0, "rentAreaBasis": "inherit"},
+            {"building": "1号楼", "name": "2F", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0, "rentAreaBasis": "inherit"},
+            {"building": "1号楼", "name": "3F", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0, "rentAreaBasis": "inherit"},
         ],
         "conditionPremiums": copy.deepcopy(CONDITION_PRESETS),
         "categories": copy.deepcopy(CATEGORY_PRESETS),
@@ -287,12 +288,14 @@ def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
 
 def normalize_floor(floor: dict[str, Any]) -> dict[str, Any]:
     return {
+        "building": str(floor.get("building", floor.get("楼栋", "1号楼")) or "1号楼").strip(),
         "name": str(floor.get("name", floor.get("floor", "")) or "").strip(),
         "buildingArea": as_float(floor.get("buildingArea", 0)),
         "leasableArea": as_float(floor.get("leasableArea", 0)),
         "avgRent": as_float(floor.get("avgRent", 0)),
         "salesPerSqmMonth": as_float(floor.get("salesPerSqmMonth", 0)),
         "concessionRate": as_float(floor.get("concessionRate", 0)),
+        "rentAreaBasis": str(floor.get("rentAreaBasis") or "inherit").strip(),
     }
 
 
@@ -306,12 +309,14 @@ def normalize_shop(shop: dict[str, Any]) -> dict[str, Any]:
         conditions = []
     return {
         "id": str(shop.get("id") or shop.get("shopId") or shop.get("铺位号") or "").strip(),
+        "building": str(shop.get("building", shop.get("楼栋", "1号楼")) or "1号楼").strip(),
         "buildingArea": as_float(shop.get("buildingArea", shop.get("建筑面积", 0))),
         "leasableArea": as_float(shop.get("leasableArea", shop.get("实际租赁面积", 0))),
         "floor": str(shop.get("floor", shop.get("楼层", "")) or "").strip(),
         "category": str(shop.get("category", shop.get("业态", "零售")) or "零售").strip(),
         "status": str(shop.get("status", shop.get("状态", "营业")) or "营业").strip(),
         "rentOverride": optional_float(shop.get("rentOverride", shop.get("租金单价覆盖", None))),
+        "rentAreaBasis": str(shop.get("rentAreaBasis") or shop.get("租金面积口径") or "inherit").strip(),
         "conditions": conditions,
         "note": str(shop.get("note", shop.get("备注", "")) or "").strip(),
     }
@@ -351,6 +356,25 @@ def optional_float(value: Any) -> float | None:
 
 def safe_div(a: float, b: float, default: float = 0.0) -> float:
     return a / b if b else default
+
+
+def resolved_rent_area_basis(record: dict[str, Any], project: dict[str, Any]) -> str:
+    selected = str(record.get("rentAreaBasis") or "inherit")
+    if selected not in {"building", "leasable"}:
+        selected = str(project.get("rentAreaBasis") or "leasable")
+    return "building" if selected == "building" else "leasable"
+
+
+def rent_area_for(record: dict[str, Any], project: dict[str, Any]) -> float:
+    basis = resolved_rent_area_basis(record, project)
+    value = record.get("buildingArea") if basis == "building" else record.get("leasableArea")
+    return max(0.0, as_float(value))
+
+
+def building_floor_key(record: dict[str, Any]) -> str:
+    building = str(record.get("building") or "1号楼").strip() or "1号楼"
+    floor = str(record.get("floor", record.get("name", "")) or "未分楼层").strip() or "未分楼层"
+    return f"{building}||{floor}"
 
 
 def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool = True) -> dict[str, Any]:
@@ -439,6 +463,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     total_monthly_revenue = 0.0
     total_monthly_guarantee = 0.0
     total_monthly_concession = 0.0
+    total_rent_area = 0.0
 
     def settlement_revenue(guarantee_value: float, concession_value: float, settlement_mode: str) -> tuple[float, float, float]:
         if settlement_mode == "concession":
@@ -455,25 +480,28 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         gba = shop_building_area if shop_building_area > 0 else gba_override
         for floor in floors:
             leasable = max(0.0, as_float(floor.get("leasableArea")))
+            rent_area = rent_area_for(floor, project)
+            rent_basis = resolved_rent_area_basis(floor, project)
             avg_rent = max(0.0, as_float(floor.get("avgRent")))
             sales_base = max(0.0, as_float(floor.get("salesPerSqmMonth")))
             concession_rate = max(0.0, as_float(floor.get("concessionRate")))
-            guarantee_revenue = leasable * avg_rent
-            concession_revenue = leasable * sales_base * concession_rate
+            guarantee_revenue = rent_area * avg_rent
+            concession_revenue = rent_area * sales_base * concession_rate
             rent_part, concession_part, monthly = settlement_revenue(guarantee_revenue, concession_revenue, project_revenue_model)
             total_monthly_guarantee += rent_part
             total_monthly_concession += concession_part
             total_monthly_revenue += monthly
-            floor_calc.append({**floor, "guaranteeRevenue": guarantee_revenue, "concessionRevenue": concession_revenue, "monthlyRent": rent_part, "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, leasable), "settlementMode": project_revenue_model})
+            total_rent_area += rent_area
+            floor_calc.append({**floor, "rentAreaBasis": rent_basis, "rentArea": rent_area, "guaranteeRevenue": guarantee_revenue, "concessionRevenue": concession_revenue, "monthlyRent": rent_part, "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, rent_area), "settlementMode": project_revenue_model})
     else:
         shop_building_area = sum(max(0.0, s["buildingArea"]) for s in shops)
         gla = sum(max(0.0, s["leasableArea"]) for s in shops)
         gba = gba_override if gba_override > 0 else shop_building_area * (1 + as_float(project.get("commonAreaFactor")))
-        floor_avg = {str(floor.get("name", "")).strip(): max(0.0, as_float(floor.get("avgRent"))) for floor in floors}
+        floor_avg = {building_floor_key(floor): max(0.0, as_float(floor.get("avgRent"))) for floor in floors}
         factor_groups: dict[str, list[tuple[float, float]]] = {}
         for shop in shops:
-            key = shop["floor"] or "未分楼层"
-            factor_groups.setdefault(key, []).append((max(0.0, shop["leasableArea"]), max(0.0, category_factor.get(shop["category"], 1.0))))
+            key = building_floor_key(shop)
+            factor_groups.setdefault(key, []).append((rent_area_for(shop, project), max(0.0, category_factor.get(shop["category"], 1.0))))
         global_factor_pairs = [pair for pairs in factor_groups.values() for pair in pairs]
         def weighted_factor(pairs: list[tuple[float, float]]) -> float:
             area = sum(p[0] for p in pairs)
@@ -482,7 +510,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             return sum(p[0] * p[1] for p in pairs) / area
         global_factor_avg = weighted_factor(global_factor_pairs)
         for shop in shops:
-            key = shop["floor"] or "未分楼层"
+            key = building_floor_key(shop)
+            rent_area = rent_area_for(shop, project)
+            rent_basis = resolved_rent_area_basis(shop, project)
             factor_avg = weighted_factor(factor_groups.get(key, [])) or global_factor_avg or 1.0
             applied_conditions = [name for name in shop.get("conditions", []) if name in condition_map]
             condition_premium = min(0.40, sum(condition_map[name] for name in applied_conditions))
@@ -501,15 +531,18 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 rent = base_rent * (1 + condition_premium)
             sales_base = max(0.0, as_float(cat.get("salesPerSqmMonth")))
             concession_rate = max(0.0, as_float(cat.get("concessionRate")))
-            guarantee_revenue = max(0.0, shop["leasableArea"]) * rent
-            concession_revenue = max(0.0, shop["leasableArea"]) * sales_base * (1 + condition_premium) * concession_rate
+            guarantee_revenue = rent_area * rent
+            concession_revenue = rent_area * sales_base * (1 + condition_premium) * concession_rate
             rent_part, concession_part, monthly = settlement_revenue(guarantee_revenue, concession_revenue, settlement_mode)
             total_monthly_guarantee += rent_part
             total_monthly_concession += concession_part
             total_monthly_revenue += monthly
+            total_rent_area += rent_area
             shop_calc.append(
                 {
                     **shop,
+                    "rentAreaBasis": rent_basis,
+                    "rentArea": rent_area,
                     "baseRent": base_rent,
                     "rent": rent,
                     "conditionPremium": condition_premium,
@@ -526,20 +559,21 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                     "deposit": monthly * as_float(operations.get("depositMonths")) / 10000,
                 }
             )
-        floor_names = [str(floor.get("name", "")).strip() for floor in floors]
+        floor_names = [building_floor_key(floor) for floor in floors]
         for floor in floors:
-            key = str(floor.get("name", "")).strip()
-            group = [shop for shop in shop_calc if (shop["floor"] or "未分楼层") == key]
-            leasable = sum(shop["leasableArea"] for shop in group) or max(0.0, as_float(floor.get("leasableArea")))
+            key = building_floor_key(floor)
+            group = [shop for shop in shop_calc if building_floor_key(shop) == key]
+            rent_area = sum(shop["rentArea"] for shop in group) or rent_area_for(floor, project)
             monthly = sum(shop["monthlyRevenue"] for shop in group)
-            floor_calc.append({**floor, "monthlyRent": sum(shop["monthlyRent"] for shop in group), "monthlyConcession": sum(shop["concessionRevenue"] for shop in group), "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, leasable)})
+            floor_calc.append({**floor, "rentAreaBasis": resolved_rent_area_basis(floor, project), "rentArea": rent_area, "monthlyRent": sum(shop["monthlyRent"] for shop in group), "monthlyConcession": sum(shop["concessionRevenue"] for shop in group), "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, rent_area)})
         for key, group in factor_groups.items():
             if key in floor_names:
                 continue
-            leasable = sum(shop["leasableArea"] for shop in shop_calc if (shop["floor"] or "未分楼层") == key)
-            monthly = sum(shop["monthlyRevenue"] for shop in shop_calc if (shop["floor"] or "未分楼层") == key)
-            floor_calc.append({"name": key, "buildingArea": sum(shop["buildingArea"] for shop in shop_calc if (shop["floor"] or "未分楼层") == key), "leasableArea": leasable, "avgRent": safe_div(monthly, leasable), "monthlyRent": sum(shop["monthlyRent"] for shop in shop_calc if (shop["floor"] or "未分楼层") == key), "monthlyConcession": sum(shop["concessionRevenue"] for shop in shop_calc if (shop["floor"] or "未分楼层") == key), "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, leasable)})
-
+            group_shops = [shop for shop in shop_calc if building_floor_key(shop) == key]
+            building, floor_name = key.split("||", 1)
+            rent_area = sum(shop["rentArea"] for shop in group_shops)
+            monthly = sum(shop["monthlyRevenue"] for shop in group_shops)
+            floor_calc.append({"building": building, "name": floor_name, "buildingArea": sum(shop["buildingArea"] for shop in group_shops), "leasableArea": sum(shop["leasableArea"] for shop in group_shops), "rentArea": rent_area, "rentAreaBasis": "mixed", "avgRent": safe_div(monthly, rent_area), "monthlyRent": sum(shop["monthlyRent"] for shop in group_shops), "monthlyConcession": sum(shop["concessionRevenue"] for shop in group_shops), "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, rent_area)})
     land_area = as_float(project.get("landArea"))
 
     land_price = max(0.0, as_float(project.get("landPrice")))
@@ -976,7 +1010,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "年度成本调整额", "value": stable_extra_operating_cost},
         {"name": "税费", "value": stable_taxes},
     ]
-    average_rent = safe_div(total_monthly_revenue, gla)
+    average_rent = safe_div(total_monthly_revenue, total_rent_area)
+    average_rent_leasable = safe_div(total_monthly_revenue, gla)
     shops_count = len(shops)
     floor_count = sum(1 for floor in floor_calc if as_float(floor.get("buildingArea")) > 0 or as_float(floor.get("leasableArea")) > 0)
     diagnostics = build_diagnostics(model, shop_calc, floor_calc, gba, total_investment, total_monthly_revenue)
@@ -992,7 +1027,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     )
     sensitivity = build_sensitivity(model, discount_rate) if include_sensitivity else {"rentSteps": [], "capexSteps": [], "npvMatrix": [], "discountRate": discount_rate}
     break_even = build_break_even(model, discount_rate) if include_sensitivity else {"rentMultiplier": None, "rentUplift": None, "capexMultiplier": None, "capexReduction": None}
-    market_summary = summarize_market_comps(model, average_rent)
+    market_summary = summarize_market_comps(model, average_rent_leasable)
 
     return {
         "model": model,
@@ -1006,8 +1041,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "floorCount": floor_count,
             "grossFloorArea": gba,
             "leasableArea": gla,
+            "rentBasisArea": total_rent_area,
+            "rentAreaBasis": str(project.get("rentAreaBasis") or "leasable"),
             "shopBuildingArea": shop_building_area,
             "averageRent": average_rent,
+            "averageRentLeasable": average_rent_leasable,
             "totalMonthlyRent": total_monthly_revenue,
             "totalMonthlyGuarantee": total_monthly_guarantee,
             "totalMonthlyConcession": total_monthly_concession,

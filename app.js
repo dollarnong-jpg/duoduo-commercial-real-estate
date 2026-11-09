@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-costyear1';
+import './backend.js?v=20261109-building1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -44,6 +44,7 @@ const FIELD_FORMULAS = {
   'project.operationYears': { title: '运营期与NPV', formula: '总测算期 = 建设期 + 运营期；NPV = Σ[CFt ÷（1+r）^t]', functions: ['SUM', 'POWER', 'NPV'], role: '延长运营期会改变累计现金流和退出价值时点。' },
   'project.revenueModel': { title: '项目计租方式', formula: '纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', functions: ['IF', 'MAX'], role: '该选择是项目默认结算方式，各业态可单独覆盖。' },
   'project.developmentType': { title: '项目开发状态', formula: '参考单价 = 城市系数 × 开发状态基准单价 × 商业类型系数', functions: ['ROUND'], role: '新建、旧改、运营中和轻资产项目会采用不同的建安、改造和装修参考基准。' },
+  'project.rentAreaBasis': { title: '租金核算面积口径', formula: '按建筑面积：租金 = 建筑面积 × 单价；按实用面积：租金 = 实用/租赁面积 × 单价', functions: ['IF'], role: '决定楼层和铺位租金按建筑面积还是实用面积（套内面积）核算，楼层和铺位可单独覆盖。' },
   'costs.preconstructionRate': { title: '前期工程费', formula: '前期工程费 = 总建筑面积 × 前期工程单价 ÷ 10000', functions: ['SUM', 'ROUND'], role: '金额单位为万元，计入直接工程费和折旧基数。' },
   'costs.constructionRate': { title: '建安工程费', formula: '建安工程费 = 总建筑面积 × 建安工程单价 ÷ 10000', functions: ['SUM', 'ROUND'], role: '计入直接工程费、预备费、维修费、保险和折旧基数。' },
   'costs.otherEngineeringRate': { title: '其他工程费', formula: '其他工程费 = 总建筑面积 × 其他工程单价 ÷ 10000', functions: ['SUM'], role: '并入前期及建安工程和折旧基数。' },
@@ -273,6 +274,7 @@ const TERM_DEFINITIONS = {
   'NOI回报率': { category: '投资收益', definition: '稳定期NOI除以项目总投资。', why: '用于快速比较不同项目或方案的运营收益水平。', how: '应与当地同类商业资产资本化率和企业投资门槛对照，而不是只看绝对金额。' },
   '静态回收期': { category: '投资收益', definition: '累计项目现金流由负转正所需的年数，不考虑资金时间价值。', why: '反映资金占用时间和回收速度。', how: '回收期越短风险通常越低；如果超过贷款期限或运营期，应重新检查投资和租金假设。' },
   '得铺率': { category: '建筑面积', definition: '可租赁面积除以建筑面积，反映公共空间、交通和设备房等不可租面积占比。', why: '得铺率越高，同样建筑面积可产生租金的空间越多。', how: '购物中心通常在50%–75%左右，具体应结合业态、动线和公共空间品质判断。' },
+  '计租面积口径': { category: '招商租赁', definition: '计算租金时所采用的面积基础，可按建筑面积或实用面积（套内/租赁面积）确定。', why: '同一租金单价在不同面积口径下，对应的实际租金总额会明显不同。', how: '项目可设默认口径，楼层和铺位可按合同单独覆盖；比较竞品租金时必须确认双方采用同一面积口径。' },
   '公区分摊系数': { category: '建筑面积', definition: '用于由商铺建筑面积反推项目总建筑面积的公共部位及设备房分摊比例。', why: '公区系数会同时影响建安、装修、设备和规费投资。', how: '按规划设计或测绘口径填写，不要为了压低投资而任意降低。' },
   '商业POI': { category: '市场侦测', definition: '地图上具有商业经营属性的兴趣点，例如购物中心、餐饮、零售、酒店和商务办公。', why: '用于判断周边商业供给密度和业态丰富度。', how: 'POI数量只能做初筛，还要结合竞品质量、客流和实际经营情况判断。' },
   '直接竞品': { category: '市场侦测', definition: '与本项目在客群、业态或消费场景上直接争夺客户的购物中心、百货、超市和传统市场。', why: '直接决定项目招商和租金定价面临的市场竞争。', how: '应优先分析3公里内直接竞品的定位、品牌、空置率、租金和客流，而不只看数量。' },
@@ -430,6 +432,32 @@ let previewTimer = null;
 
 function safeParse(value) {
   try { return value ? JSON.parse(value) : null; } catch { return null; }
+}
+
+const RENT_BASIS_LABELS = {
+  inherit: '继承项目',
+  leasable: '实用面积',
+  building: '建筑面积',
+};
+
+function resolvedRentAreaBasis(record, model = state.current?.model) {
+  const selected = record?.rentAreaBasis || 'inherit';
+  if (selected === 'building' || selected === 'leasable') return selected;
+  return model?.project?.rentAreaBasis === 'building' ? 'building' : 'leasable';
+}
+
+function rentAreaFor(record, model = state.current?.model) {
+  return Number(resolvedRentAreaBasis(record, model) === 'building' ? record?.buildingArea || 0 : record?.leasableArea || 0);
+}
+
+function buildingFloorKey(record) {
+  const building = String(record?.building || '1号楼').trim() || '1号楼';
+  const floor = String(record?.floor ?? record?.name ?? '未分楼层').trim() || '未分楼层';
+  return `${building}||${floor}`;
+}
+
+function shopRecordKey(shop) {
+  return `${String(shop?.building || '1号楼').trim()}||${String(shop?.id || '').trim()}`;
 }
 
 function applyFontScale(value, notify = false) {
@@ -1256,6 +1284,7 @@ function openNewProjectModal() {
             <div class="field"><label>项目位置</label><input class="input" name="location" value="广西壮族自治区" placeholder="例如：广西壮族自治区柳州市"></div>
             <div class="field"><label>项目开发状态</label><select class="select" name="developmentType">${DEVELOPMENT_TYPE_OPTIONS.map(item => `<option value="${item.value}">${item.label}</option>`).join('')}</select></div>
             <div class="field"><label>商业项目形态</label><select class="select" name="projectType"><option>购物中心</option><option>百货商场</option><option>奥特莱斯</option><option>街区商业</option><option>社区商业</option><option>商业综合体</option><option>其他</option></select></div>
+            <div class="field"><label>租金核算面积口径</label><select class="select" name="rentAreaBasis"><option value="leasable">实用面积（套内/租赁面积）</option><option value="building">建筑面积</option></select></div>
             <div class="field"><label>项目计租方式</label><select class="select" name="revenueModel"><option value="rent">纯租金</option><option value="concession">纯联营扣点</option><option value="guarantee_or_concession">保底与联营扣点取高</option></select></div>
           </div>
           <div class="modal-foot"><button type="button" class="btn btn-secondary" id="modal-cancel">取消</button><button class="btn btn-primary" type="submit">创建并开始</button></div>
@@ -1277,6 +1306,7 @@ function openNewProjectModal() {
       updated.project.model.project.location = form.get('location');
       updated.project.model.project.developmentType = form.get('developmentType');
       updated.project.model.project.projectType = form.get('projectType');
+      updated.project.model.project.rentAreaBasis = form.get('rentAreaBasis');
       updated.project.model.project.revenueModel = form.get('revenueModel');
       applyCostReference(updated.project.model);
       await api(`/api/projects/${id}`, { method: 'PUT', body: { model: updated.project.model } });
@@ -1659,6 +1689,7 @@ function renderProjectStep() {
         ${locationField()}
         ${selectField('项目开发状态', 'project.developmentType', DEVELOPMENT_TYPE_OPTIONS, { help: '不同状态会自动匹配新建土建、旧改改造或运营提升的参考造价' })}
         ${selectField('商业项目形态', 'project.projectType', ['购物中心', '百货商场', '奥特莱斯', '街区商业', '社区商业', '商业综合体', '其他'])}
+        ${selectField('租金核算面积口径', 'project.rentAreaBasis', [{value:'leasable',label:'实用面积（套内/租赁面积）'},{value:'building',label:'建筑面积'}], { help:'楼层和铺位可单独覆盖项目默认口径' })}
         ${selectField('项目计租方式', 'project.revenueModel', [{value:'rent',label:'纯租金'},{value:'concession',label:'纯联营扣点'},{value:'guarantee_or_concession',label:'保底与联营扣点取高'}], { help: '业态可在铺位数据页单独覆盖项目规则' })}
         ${textField('建设起始年份', 'project.startYear', { type: 'number', unit: '年' })}
         ${textField('建设期', 'project.constructionYears', { type: 'number', unit: '年' })}
@@ -1737,9 +1768,10 @@ function renderShopsStep() {
   const preview = state.preview || state.result;
   const totalBuilding = floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0);
   const totalLease = floors.reduce((sum, floor) => sum + Number(floor.leasableArea || 0), 0);
+  const totalRentArea = floors.reduce((sum, floor) => sum + rentAreaFor(floor, m), 0);
   const revenueMode = m.project?.revenueModel || 'rent';
   const totalMonthly = floors.reduce((sum, floor) => {
-    const area = Number(floor.leasableArea || 0);
+    const area = rentAreaFor(floor, m);
     const guarantee = area * Number(floor.avgRent || 0);
     const concession = area * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
     return sum + (revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee);
@@ -1755,12 +1787,13 @@ function renderShopsStep() {
     <div class="stats-row">
       <div class="mini-stat"><strong data-live="investment">${preview ? fmt(preview.summary.totalInvestment) : '待计算'}</strong><span>项目总投资/万元</span></div>
       <div class="mini-stat"><strong data-live="monthlyRent">${preview ? fmt(preview.summary.totalMonthlyRent) : fmt(totalMonthly)}</strong><span>满租月收益/元</span></div>
-      <div class="mini-stat"><strong data-live="avgRent">${preview ? fmt(preview.summary.averageRent, 1) : fmt(totalLease ? totalMonthly / totalLease : 0, 1)}</strong><span>平均月收益/元/㎡</span></div>
+      <div class="mini-stat"><strong data-live="avgRent">${preview ? fmt(preview.summary.averageRent, 1) : fmt(totalRentArea ? totalMonthly / totalRentArea : 0, 1)}</strong><span>平均月收益/计租㎡</span></div>
       <div class="mini-stat"><strong data-live="status">${preview ? escapeHtml(preview.summary.status) : '自动计算中'}</strong><span>实时测算状态</span></div>
     </div>
     ${mode === 'preliminary'
       ? renderPreliminarySummary(shops, floors, totalBuilding, totalLease, totalMonthly)
       : renderDetailedPricing(m, shops, preview)}
+    ${renderFloorRentSummary(preview)}
   `;
 }
 
@@ -1783,34 +1816,38 @@ function renderFloorEditor(m, mode, preview) {
   const floors = m.floors || [];
   const revenueMode = m.project?.revenueModel || 'rent';
   const concessionEnabled = revenueMode !== 'rent';
-  const previewFloors = new Map((preview?.floors || []).map(floor => [floor.name, floor]));
+  const previewFloors = new Map((preview?.floors || []).map(floor => [buildingFloorKey(floor), floor]));
+  const buildingOptions = [...new Set([...(floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])];
   return `<div class="form-section">
     <div class="section-title">楼层均价与面积</div>
     <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层均价将作为一铺一价的基础：再乘业态系数并叠加铺位条件溢价。'}</div>
-    ${formulaPanel('楼层收益公式', '楼层满租月收益 = 可租赁面积 × 楼层均价\n联营扣点月收益 = 可租赁面积 × 销售基数 × 扣点率\n实际加权收益 = 楼层月收益合计 ÷ 可租赁面积', ['SUM', 'MAX', 'IF'], '调整楼层均价、面积、销售基数或扣点率后，系统会实时更新。')}
+    ${formulaPanel('楼层收益公式', '计租面积 = IF(计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 计租面积 × 楼层均价\n联营扣点月收益 = 计租面积 × 销售基数 × 扣点率\n实际加权收益 = 楼层月收益合计 ÷ 计租面积', ['SUM', 'MAX', 'IF'], '项目默认口径可被楼层单独覆盖；调整楼栋、楼层、面积、租金、销售基数或扣点率后，系统会实时更新。')}
     <div class="data-table-wrap floor-table-wrap">
-      <table class="data-table floor-table"><thead><tr><th>楼层</th><th class="num">建筑面积（㎡）</th><th class="num">可租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">保底/平均租金（元/㎡）</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th class="num">实际加权收益</th><th></th></tr></thead><tbody>
+      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">保底/平均租金（元/㎡）</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th class="num">实际加权收益</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
           const ratio = Number(floor.buildingArea) ? Number(floor.leasableArea) / Number(floor.buildingArea) : 0;
-          const area = Number(floor.leasableArea || 0);
+          const area = rentAreaFor(floor, m);
           const guarantee = area * Number(floor.avgRent || 0);
           const concession = area * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
           const monthly = revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee;
-          const calculated = previewFloors.get(floor.name);
+          const calculated = previewFloors.get(buildingFloorKey(floor));
           return `<tr>
+            <td><input class="table-input floor-name-input" data-path="floors.${i}.building" data-type="text" list="building-options" value="${escapeHtml(floor.building || '1号楼')}"></td>
             <td><input class="table-input floor-name-input" data-path="floors.${i}.name" data-type="text" value="${escapeHtml(floor.name || '')}"></td>
+            <td><select class="table-select" data-path="floors.${i}.rentAreaBasis" data-type="text">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((floor.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
             <td class="num"><input class="table-input" data-path="floors.${i}.buildingArea" data-type="number" type="number" step="any" value="${floor.buildingArea ?? 0}"></td>
             <td class="num"><input class="table-input" data-path="floors.${i}.leasableArea" data-type="number" type="number" step="any" value="${floor.leasableArea ?? 0}"></td>
             <td class="num">${fmtPct(ratio)}</td>
             <td class="num"><input class="table-input highlight-input" data-path="floors.${i}.avgRent" data-type="number" type="number" step="any" value="${floor.avgRent ?? 0}"></td>
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
             <td class="num">${fmt(monthly)}</td>
-            <td class="num" data-floor-actual="${escapeHtml(floor.name)}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 1) : '待计算'}</td>
+            <td class="num" data-floor-actual="${escapeHtml(buildingFloorKey(floor))}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 1) : '待计算'}</td>
             <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
           </tr>`;
-        }).join('') : `<tr><td colspan="${concessionEnabled ? 10 : 8}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
+        }).join('') : `<tr><td colspan="${concessionEnabled ? 12 : 10}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
       </tbody></table>
     </div>
+    <datalist id="building-options">${buildingOptions.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
       <button type="button" class="btn btn-secondary btn-sm" id="add-floor">${ICONS.plus}<span>新增楼层</span></button>
       <span class="live-hint">调整楼层均价后系统自动核算</span>
@@ -1831,21 +1868,50 @@ function renderPreliminarySummary(shops, floors, totalBuilding, totalLease, tota
   </div>`;
 }
 
+function renderFloorRentSummary(preview) {
+  const floors = preview?.floors || [];
+  if (!floors.length) return '<div class="form-section floor-summary-section"><div class="section-title">楼栋及楼层面积与租金汇总</div><div class="admin-empty">完成楼层或铺位数据后，系统将自动生成统一汇总。</div></div>';
+  const total = floors.reduce((acc, floor) => {
+    acc.buildingArea += Number(floor.buildingArea || 0);
+    acc.leasableArea += Number(floor.leasableArea || 0);
+    acc.rentArea += Number(floor.rentArea || 0);
+    acc.monthly += Number(floor.monthlyRevenue || 0);
+    return acc;
+  }, { buildingArea: 0, leasableArea: 0, rentArea: 0, monthly: 0 });
+  return `<div class="form-section floor-summary-section">
+    <div class="section-title">楼栋及楼层面积与租金汇总</div>
+    <div class="section-note">按“楼栋 → 楼层”统一汇总面积与租金收入。平均租金按各楼层实际计租面积加权，年租金按满租月租金 × 12 展示。</div>
+    <div class="data-table-wrap">
+      <table class="data-table floor-summary-table">
+        <thead><tr><th>楼栋</th><th>楼层</th><th>计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用面积（㎡）</th><th class="num">计租面积（㎡）</th><th class="num">平均租金（元/㎡/月）</th><th class="num">月租金收入（元）</th><th class="num">年租金收入（万元）</th><th class="num">收入占比</th></tr></thead>
+        <tbody>
+          ${floors.map(floor => {
+            const basisLabel = floor.rentAreaBasis === 'building' ? '建筑面积' : floor.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径';
+            const monthly = Number(floor.monthlyRevenue || 0);
+            return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || '—')}</td><td><span class="tag">${basisLabel}</span></td><td class="num">${fmt(floor.buildingArea, 1)}</td><td class="num">${fmt(floor.leasableArea, 1)}</td><td class="num">${fmt(floor.rentArea, 1)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(monthly)}</td><td class="num">${fmt(monthly * 12 / 10000, 1)}</td><td class="num">${fmtPct(total.monthly ? monthly / total.monthly : 0)}</td></tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot><tr><td colspan="3"><strong>项目合计</strong></td><td class="num"><strong>${fmt(total.buildingArea, 1)}</strong></td><td class="num"><strong>${fmt(total.leasableArea, 1)}</strong></td><td class="num"><strong>${fmt(total.rentArea, 1)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 1)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 1)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
+      </table>
+    </div>
+  </div>`;
+}
+
 function renderDetailedPricing(m, shops, preview) {
   const categoryRent = Object.fromEntries((m.categories || []).map(c => [c.name, Number(c.rent || 0)]));
-  const filtered = shops.filter(s => !state.shopSearch || `${s.id} ${s.floor} ${s.category} ${s.status} ${(s.conditions || []).join(' ')}`.toLowerCase().includes(state.shopSearch.toLowerCase()));
+  const filtered = shops.filter(s => !state.shopSearch || `${s.id} ${s.building || ''} ${s.floor} ${s.category} ${s.status} ${(s.conditions || []).join(' ')}`.toLowerCase().includes(state.shopSearch.toLowerCase()));
   const pageSize = 50;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   state.shopPage = Math.min(state.shopPage, pageCount);
   const start = (state.shopPage - 1) * pageSize;
   const pageRows = filtered.slice(start, start + pageSize);
-  const previewShopMap = new Map((preview?.shops || []).map(shop => [shop.id, shop]));
+  const previewShopMap = new Map((preview?.shops || []).map(shop => [shopRecordKey(shop), shop]));
   const totalBuilding = shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0);
   const totalLease = shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
   return `
     <div class="import-zone" id="import-zone">
       <div class="import-icon">${ICONS.upload}</div>
-      <div><h3>导入一铺一价电子表格</h3><p>支持 .xlsx、.xlsm、.csv。可导入铺位号、面积、楼层、业态、状态、租金覆盖值和铺位条件。</p></div>
+      <div><h3>导入一铺一价电子表格</h3><p>支持 .xlsx、.xlsm、.csv。可导入楼栋、铺位号、面积、楼层、计租口径、业态、状态、租金覆盖值和铺位条件。</p></div>
       <div class="import-actions"><button class="btn btn-secondary" id="download-template">${ICONS.download}<span>下载模板</span></button><button class="btn btn-primary" id="choose-file">${ICONS.upload}<span>选择文件</span></button><input type="file" id="shop-file" accept=".xlsx,.xlsm,.csv" hidden></div>
     </div>
     ${state.importWarnings.length ? `<div class="warning-list">${state.importWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
@@ -1866,18 +1932,19 @@ function renderDetailedPricing(m, shops, preview) {
       </div>
     </div>
     <div class="table-toolbar">
-      <div style="position:relative;flex:1;max-width:330px"><input class="input" id="shop-search" placeholder="搜索铺位号、楼层、业态或位置条件" value="${escapeHtml(state.shopSearch)}"></div>
+      <div style="position:relative;flex:1;max-width:360px"><input class="input" id="shop-search" placeholder="搜索楼栋、铺位号、楼层、业态或位置条件" value="${escapeHtml(state.shopSearch)}"></div>
       <div style="display:flex;gap:8px"><button class="btn btn-secondary btn-sm" id="add-shop">${ICONS.plus}<span>新增铺位</span></button>${shops.length ? `<button class="btn btn-danger btn-sm" id="clear-shops">${ICONS.trash}<span>清空</span></button>` : ''}</div>
     </div>
-    <div class="data-table-wrap">
-      <table class="data-table"><thead><tr><th>铺位号</th><th>楼层</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">租赁面积</th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
+      <div class="data-table-wrap">
+      <table class="data-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
         ${pageRows.length ? pageRows.map(shop => {
-          const calc = previewShopMap.get(shop.id);
+          const key = shopRecordKey(shop);
+          const calc = previewShopMap.get(key);
           const base = calc?.baseRent ?? (categoryRent[shop.category] || 0);
           const modeLabels = { rent:'纯租金', concession:'纯扣点', guarantee_or_concession:'保底/扣点取高' };
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
-          return `<tr><td><strong>${escapeHtml(shop.id)}</strong></td><td>${escapeHtml(shop.floor || '—')}</td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmt(shop.buildingArea, 1)}</td><td class="num">${fmt(shop.leasableArea, 1)}</td><td class="num" data-shop-guarantee="${escapeHtml(shop.id)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(shop.id)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(shop.id)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(shop.id)}">${ICONS.trash}</button></td></tr>`;
-        }).join('') : `<tr><td colspan="11" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
+          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)])}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmt(shop.buildingArea, 1)}</td><td class="num">${fmt(shop.leasableArea, 1)}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
+        }).join('') : `<tr><td colspan="13" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
       </tbody></table>
     </div>
     <div class="table-pagination"><button class="btn btn-ghost btn-sm" id="shop-prev" ${state.shopPage <= 1 ? 'disabled' : ''}>上一页</button><span>第 ${state.shopPage} / ${pageCount} 页，共 ${filtered.length} 个铺位</span><button class="btn btn-ghost btn-sm" id="shop-next" ${state.shopPage >= pageCount ? 'disabled' : ''}>下一页</button></div>`;
@@ -2972,12 +3039,12 @@ function updateLiveStats() {
   document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(summary.totalMonthlyRent); });
   document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(summary.averageRent, 1); });
   document.querySelectorAll('[data-live="status"]').forEach(el => { el.textContent = summary.status; });
-  const floors = new Map((state.preview.floors || []).map(floor => [floor.name, floor]));
+  const floors = new Map((state.preview.floors || []).map(floor => [buildingFloorKey(floor), floor]));
   document.querySelectorAll('[data-floor-actual]').forEach(el => {
     const floor = floors.get(el.dataset.floorActual);
     if (floor) el.textContent = fmt(floor.weightedRent || floor.avgRent, 1);
   });
-  const shops = new Map((state.preview.shops || []).map(shop => [shop.id, shop]));
+  const shops = new Map((state.preview.shops || []).map(shop => [shopRecordKey(shop), shop]));
   document.querySelectorAll('[data-shop-revenue]').forEach(el => {
     const shop = shops.get(el.dataset.shopRevenue);
     if (shop) el.textContent = fmt(shop.monthlyRevenue);
@@ -3006,24 +3073,28 @@ function ensureFloorsFromShops(model) {
   const groups = new Map();
   const categoryRent = Object.fromEntries((model.categories || []).map(cat => [cat.name, Number(cat.rent || 0)]));
   for (const shop of shops) {
+    const building = String(shop.building || '1号楼').trim() || '1号楼';
     const name = String(shop.floor || '未分楼层').trim() || '未分楼层';
-    if (!groups.has(name)) groups.set(name, { buildingArea: 0, leasableArea: 0, rentValue: 0 });
-    const group = groups.get(name);
+    const key = `${building}||${name}`;
+    if (!groups.has(key)) groups.set(key, { building, name, buildingArea: 0, leasableArea: 0, rentArea: 0, rentValue: 0 });
+    const group = groups.get(key);
     const rent = shop.rentOverride == null ? categoryRent[shop.category] || 0 : Number(shop.rentOverride);
+    const rentArea = rentAreaFor(shop, model);
     group.buildingArea += Number(shop.buildingArea || 0);
     group.leasableArea += Number(shop.leasableArea || 0);
-    group.rentValue += Number(shop.leasableArea || 0) * rent;
+    group.rentArea += rentArea;
+    group.rentValue += rentArea * rent;
   }
-  const existing = new Map((model.floors || []).map(floor => [floor.name, floor]));
-  for (const [name, group] of groups) {
-    const avg = group.leasableArea ? group.rentValue / group.leasableArea : 0;
-    const floor = existing.get(name);
+  const existing = new Map((model.floors || []).map(floor => [buildingFloorKey(floor), floor]));
+  for (const [key, group] of groups) {
+    const avg = group.rentArea ? group.rentValue / group.rentArea : 0;
+    const floor = existing.get(key);
     if (floor) {
       if (!Number(floor.buildingArea)) floor.buildingArea = group.buildingArea;
       if (!Number(floor.leasableArea)) floor.leasableArea = group.leasableArea;
       if (!Number(floor.avgRent)) floor.avgRent = Number(avg.toFixed(2));
     } else {
-      model.floors.push({ name, buildingArea: group.buildingArea, leasableArea: group.leasableArea, avgRent: Number(avg.toFixed(2)) });
+      model.floors.push({ building: group.building, name: group.name, rentAreaBasis: 'inherit', buildingArea: group.buildingArea, leasableArea: group.leasableArea, avgRent: Number(avg.toFixed(2)) });
     }
   }
 }
@@ -3064,11 +3135,12 @@ function bindShopsStep() {
   }));
   document.getElementById('add-floor')?.addEventListener('click', () => {
     const floors = state.current.model.floors || (state.current.model.floors = []);
-    const names = new Set(floors.map(item => item.name));
+    const names = new Set(floors.map(item => buildingFloorKey(item)));
+    const building = floors.at(-1)?.building || '1号楼';
     let index = floors.length + 1;
     let name = `${index}F`;
-    while (names.has(name)) { index += 1; name = `${index}F`; }
-    floors.push({ name, buildingArea: 0, leasableArea: 0, avgRent: 0, salesPerSqmMonth: 0, concessionRate: 0 });
+    while (names.has(`${building}||${name}`)) { index += 1; name = `${index}F`; }
+    floors.push({ building, name, rentAreaBasis: 'inherit', buildingArea: 0, leasableArea: 0, avgRent: 0, salesPerSqmMonth: 0, concessionRate: 0 });
     state.dirty = true;
     renderWorkspace();
     scheduleLivePreview();
@@ -3097,7 +3169,7 @@ function bindShopsStep() {
     state.current.model.shops = []; state.dirty = true; state.preview = null; renderWorkspace(); scheduleLivePreview();
   });
   document.querySelectorAll('[data-delete-shop]').forEach(btn => btn.addEventListener('click', () => {
-    state.current.model.shops = state.current.model.shops.filter(shop => shop.id !== btn.dataset.deleteShop);
+    state.current.model.shops = state.current.model.shops.filter(shop => shopRecordKey(shop) !== btn.dataset.deleteShop);
     state.dirty = true; state.preview = null; renderWorkspace(); scheduleLivePreview();
   }));
   const shopSearch = document.getElementById('shop-search');
@@ -3121,10 +3193,10 @@ async function handleShopImport(file) {
     const payload = await api('/api/import-shops', { method: 'POST', body: { filename: file.name, contentBase64 } });
     state.current.model.calculationMode = 'detailed';
     state.current.model.shops = payload.shops || [];
-    ensureFloorsFromShops(state.current.model);
     state.importWarnings = payload.warnings || [];
     state.importHints = payload.projectHints || {};
     applyImportHints(payload.projectHints || {});
+    ensureFloorsFromShops(state.current.model);
     state.dirty = true;
     state.shopPage = 1;
     state.preview = null;
@@ -3150,6 +3222,7 @@ function applyImportHints(hints) {
   for (const [key, value] of Object.entries(projectHints)) {
     if (value === null || value === undefined || value === '') continue;
     if (numeric.includes(key)) p[key] = Number(value) || 0;
+    else if (key === 'rentAreaBasis') p[key] = value;
     else if (p[key] === '' || p[key] === null || p[key] === undefined) p[key] = value;
   }
   if (Object.keys(projectHints).length) toast('已同步项目信息表中的基础字段', 'success');
@@ -3167,9 +3240,11 @@ function openAddShopModal(editIndex = null) {
           <div class="modal-body">
             <div class="form-grid two">
               <div class="field"><label>铺位号</label><input class="input" name="id" required placeholder="例如 A-101" value="${escapeHtml(editing?.id || '')}"></div>
+              <div class="field"><label>楼栋</label><input class="input" name="building" list="building-options" placeholder="例如 1号楼" value="${escapeHtml(editing?.building || '1号楼')}"><datalist id="building-options">${[...new Set([...(m.floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])].map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist></div>
               <div class="field"><label>楼层</label><input class="input" name="floor" list="floor-options" placeholder="例如 1F" value="${escapeHtml(editing?.floor || '')}"><datalist id="floor-options">${(m.floors || []).map(floor => `<option value="${escapeHtml(floor.name)}"></option>`).join('')}</datalist></div>
+              <div class="field"><label>租金核算面积口径</label><select class="select" name="rentAreaBasis">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((editing?.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
               <div class="field"><label>建筑面积（㎡）</label><input class="input" name="buildingArea" type="number" step="any" required value="${editing?.buildingArea ?? ''}"></div>
-              <div class="field"><label>实际租赁面积（㎡）</label><input class="input" name="leasableArea" type="number" step="any" required value="${editing?.leasableArea ?? ''}"></div>
+              <div class="field"><label>实用面积（套内/租赁面积，㎡）</label><input class="input" name="leasableArea" type="number" step="any" required value="${editing?.leasableArea ?? ''}"></div>
               <div class="field"><label>业态</label><select class="select" name="category">${(m.categories || []).map(c => `<option ${editing?.category === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
               <div class="field"><label>状态</label><select class="select" name="status">${['营业','未开业','停业'].map(status => `<option ${editing?.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div>
               <div class="field"><label>租金单价覆盖 <small>可选</small></label><input class="input" name="rentOverride" type="number" step="any" placeholder="留空则自动定价" value="${editing?.rentOverride ?? ''}"></div>
@@ -3187,7 +3262,7 @@ function openAddShopModal(editIndex = null) {
     event.preventDefault();
     const f = new FormData(event.currentTarget);
     const nextShop = {
-      id: String(f.get('id')).trim(), floor: String(f.get('floor')).trim(), buildingArea: Number(f.get('buildingArea')), leasableArea: Number(f.get('leasableArea')), category: f.get('category'), status: f.get('status'), rentOverride: f.get('rentOverride') ? Number(f.get('rentOverride')) : null, note: '',
+      id: String(f.get('id')).trim(), building: String(f.get('building') || '1号楼').trim(), floor: String(f.get('floor')).trim(), rentAreaBasis: String(f.get('rentAreaBasis') || 'inherit'), buildingArea: Number(f.get('buildingArea')), leasableArea: Number(f.get('leasableArea')), category: f.get('category'), status: f.get('status'), rentOverride: f.get('rentOverride') ? Number(f.get('rentOverride')) : null, note: '',
       conditions: f.getAll('conditions'),
     };
     if (editing) state.current.model.shops[editIndex] = { ...editing, ...nextShop };

@@ -427,6 +427,7 @@ function demoModel() {
       locationSource: 'address',
       projectType: '购物中心',
       developmentType: 'new_build',
+      rentAreaBasis: 'leasable',
       revenueModel: 'rent',
       startYear: 2027,
       constructionYears: 2,
@@ -458,14 +459,14 @@ function demoModel() {
       stepYears: 3,
     },
     floors: [
-      { name: 'B1', buildingArea: 4000, leasableArea: 3000, avgRent: 50, salesPerSqmMonth: 0, concessionRate: 0 },
-      { name: '1F', buildingArea: 4000, leasableArea: 3200, avgRent: 200, salesPerSqmMonth: 0, concessionRate: 0 },
-      { name: '2F', buildingArea: 4000, leasableArea: 3200, avgRent: 130, salesPerSqmMonth: 0, concessionRate: 0 },
-      { name: '3F', buildingArea: 4000, leasableArea: 3200, avgRent: 95, salesPerSqmMonth: 0, concessionRate: 0 },
-      { name: '4F', buildingArea: 2000, leasableArea: 1600, avgRent: 65, salesPerSqmMonth: 0, concessionRate: 0 },
+      { building: '1号楼', name: 'B1', rentAreaBasis: 'inherit', buildingArea: 4000, leasableArea: 3000, avgRent: 50, salesPerSqmMonth: 0, concessionRate: 0 },
+      { building: '1号楼', name: '1F', rentAreaBasis: 'inherit', buildingArea: 4000, leasableArea: 3200, avgRent: 200, salesPerSqmMonth: 0, concessionRate: 0 },
+      { building: '1号楼', name: '2F', rentAreaBasis: 'inherit', buildingArea: 4000, leasableArea: 3200, avgRent: 130, salesPerSqmMonth: 0, concessionRate: 0 },
+      { building: '1号楼', name: '3F', rentAreaBasis: 'inherit', buildingArea: 4000, leasableArea: 3200, avgRent: 95, salesPerSqmMonth: 0, concessionRate: 0 },
+      { building: '1号楼', name: '4F', rentAreaBasis: 'inherit', buildingArea: 2000, leasableArea: 1600, avgRent: 65, salesPerSqmMonth: 0, concessionRate: 0 },
     ],
     shops: [
-      { id: 'B1-001', buildingArea: 1800, leasableArea: 1450, floor: 'B1', category: '超市/主力店', status: '营业', rentOverride: 42, conditions: ['主入口'], note: '超市主力店' },
+      { id: 'B1-001', building: '1号楼', rentAreaBasis: 'inherit', buildingArea: 1800, leasableArea: 1450, floor: 'B1', category: '超市/主力店', status: '营业', rentOverride: 42, conditions: ['主入口'], note: '超市主力店' },
       { id: '1F-001', buildingArea: 120, leasableArea: 92, floor: '1F', category: '餐饮', status: '营业', rentOverride: 195, conditions: ['转角铺', '临街'], note: '咖啡烘焙' },
       { id: '1F-002', buildingArea: 88, leasableArea: 69, floor: '1F', category: '零售', status: '营业', rentOverride: 180, conditions: ['主入口'], note: '美妆集合店' },
       { id: '1F-003', buildingArea: 160, leasableArea: 126, floor: '1F', category: '零售', status: '空置', rentOverride: 150, conditions: ['电梯口'], note: '运动零售' },
@@ -553,15 +554,24 @@ function matchesAlias(value, aliases) {
 
 const SHOP_ALIASES = {
   id: ['铺位号', '商铺号', '铺号', '编号', 'shopid', 'id'],
+  building: ['楼栋', '楼号', 'building', 'buildingname'],
   buildingArea: ['建筑面积', '建筑面', 'grossarea'],
-  leasableArea: ['实际租赁面积', '租赁面积', '可租赁面积', '计租面积', 'leasablearea'],
+  leasableArea: ['实际租赁面积', '租赁面积', '可租赁面积', '实用面积', '套内面积', '计租面积', 'leasablearea'],
   floor: ['楼层', '所在楼层', 'floor'],
+  rentAreaBasis: ['租金核算面积口径', '租金面积口径', '计租口径', '面积口径', 'rentareabasis'],
   category: ['业态', '经营业态', 'category'],
   status: ['状态', '经营状态', 'status'],
-  rentOverride: ['租金单价覆盖', '租金单价', '租金', 'rentoverride', 'rent'],
+  rentOverride: ['租金单价覆盖', '租金单价', 'rentoverride'],
   conditions: ['铺位条件', '位置条件', '条件', 'conditions'],
   note: ['备注', '说明', 'note'],
 };
+
+function normalizeRentAreaBasis(value, fallback = 'inherit') {
+  const text = String(value ?? '').trim();
+  if (/建筑/.test(text)) return 'building';
+  if (/实用|套内|租赁/.test(text)) return 'leasable';
+  return fallback;
+}
 
 const MARKET_ALIASES = {
   name: ['样本名称', '项目名称', '竞品名称', '商场名称', 'name'],
@@ -587,7 +597,9 @@ function findHeaderRow(rows, aliases, requiredKeys) {
 function headerIndexes(row, aliases) {
   const result = {};
   for (const [key, values] of Object.entries(aliases)) {
-    const idx = row.findIndex(cell => matchesAlias(cell, values));
+    const exactAliases = new Set(values.map(value => normalizeHeader(value)));
+    let idx = row.findIndex(cell => exactAliases.has(normalizeHeader(cell)));
+    if (idx < 0) idx = row.findIndex(cell => matchesAlias(cell, values));
     if (idx >= 0) result[key] = idx;
   }
   return result;
@@ -648,9 +660,11 @@ function parseShopWorkbook(base64, filename) {
     if (!id && buildingArea <= 0 && leasableArea <= 0) continue;
     shops.push({
       id,
+      building: String(rowValue(row, indexes, 'building') || '1号楼').trim(),
       buildingArea,
       leasableArea,
       floor: String(rowValue(row, indexes, 'floor') || '').trim(),
+      rentAreaBasis: normalizeRentAreaBasis(rowValue(row, indexes, 'rentAreaBasis'), 'inherit'),
       category: String(rowValue(row, indexes, 'category') || '零售').trim(),
       status: String(rowValue(row, indexes, 'status') || '营业').trim(),
       rentOverride: optionalNumber(rowValue(row, indexes, 'rentOverride')),
@@ -658,15 +672,29 @@ function parseShopWorkbook(base64, filename) {
       note: String(rowValue(row, indexes, 'note') || '').trim(),
     });
   }
+  const projectHints = {};
+  const projectSheetName = wb.SheetNames.find(name => name.includes('项目'));
+  if (projectSheetName) {
+    const projectRows = XLSX.utils.sheet_to_json(wb.Sheets[projectSheetName], { header: 1, raw: false, defval: '' });
+    for (const row of projectRows) {
+      const label = normalizeHeader(row?.[0]);
+      if (/租金核算面积口径|租金面积口径|计租口径/.test(String(row?.[0] || ''))) {
+        projectHints.rentAreaBasis = normalizeRentAreaBasis(row?.[1], 'leasable');
+      }
+    }
+  }
   const warnings = shopWarnings(shops);
-  return { shops, warnings, sheet: name, rowsRead: Math.max(0, rows.length - headerIdx - 1), projectHints: {} };
+  return { shops, warnings, sheet: name, rowsRead: Math.max(0, rows.length - headerIdx - 1), projectHints };
 }
 
 function shopWarnings(shops) {
   const warnings = [];
   const counts = {};
-  for (const shop of shops) if (shop.id) counts[shop.id] = (counts[shop.id] || 0) + 1;
-  const duplicates = Object.entries(counts).filter(([, n]) => n > 1).map(([id]) => id);
+  for (const shop of shops) if (shop.id) {
+    const key = `${shop.building || '1号楼'}||${shop.id}`;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  const duplicates = Object.entries(counts).filter(([, n]) => n > 1).map(([key]) => key.replace('||', ' / '));
   if (duplicates.length) warnings.push(`发现重复铺位号：${duplicates.slice(0, 8).join(', ')}`);
   const missingArea = shops.filter(s => safeNumber(s.buildingArea) <= 0).length;
   if (missingArea) warnings.push(`${missingArea}个铺位缺少建筑面积`);
@@ -734,6 +762,7 @@ function shopTemplate() {
     ['项目位置', '广西壮族自治区', '省/市/城区，例如：广西壮族自治区柳州市'],
     ['项目开发状态', '新建项目', '新建项目/旧改项目/运营中项目/轻资产运营项目'],
     ['商业项目形态', '购物中心', '购物中心/街区商业/社区商业等'],
+    ['租金核算面积口径', '实用面积（套内/租赁面积）', '可填写：实用面积（套内/租赁面积）或建筑面积'],
     ['起始年份', 2027, '建设第1年'],
     ['建设期', 2, '年'],
     ['总建筑面积', '', '㎡；可留空，由商铺建筑面积反推'],
@@ -744,12 +773,12 @@ function shopTemplate() {
   ], [24, 32, 44]);
   const rows = [
     ['商铺明细导入表'],
-    ['示例：A-101｜120.00｜90.00｜1F｜零售｜营业｜租金可留空｜电梯口、转角铺。请从第6行开始录入，不要移动表头。'],
+    ['示例：1号楼｜A-101｜120.00｜90.00｜1F｜实用面积｜零售｜营业｜租金可留空｜电梯口、转角铺。请从第6行开始录入，不要移动表头。'],
     [],
-    ['铺位号', '建筑面积（㎡）', '实际租赁面积（㎡）', '楼层', '业态', '状态', '租金单价覆盖（元/㎡/月）', '铺位条件', '备注'],
-    ['A-101', 120, 90, '1F', '零售', '营业', '', '电梯口、转角铺', '示例行，可删除'],
+    ['楼栋', '铺位号', '建筑面积（㎡）', '实用面积/套内面积（㎡）', '楼层', '租金核算面积口径', '业态', '状态', '租金单价覆盖（元/㎡/月）', '铺位条件', '备注'],
+    ['1号楼', 'A-101', 120, 90, '1F', '实用面积', '零售', '营业', '', '电梯口、转角铺', '示例行，可删除'],
   ];
-  addSheet(wb, '商铺明细', rows, [16, 18, 20, 10, 16, 12, 24, 24, 28]);
+  addSheet(wb, '商铺明细', rows, [12, 16, 18, 20, 10, 20, 16, 12, 24, 24, 28]);
   return wb;
 }
 
@@ -963,7 +992,7 @@ function exportExcel(result) {
   const wb = XLSX.utils.book_new();
   addSheet(wb, '项目概览', [
     ['多多 · 商业地产投资测算'], [''],
-    ['项目名称', s.projectName], ['项目位置', s.location], ['项目开发状态', developmentLabels[s.developmentType] || s.developmentType || '新建项目'], ['商业项目形态', model.project.projectType], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
+    ['项目名称', s.projectName], ['项目位置', s.location], ['项目开发状态', developmentLabels[s.developmentType] || s.developmentType || '新建项目'], ['商业项目形态', model.project.projectType], ['租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
     ['总建筑面积（㎡）', s.grossFloorArea], ['可租赁面积（㎡）', s.leasableArea], ['商铺/楼层数量', s.calculationMode === 'preliminary' ? s.floorCount : s.shopsCount],
     ['项目总投资（万元）', s.totalInvestment], ['稳定期营业收入（万元/年）', s.stableRevenue], ['业主租金支出（万元/年）', s.stableOwnerRentCost || 0], ['稳定期NOI（万元/年）', s.stableNoi],
     ['NOI回报率', s.noiYield], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback],
@@ -972,7 +1001,7 @@ function exportExcel(result) {
   addSheet(wb, '核心参数', [
     ['参数大类', '参数', '数值'],
     ['项目', '开发状态', developmentLabels[model.project.developmentType] || model.project.developmentType || '新建项目'], ['项目', '起始年份', model.project.startYear], ['项目', '建设期（年）', model.project.constructionYears],
-    ['项目', '招商运营年限（年）', model.project.operationYears], ['项目', '建筑面积调节系数', model.project.commonAreaFactor],
+    ['项目', '招商运营年限（年）', model.project.operationYears], ['项目', '租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['项目', '建筑面积调节系数', model.project.commonAreaFactor],
     ['业主租金', '是否支付', model.ownerRent?.enabled ? '是' : '否'], ['业主租金', '租赁标的', ownerRentLeaseLabels[model.ownerRent?.leaseType] || '仅物业租赁'],
     ['业主租金', '土地计价方式', model.ownerRent?.landPricingMode === 'unit' ? '按面积单价' : '按月度总额'],
     ['业主租金', '土地面积（㎡）', model.ownerRent?.landArea || 0], ['业主租金', '土地单价（元/㎡/月）', model.ownerRent?.landUnitRent || 0],
@@ -1055,8 +1084,8 @@ function exportExcel(result) {
     ...Object.entries(EXPORT_FUNCTIONS).map(([name, f]) => [name, f.syntax, f.meaning, f.example, f.note])
   ], [16, 38, 55, 55, 70]);
   addSheet(wb, '投资构成', [['项目', '金额（万元）', '占比'], ...result.investmentBreakdown.map(x => [x.name, x.value, s.totalInvestment ? x.value / s.totalInvestment : 0])], [28, 18, 14]);
-  addSheet(wb, '楼层均价', [['楼层', '建筑面积（㎡）', '可租赁面积（㎡）', '平均月收益（元/㎡/月）', '满租月收益（万元）'], ...(result.floors || []).map(x => [x.name, x.buildingArea, x.leasableArea, x.weightedRent || x.avgRent, x.monthlyRevenue || x.monthlyRent])], [12, 18, 20, 26, 22]);
-  addSheet(wb, '商铺明细', [['铺位号', '楼层', '业态', '状态', '建筑面积（㎡）', '实际租赁面积（㎡）', '租金单价（元/㎡/月）', '条件', '满租月收益（万元）'], ...(result.shops || []).map(x => [x.id, x.floor, x.category, x.status || '', x.buildingArea, x.leasableArea, x.rent, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [16, 10, 16, 12, 18, 20, 22, 24, 22]);
+  addSheet(wb, '楼层均价', [['楼栋', '楼层', '计租口径', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '平均月租金（元/㎡/月）', '月租金收入（万元/月）', '年租金收入（万元/年）', '收入占比'], ...(result.floors || []).map(x => { const monthlyWan = Number(x.monthlyRevenue || x.monthlyRent || 0) / 10000; return [x.building || '1号楼', x.name, x.rentAreaBasis === 'building' ? '建筑面积' : x.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径', x.buildingArea, x.leasableArea, x.rentArea, x.weightedRent || x.avgRent, monthlyWan, monthlyWan * 12, s.totalMonthlyRent ? (Number(x.monthlyRevenue || x.monthlyRent || 0) / s.totalMonthlyRent) : 0]; })], [12, 10, 14, 18, 18, 18, 26, 22, 24, 14]);
+  addSheet(wb, '商铺明细', [['楼栋', '铺位号', '楼层', '计租口径', '业态', '状态', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '租金单价（元/㎡/月）', '条件', '满租月收益（万元）'], ...(result.shops || []).map(x => [x.building || '1号楼', x.id, x.floor, x.rentAreaBasis === 'building' ? '建筑面积' : '实用面积', x.category, x.status || '', x.buildingArea, x.leasableArea, x.rentArea, x.rent, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [12, 16, 10, 14, 16, 12, 18, 18, 18, 22, 24, 22]);
   addSheet(wb, '租赁联营规则', [['业态', '基准月租金（元/㎡/月）', '业态系数', '销售基数（元/㎡/月）', '扣点率', '结算方式'], ...(model.categories || []).map(x => [x.name, x.rent, x.factor, x.salesPerSqmMonth, x.concessionRate, x.revenueMode])], [20, 24, 14, 22, 14, 20]);
   addSheet(wb, '周边市场分析', [['指标', '结果'], ['项目平均租金（元/㎡/月）', result.marketSummary.projectAverageRent], ['市场加权均价（元/㎡/月）', result.marketSummary.weightedAverageRent], ['市场中位数（元/㎡/月）', result.marketSummary.medianRent], ['市场25分位（元/㎡/月）', result.marketSummary.p25Rent], ['市场75分位（元/㎡/月）', result.marketSummary.p75Rent], ['项目定价位置', result.marketSummary.position], ...(result.marketSummary.conclusions || []).map((x, i) => [`结论${i + 1}`, x])], [30, 80]);
   const detection = model.market?.lastAnalysis || {};
@@ -1155,6 +1184,12 @@ async function exportPPT(result) {
     { name: '营业收入', labels: result.annual.map(x => `Y${x.opYear}`), values: result.annual.map(x => x.revenue) },
     { name: 'NOI', labels: result.annual.map(x => `Y${x.opYear}`), values: result.annual.map(x => x.noi) },
   ], { x: 0.7, y: 1.45, w: 12.0, h: 5.3, showLegend: true, legendPos: 't', showTitle: false, lineDataSymbol: 'none', chartColors: ['1D6B57', 'D6A84B'], catAxisLabelFontSize: 8, valAxisLabelFontSize: 9 });
+
+  slide = pptx.addSlide();
+  addSlideTitle(slide, '楼栋与楼层面积及租金汇总', `租金核算口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}`);
+  const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','平均租金','年租金(万元)','占比'], ...(result.floors || []).slice(0, 12).map(x => [x.building || '1号楼', x.name, Number(x.buildingArea || 0).toFixed(0), Number(x.leasableArea || 0).toFixed(0), Number(x.rentArea || 0).toFixed(0), Number(x.weightedRent || x.avgRent || 0).toFixed(1), (Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000).toFixed(1), `${(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1) * 100).toFixed(1)}%`])];
+  slide.addTable(floorSummaryRows, { x: 0.55, y: 1.4, w: 12.3, colW: [1.25, 0.9, 1.35, 1.35, 1.35, 1.55, 1.9, 1.2], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.5, margin: 0.03, rowH: 0.28, autoFit: false });
+  if ((result.floors || []).length > 12) slide.addText(`仅展示前12个楼层，完整数据见Excel。`, { x: 0.7, y: 6.65, w: 5, h: 0.25, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F' });
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '租赁与联营规则', '不同业态可采用纯租金、纯扣点或保底与扣点取高');

@@ -754,6 +754,9 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .annual-cost-table-wrap { max-height:460px; overflow:auto; }
 .annual-cost-table th { position:sticky; top:0; z-index:1; }
 .annual-cost-table tr.adjusted td { background:#f2f8f4; }
+.floor-summary-section { background:linear-gradient(180deg,#fffdf9,#f8fbf8); }
+.floor-summary-table tfoot td { background:var(--green-soft); color:var(--navy); border-top:2px solid #c6dcd2; }
+.floor-summary-table tfoot td:first-child { color:var(--green); }
 .empty-table-cell { padding:22px !important; text-align:center; color:var(--muted); }
 .operating-cost-bars { display:grid; gap:8px; margin-top:12px; }
 .operating-cost-row { display:grid; grid-template-columns:150px 1fr 78px 54px; gap:9px; align-items:center; color:var(--muted); font-size: var(--fs-9); }
