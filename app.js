@@ -1,7 +1,7 @@
-import './backend.js?v=20261107-type4';
+import './backend.js?v=20261109-lease1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.5.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -120,8 +120,24 @@ const FIELD_FORMULAS = {
   'formulas.sensitivityCapexMin': { title: '敏感性投资下限', formula: '敏感性矩阵投资系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
   'formulas.sensitivityCapexMax': { title: '敏感性投资上限', formula: '敏感性矩阵投资系数 = MIN ~ MAX，按STEP生成', functions: ['SEQUENCE', 'ROUND'], role: '用于NPV敏感性分析。' },
   'formulas.sensitivityCapexStep': { title: '敏感性投资步长', formula: '投资系数序列 = MIN, MIN+STEP, …, MAX', functions: ['SEQUENCE'], role: '步长越小，矩阵越细。' },
-  'organization.socialInsuranceRate': { title: '社保公积金比例', formula: '部门年成本 = 人数 × 月薪 ×（12 + 年终奖月数）×（1 + 社保公积金比例）', functions: ['SUM'], role: '社保公积金比例越高，年度人员成本越高。' },
-  'organization.annualBonusMonths': { title: '年终奖月数', formula: '年度薪资月数 = 12 + 年终奖月数', functions: ['SUM'], role: '影响年度工资总额和人员成本。' },
+  'ownerRent.enabled': { title: '业主租金支付', formula: '启用后，业主租金作为运营期固定支出进入NOI', functions: ['IF'], role: '轻资产、租赁经营和运营中项目通常需要计入业主租金。' },
+  'ownerRent.leaseType': { title: '租赁标的类型', formula: '土地租金、物业租金或土地+物业租金分别汇总', functions: ['IF'], role: '区分土地租赁和物业租赁，避免将两类合同成本混在一起。' },
+  'ownerRent.landPricingMode': { title: '土地计价方式', formula: '按面积：土地面积 × 单价 ÷ 10000；按总额：直接采用月租金总额', functions: ['IF'], role: '土地合同可按元/㎡/月或月度总额录入。' },
+  'ownerRent.landArea': { title: '土地租赁面积', formula: '土地月租金 = 土地面积 × 土地单价 ÷ 10000', functions: ['SUM'], role: '仅在按面积计价时启用。' },
+  'ownerRent.landUnitRent': { title: '土地租赁单价', formula: '土地月租金 = 土地面积 × 土地单价 ÷ 10000', functions: ['SUM'], role: '单位为元/㎡/月，系统自动换算为万元/月。' },
+  'ownerRent.landMonthlyRent': { title: '土地月租金', formula: '首年土地租金 = 土地月租金 × 土地支付月数', functions: ['SUM'], role: '支付给土地权利人的租赁成本，直接影响NOI和现金流。' },
+  'ownerRent.landPaymentMonths': { title: '土地租金支付月数', formula: '首年土地租金 = 土地月租金 × 支付月数', functions: ['SUM'], role: '按土地租赁合同填写，免租期可按实际支付月份调整。' },
+  'ownerRent.propertyPricingMode': { title: '物业计价方式', formula: '按面积：物业面积 × 单价 ÷ 10000；按总额：直接采用月租金总额', functions: ['IF'], role: '物业合同可按元/㎡/月或月度总额录入。' },
+  'ownerRent.propertyArea': { title: '物业租赁面积', formula: '物业月租金 = 物业面积 × 物业单价 ÷ 10000', functions: ['SUM'], role: '仅在按面积计价时启用。' },
+  'ownerRent.propertyUnitRent': { title: '物业租赁单价', formula: '物业月租金 = 物业面积 × 物业单价 ÷ 10000', functions: ['SUM'], role: '单位为元/㎡/月，系统自动换算为万元/月。' },
+  'ownerRent.propertyMonthlyRent': { title: '物业月租金', formula: '首年物业租金 = 物业月租金 × 物业支付月数', functions: ['SUM'], role: '支付给物业业主的租赁成本，直接影响NOI和现金流。' },
+  'ownerRent.propertyPaymentMonths': { title: '物业租金支付月数', formula: '首年物业租金 = 物业月租金 × 支付月数', functions: ['SUM'], role: '按物业租赁合同填写，免租期可按实际支付月份调整。' },
+  'ownerRent.growthMode': { title: '业主租金递增方式', formula: '不复递增 / 复利递增 / 单利递增 / 每年固定金额递增 / 每N年阶梯递增', functions: ['IF', 'POWER'], role: '按业主租赁合同选择递增方式。' },
+  'ownerRent.growthRate': { title: '业主租金递增率', formula: '复利 = 首年租金×(1+r)^(n-1)；阶梯 = 每N年上调一次', functions: ['POWER', 'IF'], role: '用于复利、单利和阶梯递增。' },
+  'ownerRent.annualIncrease': { title: '业主租金每年增加额', formula: '第n年业主租金 = 首年租金 + 每年增加额×(n-1)', functions: ['SUM'], role: '用于固定金额递增方式，单位为万元/年。' },
+  'ownerRent.stepYears': { title: '业主租金递增周期', formula: '阶梯递增 = 每N年按递增率上调一次', functions: ['INT', 'POWER'], role: '用于每N年阶梯递增方式。' },
+  'organization.socialInsuranceRate': { title: '社保公积金比例', formula: '部门年成本 = 人数 × 月薪 × 年度薪资月数 ×（1 + 社保公积金比例）', functions: ['SUM'], role: '社保公积金比例越高，年度人员成本越高。' },
+  'organization.annualSalaryMonths': { title: '年度薪资月数', formula: '年度工资 = 平均月薪 × 年度薪资月数', functions: ['SUM'], role: '可填写12薪、13薪、14薪或15薪，影响年度工资和人员成本。' },
   'organization.recruitmentTrainingRate': { title: '招聘培训费', formula: '招聘培训费 = 年度工资成本 × 招聘培训费率', functions: ['SUM'], role: '用于招聘、培训、团队建设等人员相关支出。' },
   'officeBudget.officeRentAnnual': { title: '办公室租金', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '直接计入年度办公行政成本。' },
   'officeBudget.utilitiesAnnual': { title: '水电及通讯费', formula: '办公行政成本 = 租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他', functions: ['SUM'], role: '直接计入年度办公行政成本。' },
@@ -194,8 +210,12 @@ const FORMULA_GUIDES = {
     adjust: '上下限应覆盖悲观和乐观情景，通常从±10%开始；步长5%适合初筛。若某个变量跨越NPV由负转正的临界点，应进一步细化该变量。'
   },
   organization: {
-    how: '先确定部门和编制人数，再按平均月薪 ×（12+年终奖月数）×（1+社保公积金比例）计算部门年度成本，汇总后加入招聘培训费。保安、保洁、物业工程和运营团队分别计算。',
-    adjust: '按定编定岗方案填写人数和岗位平均月薪，社保公积金按项目属地政策设置。先确定是否需要自管、外包或混合模式，再比较人员成本对NOI和现金流的影响。'
+    how: '先确定部门和编制人数，再按平均月薪 × 年度薪资月数 ×（1+社保公积金比例）计算部门年度成本，汇总后加入招聘培训费。年度薪资月数可填12、13、14或15薪。',
+    adjust: '按定编定岗方案填写人数和岗位平均月薪，再按劳动合同和年终奖政策设置年度薪资月数。社保公积金按项目属地政策设置，重点比较人员成本对NOI和现金流的影响。'
+  },
+  ownerRent: {
+    how: '土地和物业租赁均可选择按面积单价或按月度总额计价。按面积时，月租金=面积×元/㎡/月÷10000；按总额时直接使用月租金。随后分别乘支付月数，并按合同选择不复递增、复利、单利、固定金额或每N年阶梯递增。',
+    adjust: '分别核对土地和物业租赁合同的计价方式、面积、单价或月租金总额、支付月数、递增方式、递增率、免租期、解约责任和发票税率。按面积计价时，应确保面积口径与合同一致。'
   },
   office: {
     how: '将办公室租金、水电通讯、IT软件、办公用品、差旅招待和其他行政费用逐项相加，形成年度办公行政成本。',
@@ -230,6 +250,7 @@ function formulaGuideFor(path, info) {
   if (path.includes('loanRepaymentMethod')) return FORMULA_GUIDES.finance;
   if (path.includes('exitValueMethod') || path.includes('exitRevenueMultiple')) return FORMULA_GUIDES.valuation;
   if (path.startsWith('organization.')) return FORMULA_GUIDES.organization;
+  if (path.startsWith('ownerRent.')) return FORMULA_GUIDES.ownerRent;
   if (path.startsWith('officeBudget.')) return FORMULA_GUIDES.office;
   if (path.startsWith('leasingBudget.')) return FORMULA_GUIDES.leasing;
   if (path.startsWith('marketingBudget.')) return FORMULA_GUIDES.marketing;
@@ -267,6 +288,7 @@ const TERM_DEFINITIONS = {
   '出租率': { category: '招商租赁', definition: '已出租面积或已营业面积占可租赁面积的比例。', why: '出租率同时影响租金、物业费、停车和运营成本。', how: '首年、爬坡期和稳定期应分别设置，结合招商计划和同类项目开业爬坡情况。' },
   '免租期': { category: '招商租赁', definition: '租户在合同开始阶段无需支付租金的月数。', why: '免租期会减少首年现金流，但不一定降低合同租金单价。', how: '按装修期和招商谈判填写，并关注免租期后的现金流恢复。' },
   '招商佣金': { category: '招商租赁', definition: '支付给招商团队、渠道或代理机构的租赁成交佣金。', why: '属于招商成本，影响项目总投资和运营期现金流。', how: '区分首开佣金、续租佣金和渠道年度预算，避免重复计算。' },
+  '业主租金': { category: '招商租赁', definition: '项目运营方向物业业主支付的租赁费用，常见于租赁经营、轻资产和存量商业项目。', why: '业主租金是运营期固定现金支出，会直接降低NOI；业主租金上涨可能显著压缩项目收益。', how: '按合同录入月租金、支付月数、递增方式和递增率，并核对免租期、支付节奏、发票税率和解约条款。' },
   '资本化率': { category: '估值退出', definition: '用稳定期NOI估算商业物业价值时使用的收益率指标。', why: '资本化率越高，相同NOI对应的物业估值越低。', how: '应参考同类商业资产成交、区位、租约质量和运营水平，谨慎选择。' },
   '折现率': { category: '估值退出', definition: '把未来现金流折算为当前价值时使用的收益率门槛。', why: '折现率越高，未来现金流现值越低，NPV越保守。', how: '通常参考企业投资门槛、资金成本和同类项目风险收益要求。' },
   '预备费': { category: '工程投资', definition: '为设计变更、工程量误差和不可预见工程风险预留的费用。', why: '方案深度越浅、建设风险越高，预备费越重要。', how: '通常按直接工程费的3%–8%设置，并随设计深化动态调整。' },
@@ -720,11 +742,11 @@ function renderAuth(mode = 'login') {
         <div class="auth-hero">
           <div class="auth-kicker">Investment intelligence</div>
           <h1>让商业项目测算<br>像填写一份表单一样简单</h1>
-          <p>导入铺位面积与业态，系统自动完成投资、租金、税费、20年现金流、IRR与NPV分析，并生成可汇报的表格和PPT。</p>
+          <p>导入铺位面积与业态，系统自动完成投资、租金、税费、可调年期现金流、IRR与NPV分析，并生成可汇报的表格和PPT。</p>
         </div>
         <div class="auth-points">
           <div class="auth-point"><strong>6步</strong><span>完成项目基础测算</span></div>
-          <div class="auth-point"><strong>20年</strong><span>经营与现金流预测</span></div>
+          <div class="auth-point"><strong>可调</strong><span>招商运营与现金流年限</span></div>
           <div class="auth-point"><strong>1键</strong><span>导出Excel与PPT</span></div>
         </div>
         <div class="auth-foot">本工具用于投资初筛与方案比较，不替代可研、审计、评估或税务鉴证。</div>
@@ -1431,7 +1453,7 @@ function selectField(label, path, options, opts = {}) {
   const normalized = options.map(opt => typeof opt === 'object' ? opt : { value: String(opt), label: String(opt) });
   return `<div class="field">
     <label><span>${label}</span>${formula ? '<span class="label-fx" title="查看公式">ƒ</span>' : ''}</label>
-    <select class="select" data-path="${path}" data-type="text">
+    <select class="select" data-path="${path}" data-type="${opts.type || 'text'}">
       ${normalized.map(opt => `<option value="${escapeHtml(opt.value)}" ${String(value) === String(opt.value) ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
     </select>
     ${opts.help ? `<div class="field-help">${opts.help}</div>` : ''}
@@ -1549,6 +1571,75 @@ function bindCostReferenceAction() {
   });
 }
 
+function renderOwnerRentSection() {
+  const model = state.current.model;
+  const ownerRent = model.ownerRent || (model.ownerRent = {
+    enabled: false,
+    leaseType: 'property',
+    landPricingMode: 'total',
+    landArea: 0,
+    landUnitRent: 0,
+    landMonthlyRent: 0,
+    landPaymentMonths: 12,
+    propertyPricingMode: 'total',
+    propertyArea: 0,
+    propertyUnitRent: 0,
+    propertyMonthlyRent: 0,
+    propertyPaymentMonths: 12,
+    growthMode: 'compound',
+    growthRate: 0.03,
+    annualIncrease: 0,
+    stepYears: 3,
+  });
+  const enabled = ownerRent.enabled === true || [1, '1', 'true', 'yes', '是'].includes(ownerRent.enabled);
+  const leaseType = ownerRent.leaseType || 'property';
+  const includesLand = ['land', 'land_and_property'].includes(leaseType);
+  const includesProperty = ['property', 'land_and_property'].includes(leaseType);
+  const landPricingMode = ownerRent.landPricingMode || 'total';
+  const propertyPricingMode = ownerRent.propertyPricingMode || 'total';
+  const growthMode = ownerRent.growthMode || 'compound';
+  const landMonthlyComputed = includesLand
+    ? landPricingMode === 'unit' ? Number(ownerRent.landArea || 0) * Number(ownerRent.landUnitRent || 0) / 10000 : Number(ownerRent.landMonthlyRent || 0)
+    : 0;
+  const propertyMonthlyComputed = includesProperty
+    ? propertyPricingMode === 'unit' ? Number(ownerRent.propertyArea || 0) * Number(ownerRent.propertyUnitRent || 0) / 10000 : Number(ownerRent.propertyMonthlyRent || 0)
+    : 0;
+  const landBase = landMonthlyComputed * Number(ownerRent.landPaymentMonths || 0);
+  const propertyBase = propertyMonthlyComputed * Number(ownerRent.propertyPaymentMonths || 0);
+  const annualBase = landBase + propertyBase;
+  const growthOptions = [
+    { value: 'none', label: '不复递增' },
+    { value: 'compound', label: '按比例复利递增' },
+    { value: 'simple', label: '按比例单利递增' },
+    { value: 'fixed_amount', label: '每年固定金额递增' },
+    { value: 'step', label: '每N年阶梯递增' },
+  ];
+  return `<div class="form-section owner-rent-section">
+    <div class="section-title">土地及物业租赁支出</div>
+    <div class="section-note">适用于土地租赁、物业租赁、租赁经营、轻资产和运营中项目。土地与物业租金会分别作为年度运营支出计入NOI和现金流。</div>
+    ${formulaPanel('土地及物业租赁支付公式', '按面积：月租金 = 面积 × 单价 ÷ 10000\n按总额：月租金 = 合同月度总额\n土地首年租金 = 土地月租金 × 土地支付月数\n物业首年租金 = 物业月租金 × 物业支付月数\n首年合计 = 土地首年租金 + 物业首年租金\n复利：第n年 = 首年 ×（1+递增率）^(n-1)\n单利：第n年 = 首年 ×［1+递增率×(n-1)］\n固定金额：第n年 = 首年 + 每年增加额×(n-1)\n阶梯：每N年按递增率上调一次', ['SUM', 'IF', 'POWER', 'INT'], '按土地租赁合同和物业租赁合同分别录入；自有物业不支付租金时选择“否”。')}
+    <div class="form-grid">
+      ${selectField('是否支付土地或物业租金', 'ownerRent.enabled', [{ value: true, label: '是，需要支付' }, { value: false, label: '否，自有物业' }], { type: 'boolean', help: '选择“是”后，租赁支出作为运营成本扣减NOI' })}
+      ${enabled ? selectField('租赁标的类型', 'ownerRent.leaseType', [{ value: 'land', label: '仅土地租赁' }, { value: 'property', label: '仅物业租赁' }, { value: 'land_and_property', label: '土地 + 物业租赁' }], { help: '按实际租赁合同选择，系统将分别计算土地和物业租金' }) : ''}
+      ${enabled && includesLand ? selectField('土地计价方式', 'ownerRent.landPricingMode', [{ value: 'total', label: '按月度总额' }, { value: 'unit', label: '按面积单价' }], { help: '按合同选择月度总额或元/㎡/月计价' }) : ''}
+      ${enabled && includesLand && landPricingMode === 'unit' ? textField('土地租赁面积', 'ownerRent.landArea', { type: 'number', unit: '㎡', help: '按土地租赁合同约定面积填写' }) : ''}
+      ${enabled && includesLand && landPricingMode === 'unit' ? textField('土地单价', 'ownerRent.landUnitRent', { type: 'number', unit: '元/㎡/月', help: `折合土地月租金约 ${fmt(landMonthlyComputed, 2)} 万元/月` }) : ''}
+      ${enabled && includesLand && landPricingMode === 'total' ? textField('土地月租金总额', 'ownerRent.landMonthlyRent', { type: 'number', unit: '万元/月', help: `首年土地租金约 ${fmt(landBase, 2)} 万元/年` }) : ''}
+      ${enabled && includesLand ? textField('土地年度支付月数', 'ownerRent.landPaymentMonths', { type: 'number', unit: '月/年', help: '土地租赁免租期或分次支付时按实际月数调整' }) : ''}
+      ${enabled && includesProperty ? selectField('物业计价方式', 'ownerRent.propertyPricingMode', [{ value: 'total', label: '按月度总额' }, { value: 'unit', label: '按面积单价' }], { help: '按合同选择月度总额或元/㎡/月计价' }) : ''}
+      ${enabled && includesProperty && propertyPricingMode === 'unit' ? textField('物业租赁面积', 'ownerRent.propertyArea', { type: 'number', unit: '㎡', help: '按物业租赁合同约定面积填写' }) : ''}
+      ${enabled && includesProperty && propertyPricingMode === 'unit' ? textField('物业单价', 'ownerRent.propertyUnitRent', { type: 'number', unit: '元/㎡/月', help: `折合物业月租金约 ${fmt(propertyMonthlyComputed, 2)} 万元/月` }) : ''}
+      ${enabled && includesProperty && propertyPricingMode === 'total' ? textField('物业月租金总额', 'ownerRent.propertyMonthlyRent', { type: 'number', unit: '万元/月', help: `首年物业租金约 ${fmt(propertyBase, 2)} 万元/年` }) : ''}
+      ${enabled && includesProperty ? textField('物业年度支付月数', 'ownerRent.propertyPaymentMonths', { type: 'number', unit: '月/年', help: '物业租赁免租期或分次支付时按实际月数调整' }) : ''}
+      ${enabled ? selectField('递增方式', 'ownerRent.growthMode', growthOptions, { help: '按业主租赁合同的递增条款选择' }) : ''}
+      ${enabled && ['compound', 'simple', 'step'].includes(growthMode) ? textField('递增率', 'ownerRent.growthRate', { type: 'number', unit: '%', scale: 0.01 }) : ''}
+      ${enabled && growthMode === 'fixed_amount' ? textField('每年增加额', 'ownerRent.annualIncrease', { type: 'number', unit: '万元/年' }) : ''}
+      ${enabled && growthMode === 'step' ? textField('递增周期', 'ownerRent.stepYears', { type: 'number', unit: '年/次' }) : ''}
+    </div>
+    ${enabled ? `<div class="owner-rent-summary">首年土地租赁 <strong>${fmt(landBase, 2)} 万元/年</strong> · 首年物业租赁 <strong>${fmt(propertyBase, 2)} 万元/年</strong> · 合计 <strong>${fmt(annualBase, 2)} 万元/年</strong></div>` : '<div class="owner-rent-summary muted">当前按自有物业测算：土地及物业租赁支出为0。</div>'}
+  </div>`;
+}
+
 function renderProjectStep() {
   const m = state.current.model;
   const preliminary = (m.calculationMode || 'preliminary') === 'preliminary';
@@ -1571,7 +1662,7 @@ function renderProjectStep() {
         ${selectField('项目计租方式', 'project.revenueModel', [{value:'rent',label:'纯租金'},{value:'concession',label:'纯联营扣点'},{value:'guarantee_or_concession',label:'保底与联营扣点取高'}], { help: '业态可在铺位数据页单独覆盖项目规则' })}
         ${textField('建设起始年份', 'project.startYear', { type: 'number', unit: '年' })}
         ${textField('建设期', 'project.constructionYears', { type: 'number', unit: '年' })}
-        ${textField('运营测算期', 'project.operationYears', { type: 'number', unit: '年' })}
+        ${textField('招商运营年限', 'project.operationYears', { type: 'number', unit: '年', help: '可填1–50年，现金流、IRR、NPV、Excel和PPT都会按该年限计算' })}
       </div>
     </div>
     ${renderCostReferencePanel()}
@@ -1587,6 +1678,7 @@ function renderProjectStep() {
         ${textField('预备费费率', 'project.contingencyRate', { type: 'number', unit: '%', scale: 0.01, help: '通常按工程及装修直接费用的3%–8%' })}
       </div>
     </div>
+    ${renderOwnerRentSection()}
     <div class="form-section">
       <div class="section-title">当前基础结果</div>
       <div class="stats-row">
@@ -1796,8 +1888,8 @@ function organizationAnnualCost(department, organization) {
   const headcount = Number(department.headcount || 0);
   const salary = Number(department.avgMonthlySalary || 0);
   const social = Number(organization.socialInsuranceRate || 0);
-  const bonusMonths = Number(organization.annualBonusMonths || 0);
-  return headcount * salary * (12 + bonusMonths) * (1 + social) / 10000;
+  const annualSalaryMonths = Number(organization.annualSalaryMonths || (12 + Number(organization.annualBonusMonths || 0)) || 12);
+  return headcount * salary * annualSalaryMonths * (1 + social) / 10000;
 }
 
 function renderOperatingBudgetImport() {
@@ -1821,11 +1913,11 @@ function renderOrganizationSection(model, preview) {
   const annualCost = departments.reduce((sum, dept) => sum + organizationAnnualCost(dept, organization), 0);
   return `<div class="form-section budget-section">
     <div class="section-title">组织架构与人员成本</div>
-    <div class="section-note">按部门、编制人数、平均月薪、社保公积金、年终奖和招聘培训测算年度人员成本；保安、保洁、物业工程和运营团队分别体现。</div>
-    ${formulaPanel('组织架构人员成本公式', '部门年成本 = 编制人数 × 平均月薪 ×（12 + 年终奖月数）×（1 + 社保公积金比例）÷10000\n年度人员成本 = Σ各部门年成本 + 招聘培训费\n招聘培训费 = 年度工资成本 × 招聘培训费率', ['SUM', 'ROUND'], '先按定编定岗填写人数和月薪，再按项目所在地社保政策调整；招商、运营、市场、物业、保安和保洁应分别设置。')}
+    <div class="section-note">按部门、编制人数、平均月薪、年度薪资月数、社保公积金和招聘培训测算年度人员成本；保安、保洁、物业工程和运营团队分别体现。</div>
+    ${formulaPanel('组织架构人员成本公式', '部门年成本 = 编制人数 × 平均月薪 × 年度薪资月数 ×（1 + 社保公积金比例）÷10000\n年度人员成本 = Σ各部门年成本 + 招聘培训费\n招聘培训费 = 年度工资成本 × 招聘培训费率', ['SUM', 'ROUND'], '平均月薪按元/月录入；年度薪资月数可直接填写12、13、14、15薪，系统按年度实际发放月数计算。')}
     <div class="form-grid">
       ${textField('社保公积金综合比例', 'organization.socialInsuranceRate', { type: 'number', unit: '%', scale: 0.01 })}
-      ${textField('年终奖月数', 'organization.annualBonusMonths', { type: 'number', unit: '月' })}
+      ${textField('年度薪资月数', 'organization.annualSalaryMonths', { type: 'number', unit: '薪/年', help: '常用12薪、13薪、14薪、15薪' })}
       ${textField('招聘培训费率', 'organization.recruitmentTrainingRate', { type: 'number', unit: '%', scale: 0.01 })}
     </div>
     <div class="data-table-wrap budget-table-wrap">
@@ -1943,7 +2035,7 @@ function bindOperationsBudgets() {
   document.getElementById('choose-budget-file')?.addEventListener('click', () => budgetFile.click());
   budgetFile?.addEventListener('change', () => budgetFile.files[0] && importOperatingBudget(budgetFile.files[0]));
   document.getElementById('add-department')?.addEventListener('click', () => {
-    model.organization ||= { socialInsuranceRate: 0.28, annualBonusMonths: 1, recruitmentTrainingRate: 0.02, departments: [] };
+    model.organization ||= { socialInsuranceRate: 0.28, annualSalaryMonths: 12, recruitmentTrainingRate: 0.02, departments: [] };
     model.organization.departments ||= [];
     model.organization.departments.push({ name: '新增部门', headcount: 1, avgMonthlySalary: 8000, note: '' });
     state.dirty = true; renderWorkspace(); scheduleLivePreview();
@@ -1997,7 +2089,7 @@ async function importOperatingBudget(file) {
 
 function renderOperationsStep() {
   return `
-    <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会自动形成20年现金流、税费和投资收益。</div></div>
+    <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会按“${fmt(state.current.model.project.operationYears || 20)}年招商运营年限”自动形成现金流、税费和投资收益。</div></div>
     <div class="form-section">
       <div class="section-title">租金与出租率</div>
       ${formulaPanel('出租率、租金增长与收入公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n首年免租系数 = 1 - 免租月数 ÷ 12\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 增长因子', ['IF', 'POWER', 'SUM'], '首年出租率、稳定出租率、免租月数和增长率均可直接调整。')}
@@ -2306,7 +2398,7 @@ function renderResultsStep() {
       ${kpiCard('静态回收期', s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 1)}年`, '按项目现金流', '')}
     </div>
     <div class="dashboard-grid">
-      <div class="card"><h3>20年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
+      <div class="card"><h3>${fmt(state.result?.annual?.length || state.current?.model?.project?.operationYears || 20)}年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
       <div class="card"><h3>投资构成</h3><div class="donut-wrap"><canvas id="cost-donut"></canvas><div class="donut-legend">${state.result.investmentBreakdown.map((item, i) => `<div class="donut-item"><i style="background:${donutColor(i)}"></i><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)}万</strong></div>`).join('')}</div></div></div>
     </div>
     ${renderOperatingResultCards()}
@@ -2384,6 +2476,13 @@ function bindStepInputs() {
         if (value === 'false') value = false;
       }
       setPath(state.current.model, path, value);
+      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode'].includes(path)) {
+        state.dirty = true;
+        state.preview = null;
+        renderWorkspace();
+        scheduleLivePreview();
+        return;
+      }
       if (path === 'project.developmentType' || path === 'project.projectType') {
         const reference = applyCostReference(state.current.model);
         toast(`已按${reference.cityLabel} · ${reference.developmentLabel}更新参考造价`, 'success');

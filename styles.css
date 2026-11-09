@@ -384,6 +384,9 @@ a { color: inherit; }
 .cost-reference-rates strong { display: block; margin: 5px 0 3px; color: var(--navy); font-size: var(--fs-23); font-variant-numeric: tabular-nums; }
 .cost-reference-rates small { display: block; color: #84928d; font-size: var(--fs-8); line-height: 1.5; }
 .cost-reference-note { margin-top: 11px; padding-top: 10px; border-top: 1px dashed #cfe0d8; color: #7b8984; font-size: var(--fs-8); line-height: 1.65; }
+.owner-rent-summary { margin-top: 4px; padding: 11px 13px; border-radius: 10px; border: 1px solid #e6d8b6; background: #fffaf0; color: #73591f; font-size: var(--fs-10); line-height: 1.6; }
+.owner-rent-summary strong { color: var(--navy); font-size: var(--fs-12); }
+.owner-rent-summary.muted { border-color: var(--line); background: #f7f5ef; color: var(--muted); }
 @media (max-width: 700px) {
   .cost-reference-head { flex-direction: column; }
   .cost-reference-head .btn { width: 100%; }

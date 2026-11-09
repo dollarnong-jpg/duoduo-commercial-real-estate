@@ -53,6 +53,25 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "preOpeningMarketing": 0.0,
             "contingencyRate": 0.05,
         },
+        "ownerRent": {
+            "enabled": False,
+            "leaseType": "property",
+            "landPricingMode": "total",
+            "landArea": 0.0,
+            "landUnitRent": 0.0,
+            "landMonthlyRent": 0.0,
+            "landPaymentMonths": 12,
+            "propertyPricingMode": "total",
+            "propertyArea": 0.0,
+            "propertyUnitRent": 0.0,
+            "propertyMonthlyRent": 0.0,
+            "propertyPaymentMonths": 12,
+            "monthlyRent": 0.0,
+            "growthMode": "compound",
+            "growthRate": 0.03,
+            "annualIncrease": 0.0,
+            "stepYears": 3,
+        },
         "shops": [],
         "floors": [
             {"name": "B1", "buildingArea": 0.0, "leasableArea": 0.0, "avgRent": 0.0},
@@ -110,7 +129,8 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
         },
         "organization": {
             "socialInsuranceRate": 0.28,
-            "annualBonusMonths": 1.0,
+            "annualSalaryMonths": 12.0,
+            "annualBonusMonths": 0.0,
             "recruitmentTrainingRate": 0.02,
             "departments": [
                 {"name": "总经办", "headcount": 2, "avgMonthlySalary": 18000, "note": "项目负责人、综合管理"},
@@ -223,6 +243,16 @@ def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
     explicit_mode = (raw or {}).get("calculationMode")
     if raw:
         deep_merge(model, raw)
+    raw_organization = (raw or {}).get("organization") if isinstance((raw or {}).get("organization"), dict) else None
+    if raw_organization is not None and "annualSalaryMonths" not in raw_organization:
+        previous_bonus = max(0.0, as_float(raw_organization.get("annualBonusMonths")))
+        model["organization"]["annualSalaryMonths"] = 12.0 + previous_bonus
+    raw_owner_rent = (raw or {}).get("ownerRent") if isinstance((raw or {}).get("ownerRent"), dict) else None
+    if raw_owner_rent is not None:
+        if "propertyMonthlyRent" not in raw_owner_rent and "monthlyRent" in raw_owner_rent:
+            model["ownerRent"]["propertyMonthlyRent"] = as_float(raw_owner_rent.get("monthlyRent"))
+        if "leaseType" not in raw_owner_rent:
+            model["ownerRent"]["leaseType"] = "property"
     if not explicit_mode:
         model["calculationMode"] = "detailed" if (raw or {}).get("shops") else "preliminary"
     default_categories = {c["name"]: c for c in CATEGORY_PRESETS}
@@ -339,7 +369,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     maintenance_budget = model.get("maintenanceBudget") if isinstance(model.get("maintenanceBudget"), dict) else {}
     departments = [item for item in organization.get("departments", []) if isinstance(item, dict)]
     social_insurance_rate = max(0.0, as_float(organization.get("socialInsuranceRate")))
-    annual_bonus_months = max(0.0, as_float(organization.get("annualBonusMonths")))
+    annual_salary_months = max(1.0, as_float(organization.get("annualSalaryMonths"), 12.0))
     recruitment_training_rate = max(0.0, as_float(organization.get("recruitmentTrainingRate")))
     organization_breakdown = []
     structured_headcount = 0
@@ -347,13 +377,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     for department in departments:
         headcount = max(0.0, as_float(department.get("headcount")))
         monthly_salary = max(0.0, as_float(department.get("avgMonthlySalary")))
-        annual_cost = headcount * monthly_salary * (12 + annual_bonus_months) * (1 + social_insurance_rate) / 10000
+        annual_cost = headcount * monthly_salary * annual_salary_months * (1 + social_insurance_rate) / 10000
         structured_headcount += headcount
         structured_personnel_cost += annual_cost
         organization_breakdown.append({
             "name": str(department.get("name") or "未命名部门"),
             "headcount": headcount,
             "avgMonthlySalary": monthly_salary,
+            "annualSalaryMonths": annual_salary_months,
             "annualCost": annual_cost,
             "note": str(department.get("note") or ""),
         })
@@ -550,8 +581,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     ]
 
     loan_amount = total_investment * as_float(finance.get("debtRatio"))
-    total_periods = int(project.get("constructionYears") or 2) + int(project.get("operationYears") or 20)
-    draw_weights = [0.55, 0.45] if int(project.get("constructionYears") or 2) == 2 else [1.0] + [0.0] * (total_periods - 1)
+    construction_years = max(0, min(10, int(as_float(project.get("constructionYears"), 2))))
+    operation_years = max(1, min(50, int(as_float(project.get("operationYears"), 20))))
+    total_periods = construction_years + operation_years
+    draw_weights = ([1.0 / construction_years] * construction_years if construction_years > 0 else []) + [0.0] * operation_years
     loan_schedule: list[dict[str, float]] = []
     balance = 0.0
     loan_rate = as_float(finance.get("loanRate"))
@@ -561,7 +594,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     for idx in range(total_periods):
         draw = loan_amount * draw_weights[idx] if idx < len(draw_weights) else 0.0
         interest = (balance + draw / 2) * loan_rate
-        operation_year = idx - int(project.get("constructionYears") or 2) + 1
+        operation_year = idx - construction_years + 1
         principal = 0.0
         if operation_year > grace and operation_year <= grace + loan_term:
             if str(formulas.get("loanRepaymentMethod") or "equal_principal") == "interest_only":
@@ -583,7 +616,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     annual_rows: list[dict[str, Any]] = []
     tax_loss_carry: list[tuple[int, float]] = []
-    construction_interest_loss = max(0.0, loan_schedule[0]["interest"] + loan_schedule[1]["interest"]) if len(loan_schedule) > 1 else 0.0
+    construction_interest_loss = sum(max(0.0, row["interest"]) for row in loan_schedule[:construction_years])
     if construction_interest_loss > 0:
         tax_loss_carry.append((0, construction_interest_loss))
 
@@ -592,9 +625,55 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     cumulative_project = 0.0
     cumulative_equity = 0.0
 
+    owner_rent_config = model.get("ownerRent") if isinstance(model.get("ownerRent"), dict) else {}
+    owner_rent_enabled_value = owner_rent_config.get("enabled")
+    owner_rent_enabled = owner_rent_enabled_value is True or str(owner_rent_enabled_value).strip().lower() in {"true", "1", "yes", "y", "是"}
+    owner_rent_lease_type = str(owner_rent_config.get("leaseType") or "property")
+    include_land_rent = owner_rent_enabled and owner_rent_lease_type in {"land", "land_and_property"}
+    include_property_rent = owner_rent_enabled and owner_rent_lease_type in {"property", "land_and_property"}
+    land_pricing_mode = str(owner_rent_config.get("landPricingMode") or "total")
+    land_area = max(0.0, as_float(owner_rent_config.get("landArea")))
+    land_unit_rent = max(0.0, as_float(owner_rent_config.get("landUnitRent")))
+    land_monthly_rent = (
+        land_area * land_unit_rent / 10000 if land_pricing_mode == "unit" else max(0.0, as_float(owner_rent_config.get("landMonthlyRent")))
+    ) if include_land_rent else 0.0
+    land_payment_months = max(0.0, as_float(owner_rent_config.get("landPaymentMonths"), 12.0)) if include_land_rent else 0.0
+    property_pricing_mode = str(owner_rent_config.get("propertyPricingMode") or "total")
+    property_area = max(0.0, as_float(owner_rent_config.get("propertyArea")))
+    property_unit_rent = max(0.0, as_float(owner_rent_config.get("propertyUnitRent")))
+    property_monthly_rent = (
+        property_area * property_unit_rent / 10000 if property_pricing_mode == "unit" else max(0.0, as_float(owner_rent_config.get("propertyMonthlyRent")))
+    ) if include_property_rent else 0.0
+    property_payment_months = max(0.0, as_float(owner_rent_config.get("propertyPaymentMonths"), 12.0)) if include_property_rent else 0.0
+    owner_land_rent_base_annual = land_monthly_rent * land_payment_months
+    owner_property_rent_base_annual = property_monthly_rent * property_payment_months
+    owner_rent_base_annual = owner_land_rent_base_annual + owner_property_rent_base_annual
+    owner_rent_growth_mode = str(owner_rent_config.get("growthMode") or "compound")
+    owner_rent_growth_rate = as_float(owner_rent_config.get("growthRate"))
+    owner_rent_annual_increase = as_float(owner_rent_config.get("annualIncrease"))
+    owner_rent_step_years = max(1, int(as_float(owner_rent_config.get("stepYears"), 3)))
+
+    def owner_rent_components_for_year(operation_year: int) -> tuple[float, float]:
+        if owner_rent_base_annual <= 0:
+            return 0.0, 0.0
+        periods = max(0, operation_year - 1)
+        if owner_rent_growth_mode == "fixed_amount":
+            total = max(0.0, owner_rent_base_annual + owner_rent_annual_increase * periods)
+            land_share = safe_div(owner_land_rent_base_annual, owner_rent_base_annual)
+            return total * land_share, total * (1 - land_share)
+        if owner_rent_growth_mode == "none":
+            factor = 1.0
+        elif owner_rent_growth_mode == "simple":
+            factor = 1 + owner_rent_growth_rate * periods
+        elif owner_rent_growth_mode == "step":
+            steps = periods // owner_rent_step_years
+            factor = (1 + owner_rent_growth_rate) ** steps
+        else:
+            factor = (1 + owner_rent_growth_rate) ** periods
+        return owner_land_rent_base_annual * factor, owner_property_rent_base_annual * factor
+
     for idx in range(total_periods):
         period = idx + 1
-        construction_years = int(project.get("constructionYears") or 2)
         op_year = idx - construction_years + 1
         loan = loan_schedule[idx]
         if op_year < 1:
@@ -612,6 +691,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                     "propertyRevenue": 0.0,
                     "otherRevenue": 0.0,
                     "operatingCost": 0.0,
+                    "ownerRent": 0.0,
+                    "ownerLandRent": 0.0,
+                    "ownerPropertyRent": 0.0,
                     "taxes": 0.0,
                     "noi": 0.0,
                     "depreciation": 0.0,
@@ -684,10 +766,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         insurance = (construction + fitout + equipment + other_engineering) * as_float(operations.get("insuranceRate"))
         bad_debt = revenue_net * (1 - as_float(operations.get("collectionRate")))
         other_opex = revenue_net * as_float(operations.get("otherOpexRate"))
-        operating_cost_gross = property_ops + energy + staff + admin + leasing + marketing + repair + insurance + bad_debt + other_opex
+        owner_land_rent, owner_property_rent = owner_rent_components_for_year(op_year)
+        owner_rent = owner_land_rent + owner_property_rent
+        operating_cost_gross = property_ops + energy + staff + admin + leasing + marketing + repair + insurance + bad_debt + other_opex + owner_rent
         input_vat = min(
             output_vat,
-            (property_ops + energy + staff + admin + leasing + marketing + repair + insurance + other_opex)
+            (property_ops + energy + staff + admin + leasing + marketing + repair + insurance + other_opex + owner_rent)
             * as_float(taxes.get("inputVatShare"))
             * safe_div(as_float(taxes.get("inputVatRate")), 1 + as_float(taxes.get("inputVatRate"))),
         )
@@ -769,6 +853,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "insuranceCost": insurance,
                 "badDebtCost": bad_debt,
                 "otherOpexCost": other_opex,
+                "ownerRent": owner_rent,
+                "ownerLandRent": owner_land_rent,
+                "ownerPropertyRent": owner_property_rent,
                 "headcount": structured_headcount,
                 "taxes": total_taxes,
                 "noi": noi,
@@ -804,6 +891,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_leasing_cost = as_float(stable_row.get("leasingCost"))
     stable_marketing_cost = as_float(stable_row.get("marketingCost"))
     stable_maintenance_cost = as_float(stable_row.get("maintenanceCost"))
+    stable_owner_rent_cost = as_float(stable_row.get("ownerRent"))
+    stable_owner_land_rent_cost = as_float(stable_row.get("ownerLandRent"))
+    stable_owner_property_rent_cost = as_float(stable_row.get("ownerPropertyRent"))
     stable_operating_cost = as_float(stable_row.get("operatingCost"))
     stable_taxes = as_float(stable_row.get("taxes"))
     marketing_contingency_rate = max(0.0, as_float(marketing_budget.get("contingencyRate")))
@@ -844,6 +934,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "保险费用", "value": as_float(stable_row.get("insuranceCost"))},
         {"name": "坏账准备", "value": as_float(stable_row.get("badDebtCost"))},
         {"name": "其他运营费用", "value": as_float(stable_row.get("otherOpexCost"))},
+        {"name": "土地租赁支出", "value": stable_owner_land_rent_cost},
+        {"name": "物业租赁支出", "value": stable_owner_property_rent_cost},
         {"name": "税费", "value": stable_taxes},
     ]
     average_rent = safe_div(total_monthly_revenue, gla)
@@ -870,6 +962,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "projectName": project.get("name"),
             "location": project.get("location"),
             "developmentType": project.get("developmentType"),
+            "operationYears": operation_years,
             "calculationMode": calculation_mode,
             "shopsCount": shops_count,
             "floorCount": floor_count,
@@ -895,6 +988,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableLeasingCost": stable_leasing_cost,
             "stableMarketingCost": stable_marketing_cost,
             "stableMaintenanceCost": stable_maintenance_cost,
+            "stableOwnerRentCost": stable_owner_rent_cost,
+            "ownerRentBaseAnnual": owner_rent_base_annual,
+            "ownerLandRentBaseAnnual": owner_land_rent_base_annual,
+            "ownerPropertyRentBaseAnnual": owner_property_rent_base_annual,
+            "ownerLandMonthlyRentComputed": land_monthly_rent,
+            "ownerPropertyMonthlyRentComputed": property_monthly_rent,
             "stableOperatingCost": stable_operating_cost,
             "stableTaxes": stable_taxes,
             "noiYield": safe_div(stable_noi, total_investment),
@@ -1036,6 +1135,7 @@ def build_analysis(
     payback: float | None,
 ) -> dict[str, Any]:
     discount = as_float(model.get("valuation", {}).get("discountRate"))
+    operation_years = max(1, int(as_float(model.get("project", {}).get("operationYears"), 20)))
     noi_margin = safe_div(stable_noi, stable_revenue)
     noi_yield = safe_div(stable_noi, total_investment)
     status = "待完善"
@@ -1053,7 +1153,7 @@ def build_analysis(
         bullets.append(f"项目税后融资前 IRR 约 {irr:.1%}，与折现率 {discount:.1%} 相差 {(irr - discount) * 100:+.1f} 个百分点。")
     bullets.append(f"稳定期 NOI 为 {stable_noi:,.0f} 万元，NOI 率约 {noi_margin:.1%}，项目 NOI 回报率约 {noi_yield:.1%}。")
     if payback is None:
-        bullets.append("按当前假设，项目在20年测算期内尚未回收全部投资。")
+        bullets.append(f"按当前假设，项目在{operation_years}年测算期内尚未回收全部投资。")
     else:
         bullets.append(f"静态回收期约 {payback:.1f} 年。")
     if npv < 0:
@@ -1066,6 +1166,9 @@ def build_analysis(
     if noi_yield < max(0.05, discount - 0.02):
         recommendations.append("投资回报率偏低，建议压缩非必要公共空间投入，提高可租赁面积占比和首层优质铺位租金。")
     recommendations.append(f"正式决策前，应取得{jurisdiction_name(model)}属地最新的税务、市政配套、人防、水电气增容和报建收费标准。")
+    owner_rent_config = model.get("ownerRent") if isinstance(model.get("ownerRent"), dict) else {}
+    if owner_rent_config.get("enabled"):
+        recommendations.append("项目已计入土地或物业租赁支出，应分别核对租期、免租期、支付节奏、递增条款、发票税率及提前解约责任，并单独测算土地和物业租金上涨情景。")
     development_type = str(model.get("project", {}).get("developmentType") or "new_build")
     if development_type == "renovation":
         recommendations.append("旧改项目应在投资决策前完成结构安全鉴定、消防改造可行性、机电容量和停业施工组织评估，并预留不可预见改造费用。")
