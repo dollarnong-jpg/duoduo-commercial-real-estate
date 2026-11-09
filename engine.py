@@ -1323,6 +1323,12 @@ def build_diagnostics(
             items.append({"level": "warning", "title": f"{sid} 租赁面积大于建筑面积", "detail": "请确认是否存在夹层、赠送或录入错误。"})
         if shop["rent"] <= 0:
             items.append({"level": "warning", "title": f"{sid} 租金单价为零", "detail": "请填写业态基准租金或铺位租金覆盖值。"})
+        elif shop.get("rentOverride") is not None and shop.get("settlementMode") == "concession" and as_float(shop.get("monthlyRevenue")) <= 0:
+            items.append({
+                "level": "warning",
+                "title": f"{sid} 已识别租金单价，但当前为纯联营扣点",
+                "detail": "该业态的销售基数或扣点率为零，因此仅凭租金单价不会形成收入。请补充销售基数和扣点率，或将结算方式改为纯租金/保底与扣点取高。",
+            })
     taxes = model.get("taxes", {})
     if not as_float(taxes.get("landUseTax")):
         items.append({"level": "warning", "title": "城镇土地使用税未核定", "detail": f"{jurisdiction_name(model)}不同土地等级适用税额不同，请按最新政策填写。"})

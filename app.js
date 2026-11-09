@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-amount5';
+import './backend.js?v=20261109-rentfix3';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.10.1';
+const APP_VERSION = '1.10.2';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -418,7 +418,9 @@ const state = {
   busy: false,
   shopSearch: '',
   shopPage: 1,
+  shopPageSize: 100,
   importWarnings: [],
+  rentImportStats: null,
   importHints: null,
   budgetWarnings: [],
   sidebarOpen: false,
@@ -1553,6 +1555,7 @@ async function openProject(projectId) {
     state.step = 0;
     state.dirty = false;
     state.importWarnings = [];
+    state.rentImportStats = null;
     state.shopPage = 1;
     state.shopSearch = '';
     renderWorkspace();
@@ -2100,7 +2103,7 @@ function renderFloorRentSummary(preview) {
 function renderDetailedPricing(m, shops, preview) {
   const categoryRent = Object.fromEntries((m.categories || []).map(c => [c.name, Number(c.rent || 0)]));
   const filtered = shops.filter(s => !state.shopSearch || `${s.id} ${s.building || ''} ${s.floor} ${s.category} ${s.status} ${(s.conditions || []).join(' ')}`.toLowerCase().includes(state.shopSearch.toLowerCase()));
-  const pageSize = 50;
+  const pageSize = Number(state.shopPageSize || 100);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   state.shopPage = Math.min(state.shopPage, pageCount);
   const start = (state.shopPage - 1) * pageSize;
@@ -2108,13 +2111,25 @@ function renderDetailedPricing(m, shops, preview) {
   const previewShopMap = new Map((preview?.shops || []).map(shop => [shopRecordKey(shop), shop]));
   const totalBuilding = shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0);
   const totalLease = shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
+  const rentOverrideShops = shops.filter(shop => shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0);
+  const overrideRentArea = rentOverrideShops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
+  const weightedOverrideRent = overrideRentArea > 0
+    ? rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0) * rentAreaFor(shop, m), 0) / overrideRentArea
+    : 0;
+  const importedStats = state.rentImportStats;
   return `
     <div class="import-zone" id="import-zone">
       <div class="import-icon">${ICONS.upload}</div>
-      <div><h3>导入一铺一价电子表格</h3><p>支持 .xlsx、.xlsm、.csv。可导入楼栋、铺位号、面积、楼层、计租口径、业态、状态、租金覆盖值和铺位条件。</p></div>
+      <div><h3>导入一铺一价电子表格</h3><p>支持 .xlsx、.xlsm、.csv。自动识别楼栋、铺位号、面积、楼层、业态、租金单价和铺位条件；元/㎡/天或元/㎡/年会自动换算为月租金。</p></div>
       <div class="import-actions"><button class="btn btn-secondary" id="download-template">${ICONS.download}<span>下载模板</span></button><button class="btn btn-primary" id="choose-file">${ICONS.upload}<span>选择文件</span></button><input type="file" id="shop-file" accept=".xlsx,.xlsm,.csv" hidden></div>
     </div>
     ${state.importWarnings.length ? `<div class="warning-list">${state.importWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
+    <div class="shop-rent-recognition">
+      <div><span>已识别租金单价</span><strong>${rentOverrideShops.length} / ${shops.length}</strong><em>个铺位${importedStats?.rentColumn ? `｜列：${escapeHtml(importedStats.rentColumn)}` : ''}</em></div>
+      <div><span>导入租金加权均价</span><strong>${fmt(weightedOverrideRent, 1)}</strong><em>元/㎡/月</em></div>
+      <div><span>满租月租金收入</span><strong>${preview ? fmt(preview.summary.totalMonthlyRent) : fmt(0)}</strong><em>元/月</em></div>
+      <div><span>满租年租金收入</span><strong>${preview ? fmt(Number(preview.summary.totalMonthlyRent || 0) * 12 / 10000, 1) : '0.0'}</strong><em>万元/年</em></div>
+    </div>
     <div class="form-section compact-top">
       <div class="section-title">业态租金 / 联营扣点规则</div>
       <div class="section-note">每个业态可单独选择计租方式：继承项目、纯租金、纯联营扣点或保底与扣点取高。销售基数和扣点率为行业参考起点，应与本地竞品核对。</div>
@@ -2136,18 +2151,19 @@ function renderDetailedPricing(m, shops, preview) {
       <div style="display:flex;gap:8px"><button class="btn btn-secondary btn-sm" id="add-shop">${ICONS.plus}<span>新增铺位</span></button>${shops.length ? `<button class="btn btn-danger btn-sm" id="clear-shops">${ICONS.trash}<span>清空</span></button>` : ''}</div>
     </div>
       <div class="data-table-wrap">
-      <table class="data-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
+      <table class="data-table shop-detail-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">租金单价<br><small>元/㎡/月</small></th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
         ${pageRows.length ? pageRows.map(shop => {
           const key = shopRecordKey(shop);
           const calc = previewShopMap.get(key);
           const base = calc?.baseRent ?? (categoryRent[shop.category] || 0);
           const modeLabels = { rent:'纯租金', concession:'纯扣点', guarantee_or_concession:'保底/扣点取高' };
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
-          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)])}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
-        }).join('') : `<tr><td colspan="13" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
+          const rentSource = shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0 ? '导入/指定' : '自动分配';
+          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)])}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${calc ? fmt(calc.rent, 2) : fmt(shop.rentOverride, 2)}</strong><small class="rent-source">${rentSource}</small></td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
+        }).join('') : `<tr><td colspan="14" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
       </tbody></table>
     </div>
-    <div class="table-pagination"><button class="btn btn-ghost btn-sm" id="shop-prev" ${state.shopPage <= 1 ? 'disabled' : ''}>上一页</button><span>第 ${state.shopPage} / ${pageCount} 页，共 ${filtered.length} 个铺位</span><button class="btn btn-ghost btn-sm" id="shop-next" ${state.shopPage >= pageCount ? 'disabled' : ''}>下一页</button></div>`;
+    <div class="table-pagination"><button class="btn btn-ghost btn-sm" id="shop-prev" ${state.shopPage <= 1 ? 'disabled' : ''}>上一页</button><span>第 ${state.shopPage} / ${pageCount} 页，共 ${filtered.length} 个铺位，当前显示 ${pageRows.length} 条</span><label class="page-size-control">每页 <select id="shop-page-size">${[50,100,200,500,9999].map(size => `<option value="${size}" ${pageSize === size ? 'selected' : ''}>${size === 9999 ? '全部' : size}</option>`).join('')}</select></label><button class="btn btn-ghost btn-sm" id="shop-next" ${state.shopPage >= pageCount ? 'disabled' : ''}>下一页</button></div>`;
 }
 
 
@@ -3520,6 +3536,10 @@ function updateLiveStats() {
     const shop = shops.get(el.dataset.shopBase);
     if (shop) el.textContent = fmt(shop.baseRent, 1);
   });
+  document.querySelectorAll('[data-shop-unit-rent]').forEach(el => {
+    const shop = shops.get(el.dataset.shopUnitRent);
+    if (shop) el.textContent = fmt(shop.rent, 2);
+  });
   document.querySelectorAll('[data-shop-premium]').forEach(el => {
     const shop = shops.get(el.dataset.shopPremium);
     if (shop) el.textContent = fmtPct(shop.conditionPremium || 0);
@@ -3534,7 +3554,7 @@ function updateLiveStats() {
   });
 }
 
-function ensureFloorsFromShops(model) {
+function ensureFloorsFromShops(model, options = {}) {
   model.floors ||= [];
   const shops = model.shops || [];
   const groups = new Map();
@@ -3551,6 +3571,19 @@ function ensureFloorsFromShops(model) {
     group.leasableArea += Number(shop.leasableArea || 0);
     group.rentArea += rentArea;
     group.rentValue += rentArea * rent;
+  }
+  if (options.replace) {
+    model.floors = [...groups.values()].map(group => ({
+      building: group.building,
+      name: group.name,
+      rentAreaBasis: 'inherit',
+      buildingArea: roundAreaValue(group.buildingArea),
+      leasableArea: roundAreaValue(group.leasableArea),
+      avgRent: Number((group.rentArea ? group.rentValue / group.rentArea : 0).toFixed(2)),
+      salesPerSqmMonth: 0,
+      concessionRate: 0,
+    }));
+    return;
   }
   const existing = new Map((model.floors || []).map(floor => [buildingFloorKey(floor), floor]));
   for (const [key, group] of groups) {
@@ -3650,6 +3683,11 @@ function bindShopsStep() {
   shopSearch?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); applyShopSearch(); } });
   document.getElementById('shop-prev')?.addEventListener('click', () => { state.shopPage = Math.max(1, state.shopPage - 1); renderWorkspace(); });
   document.getElementById('shop-next')?.addEventListener('click', () => { state.shopPage += 1; renderWorkspace(); });
+  document.getElementById('shop-page-size')?.addEventListener('change', event => {
+    state.shopPageSize = Number(event.target.value) || 100;
+    state.shopPage = 1;
+    renderWorkspace();
+  });
 }
 
 async function handleShopImport(file) {
@@ -3661,15 +3699,29 @@ async function handleShopImport(file) {
     state.current.model.calculationMode = 'detailed';
     state.current.model.shops = payload.shops || [];
     state.importWarnings = payload.warnings || [];
+    state.rentImportStats = {
+      rentColumn: payload.rentColumn || '',
+      rentRecognizedCount: Number(payload.rentRecognizedCount || 0),
+      rentMissingCount: Number(payload.rentMissingCount || 0),
+      total: payload.shops?.length || 0,
+    };
     state.importHints = payload.projectHints || {};
     applyImportHints(payload.projectHints || {});
-    ensureFloorsFromShops(state.current.model);
+    ensureFloorsFromShops(state.current.model, { replace: true });
     state.dirty = true;
     state.shopPage = 1;
     state.preview = null;
+    state.result = null;
     renderWorkspace();
-    scheduleLivePreview();
-    toast(`已导入 ${payload.shops?.length || 0} 个铺位`, 'success');
+    const preview = await runLivePreview();
+    if (preview) {
+      state.preview = preview;
+      state.result = preview;
+      renderWorkspace();
+    }
+    const importedCount = payload.shops?.length || 0;
+    const recognizedRentCount = payload.rentRecognizedCount || 0;
+    toast(`已导入 ${importedCount} 个铺位，识别 ${recognizedRentCount} 个租金单价${importedCount && !recognizedRentCount ? '，请检查租金单价列' : ''}`, importedCount && recognizedRentCount ? 'success' : 'error');
   } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
 }
 

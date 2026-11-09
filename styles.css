@@ -440,6 +440,8 @@ a { color: inherit; }
 .data-table .tag { display: inline-block; border-radius: 12px; padding: 3px 7px; background: var(--green-soft); color: var(--green); font-size: var(--fs-9); }
 .data-table .tag.stop { background: var(--red-soft); color: var(--red); }
 .table-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 10px; font-size: var(--fs-10); color: var(--muted); }
+.page-size-control { display:inline-flex; align-items:center; gap:5px; }
+.page-size-control select { border:1px solid var(--line-strong); border-radius:7px; background:#fff; color:var(--navy); padding:5px 7px; }
 
 .category-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .category-item { padding: 10px 11px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
@@ -495,6 +497,13 @@ a { color: inherit; }
 .condition-picker label:has(input:checked) { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .condition-picker input { accent-color: var(--green); }
 .condition-picker em { font-style: normal; color: var(--gold); font-weight: 700; }
+.shop-rent-recognition { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 18px; }
+.shop-rent-recognition > div { padding:13px 14px; border:1px solid #e3e9e5; border-radius:12px; background:#fffefa; }
+.shop-rent-recognition span { display:block; color:var(--muted); font-size:var(--fs-9); }
+.shop-rent-recognition strong { display:block; margin-top:5px; color:var(--navy); font-size:var(--fs-19); }
+.shop-rent-recognition em { display:block; margin-top:3px; color:#7f8984; font-size:var(--fs-8); font-style:normal; line-height:1.45; }
+.shop-detail-table { min-width:1280px; }
+.rent-source { display:block; margin-top:3px; color:var(--green); font-size:var(--fs-8); font-weight:600; }
 
 details.advanced { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; background: #fff; }
 details.advanced summary { list-style: none; cursor: pointer; padding: 14px 16px; color: var(--navy); font-size: var(--fs-12); font-weight: 700; display: flex; align-items: center; justify-content: space-between; }
@@ -803,6 +812,7 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .budget-total-line strong { color:var(--navy); font-size: var(--fs-17); }
 @media (max-width:620px) {
   .budget-section { padding:14px; }
+  .shop-rent-recognition { grid-template-columns:1fr 1fr; }
   .operating-cost-row { grid-template-columns:95px 1fr 64px; }
   .operating-cost-row em { display:none; }
   .budget-toolbar { align-items:flex-start; flex-direction:column; }

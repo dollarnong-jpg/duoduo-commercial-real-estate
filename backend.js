@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261109-amount5', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261109-rentfix3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -530,7 +530,10 @@ async function ensureDemoProject(username) {
 
 function safeNumber(value) {
   if (value === null || value === undefined || value === '') return 0;
-  const n = Number(String(value).replace(/[,万元㎡%\s]/g, ''));
+  const text = String(value).trim().replace(/[,，]/g, '').replace(/[−–—]/g, '-');
+  const match = text.match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/);
+  if (!match) return 0;
+  const n = Number(match[0]);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -558,7 +561,7 @@ function matchesAlias(value, aliases) {
 }
 
 const SHOP_ALIASES = {
-  id: ['铺位号', '商铺号', '铺号', '编号', 'shopid', 'id'],
+  id: ['铺位号', '商铺号', '商铺编号', '铺位编号', '店铺号', '铺号', '编号', 'shopid', 'id'],
   building: ['楼栋', '楼号', 'building', 'buildingname'],
   buildingArea: ['建筑面积', '建筑面', 'grossarea'],
   leasableArea: ['实际租赁面积', '租赁面积', '可租赁面积', '实用面积', '套内面积', '计租面积', 'leasablearea'],
@@ -566,7 +569,10 @@ const SHOP_ALIASES = {
   rentAreaBasis: ['租金核算面积口径', '租金面积口径', '计租口径', '面积口径', 'rentareabasis'],
   category: ['业态', '经营业态', 'category'],
   status: ['状态', '经营状态', 'status'],
-  rentOverride: ['租金单价覆盖', '租金单价', 'rentoverride'],
+  rentOverride: [
+    '租金单价覆盖', '租金单价', '月租金单价', '合同租金单价', '合同租金', '租金标准', '租金水平',
+    '保底租金单价', '保底租金', '平均租金', '合同月租金单价', '租金元㎡月', 'rentoverride', 'rent'
+  ],
   conditions: ['铺位条件', '位置条件', '条件', 'conditions'],
   note: ['备注', '说明', 'note'],
 };
@@ -682,6 +688,20 @@ function splitConditions(value) {
   return String(value || '').split(/[、,，/|]+/).map(x => x.trim()).filter(Boolean);
 }
 
+function parseRentOverride(value, header, fallbackArea = 0) {
+  const price = optionalNumber(value);
+  if (price === null) return null;
+  let normalizedPrice = price;
+  const normalized = normalizeHeader(header);
+  const areaUnit = /㎡|平方米|平米|平方/.test(String(header || ''));
+  if (areaUnit && /万元/.test(String(header || ''))) normalizedPrice *= 10000;
+  if (areaUnit && /天/.test(normalized)) normalizedPrice *= 30.4;
+  if (areaUnit && /年/.test(normalized)) normalizedPrice /= 12;
+  const isRentTotal = /总额|合计/.test(normalized) || (!areaUnit && /月租金/.test(normalized) && !/单价|标准|水平/.test(normalized));
+  if (isRentTotal && fallbackArea > 0) normalizedPrice /= fallbackArea;
+  return Number.isFinite(normalizedPrice) ? Math.round(normalizedPrice * 10000) / 10000 : null;
+}
+
 function sheetRows(workbook, preferredNames = []) {
   const sheets = workbook.SheetNames.map(name => ({ name, sheet: workbook.Sheets[name] }));
   sheets.sort((a, b) => {
@@ -694,6 +714,21 @@ function sheetRows(workbook, preferredNames = []) {
     if (rows.length) return { name, rows };
   }
   return { name: '', rows: [] };
+}
+
+function findShopSheet(workbook) {
+  const candidates = workbook.SheetNames.map((name, order) => {
+    const sheet = workbook.Sheets[name];
+    const rows = sheet ? XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) : [];
+    const headerIdx = findHeaderRow(rows, SHOP_ALIASES, ['id', 'buildingArea', 'leasableArea']);
+    return { name, rows, headerIdx, order };
+  }).filter(item => item.headerIdx >= 0);
+  candidates.sort((a, b) => {
+    const aPreferred = ['商铺', '铺位', '一铺一价', '明细', '价格'].some(key => a.name.includes(key)) ? 0 : 1;
+    const bPreferred = ['商铺', '铺位', '一铺一价', '明细', '价格'].some(key => b.name.includes(key)) ? 0 : 1;
+    return aPreferred - bPreferred || a.headerIdx - b.headerIdx || a.order - b.order;
+  });
+  return candidates[0] || null;
 }
 
 function readWorkbook(base64, filename) {
@@ -715,10 +750,11 @@ function parseShopWorkbook(base64, filename) {
   if (filename.toLowerCase().endsWith('.xls')) throw new Error('暂不支持旧版.xls，请在 Excel 中另存为.xlsx');
   if (!/\.(xlsx|xlsm|csv)$/i.test(filename)) throw new Error('仅支持.xlsx、.xlsm、.csv文件');
   const wb = readWorkbook(base64, filename);
-  const { name, rows } = sheetRows(wb, ['商铺', '铺位', '明细']);
-  const headerIdx = findHeaderRow(rows, SHOP_ALIASES, ['id', 'buildingArea', 'leasableArea']);
-  if (headerIdx < 0) throw new Error('工作簿中未找到“铺位号、建筑面积、实际租赁面积”列。请先下载导入模板。');
+  const matchedSheet = findShopSheet(wb);
+  if (!matchedSheet) throw new Error(`工作簿中未找到“铺位号、建筑面积、实际租赁面积”列。已检查工作表：${wb.SheetNames.join('、')}`);
+  const { name, rows, headerIdx } = matchedSheet;
   const indexes = headerIndexes(rows[headerIdx], SHOP_ALIASES);
+  const rentHeader = rowValue(rows[headerIdx], indexes, 'rentOverride');
   const shops = [];
   for (const row of rows.slice(headerIdx + 1)) {
     const id = String(rowValue(row, indexes, 'id') || '').trim();
@@ -729,16 +765,18 @@ function parseShopWorkbook(base64, filename) {
       rowValue(row, indexes, 'building'),
       rowValue(row, indexes, 'floor'),
     );
+    const rentAreaBasis = normalizeRentAreaBasis(rowValue(row, indexes, 'rentAreaBasis'), 'inherit');
+    const fallbackRentArea = rentAreaBasis === 'building' ? buildingArea : (leasableArea || buildingArea);
     shops.push({
       id,
       building: normalizedLocation.building,
       buildingArea,
       leasableArea,
       floor: normalizedLocation.floor,
-      rentAreaBasis: normalizeRentAreaBasis(rowValue(row, indexes, 'rentAreaBasis'), 'inherit'),
+      rentAreaBasis,
       category: String(rowValue(row, indexes, 'category') || '零售').trim(),
       status: String(rowValue(row, indexes, 'status') || '营业').trim(),
-      rentOverride: optionalNumber(rowValue(row, indexes, 'rentOverride')),
+      rentOverride: parseRentOverride(rowValue(row, indexes, 'rentOverride'), rentHeader, fallbackRentArea),
       conditions: splitConditions(rowValue(row, indexes, 'conditions')),
       note: String(rowValue(row, indexes, 'note') || '').trim(),
     });
@@ -755,7 +793,25 @@ function parseShopWorkbook(base64, filename) {
     }
   }
   const warnings = shopWarnings(shops);
-  return { shops, warnings, sheet: name, rowsRead: Math.max(0, rows.length - headerIdx - 1), projectHints };
+  const rentRecognizedCount = shops.filter(shop => shop.rentOverride !== null && shop.rentOverride > 0).length;
+  const rentMissingCount = Math.max(0, shops.length - rentRecognizedCount);
+  if (indexes.rentOverride === undefined) {
+    warnings.unshift('未识别到租金单价列。请使用“租金单价”“月租金单价”“租金标准”或“合同租金单价”等表头。');
+  } else if (rentRecognizedCount === 0) {
+    warnings.unshift(`已识别租金列“${String(rentHeader).trim()}”，但所有铺位的租金值均为空或不是有效数字。`);
+  } else {
+    warnings.unshift(`已识别 ${rentRecognizedCount} 个铺位的租金单价${rentMissingCount ? `；另有 ${rentMissingCount} 个铺位未填写，将按楼层和业态自动定价` : ''}。`);
+  }
+  return {
+    shops,
+    warnings,
+    sheet: name,
+    rowsRead: Math.max(0, rows.length - headerIdx - 1),
+    projectHints,
+    rentColumn: indexes.rentOverride === undefined ? '' : String(rentHeader).trim(),
+    rentRecognizedCount,
+    rentMissingCount,
+  };
 }
 
 function shopWarnings(shops) {
@@ -857,9 +913,9 @@ function shopTemplate() {
   ], [24, 32, 44]);
   const rows = [
     ['商铺明细导入表'],
-    ['填写顺序：楼栋 → 楼层 → 铺位号 → 建筑面积 → 实用面积 → 计租口径。面积统一保留两位小数；请从第6行开始录入，不要移动表头。'],
+    ['填写顺序：楼栋 → 楼层 → 铺位号 → 建筑面积 → 实用面积 → 计租口径 → 租金单价。面积保留两位小数；请从第6行开始录入，不要移动表头。'],
     [],
-    ['楼栋', '楼层', '铺位号', '建筑面积（㎡）', '实用面积/套内面积（㎡）', '租金核算面积口径', '业态', '状态', '租金单价覆盖（元/㎡/月）', '铺位条件', '备注'],
+    ['楼栋', '楼层', '铺位号', '建筑面积（㎡）', '实用面积/套内面积（㎡）', '租金核算面积口径', '业态', '状态', '租金单价（元/㎡/月）', '铺位条件', '备注'],
     ['1号楼', '1F', 'A-101', 120.00, 90.00, '实用面积', '零售', '营业', '', '电梯口、转角铺', '示例行，可删除'],
   ];
   const shopWs = addSheet(wb, '商铺明细', rows, [14, 10, 16, 18, 22, 20, 16, 12, 24, 24, 28]);
@@ -871,6 +927,7 @@ function shopTemplate() {
     ['B1 / 1F / 2F / 3F', '楼层推荐统一写成地下B1、地上1F、2F。也可填写“负一层”“一楼”“2层”，导入时会自动标准化。'],
     ['1号楼1F', '如果只在一个单元格内填写楼栋和楼层，系统会尝试自动拆分。'],
     ['计租口径', '可选：继承项目、建筑面积、实用面积。建议每行明确填写，避免混用口径。'],
+    ['租金单价', '可直接填写“租金单价”“月租金单价”“合同租金单价”“保底租金”等表头。系统按元/㎡/月识别；元/㎡/天自动×30.4，元/㎡/年自动÷12，并自动计算铺位和楼层收入。'],
     ['面积精度', '建筑面积和实用面积自动四舍五入保留两位小数。'],
     [''], ['楼栋楼层示例字典'],
     ['楼栋', '楼层'],
