@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-lease1';
+import './backend.js?v=20261109-costyear1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -2054,6 +2054,32 @@ function bindOperationsBudgets() {
     model.marketingBudget.channels.splice(Number(btn.dataset.removeMarketingChannel), 1);
     state.dirty = true; renderWorkspace(); scheduleLivePreview();
   }));
+  document.querySelectorAll('[data-annual-cost-field]').forEach(input => input.addEventListener('input', () => {
+    model.operations ||= {};
+    model.operations.annualCostAdjustments ||= {};
+    const year = String(input.dataset.annualCostYear);
+    const field = input.dataset.annualCostField;
+    const entry = model.operations.annualCostAdjustments[year] || (model.operations.annualCostAdjustments[year] = {});
+    if (field === 'note') entry.note = input.value;
+    else {
+      const scale = Number(input.dataset.scale || 1);
+      const value = input.value === '' ? (field === 'extraCost' ? 0 : 1 / scale) : Number(input.value) * scale;
+      entry[field] = Number.isFinite(value) ? value : (field === 'extraCost' ? 0 : 1);
+    }
+    input.closest('tr')?.classList.add('adjusted');
+    state.dirty = true;
+    updateSaveState();
+    scheduleLivePreview();
+  }));
+  document.getElementById('reset-annual-cost-adjustments')?.addEventListener('click', () => {
+    model.operations ||= {};
+    model.operations.annualCostAdjustments = {};
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast('年度招商及运营成本已全部恢复100%', 'success');
+  });
 }
 
 
@@ -2085,6 +2111,47 @@ async function importOperatingBudget(file) {
   } finally {
     setBusy(false);
   }
+}
+
+function annualCostAdjustmentForYear(model, year) {
+  const adjustments = model.operations?.annualCostAdjustments || {};
+  const item = adjustments[String(year)] || {};
+  return {
+    leasingFactor: item.leasingFactor == null ? 1 : Number(item.leasingFactor),
+    operationsFactor: item.operationsFactor == null ? 1 : Number(item.operationsFactor),
+    extraCost: item.extraCost == null ? 0 : Number(item.extraCost),
+    note: item.note || '',
+  };
+}
+
+function renderAnnualCostAdjustmentSection(model) {
+  const years = Math.max(1, Math.min(50, Number(model.project.operationYears || 20)));
+  const startYear = Number(model.project.startYear || new Date().getFullYear());
+  const constructionYears = Math.max(0, Number(model.project.constructionYears || 0));
+  const rows = Array.from({ length: years }, (_, index) => {
+    const year = index + 1;
+    const adjustment = annualCostAdjustmentForYear(model, year);
+    const adjusted = adjustment.leasingFactor !== 1 || adjustment.operationsFactor !== 1 || adjustment.extraCost !== 0 || Boolean(adjustment.note);
+    return `<tr class="${adjusted ? 'adjusted' : ''}" data-annual-cost-row="${year}">
+      <td><strong>Y${year}</strong><small class="table-subnote">${startYear + constructionYears + index}年</small></td>
+      <td class="num"><input class="table-input" data-annual-cost-year="${year}" data-annual-cost-field="leasingFactor" data-scale="0.01" type="number" step="1" value="${(adjustment.leasingFactor * 100).toFixed(1)}"></td>
+      <td class="num"><input class="table-input" data-annual-cost-year="${year}" data-annual-cost-field="operationsFactor" data-scale="0.01" type="number" step="1" value="${(adjustment.operationsFactor * 100).toFixed(1)}"></td>
+      <td class="num"><input class="table-input" data-annual-cost-year="${year}" data-annual-cost-field="extraCost" type="number" step="any" value="${adjustment.extraCost}"></td>
+      <td><input class="table-input text-left" data-annual-cost-year="${year}" data-annual-cost-field="note" type="text" value="${escapeHtml(adjustment.note)}" placeholder="例如：招商活动增加、团队扩编"></td>
+    </tr>`;
+  }).join('');
+  return `<div class="form-section budget-section annual-cost-adjustment-section">
+    <div class="section-title">年度招商及运营成本调整</div>
+    <div class="section-note">默认系数为100%。可按每个运营年度单独调整招商费用和常规运营成本，也可增加或减少一次性成本。土地及物业租赁支出不受这里的统一系数影响。</div>
+    ${formulaPanel('年度成本调整公式', '当年招商费用 = 基准招商费用 × 招商费用系数 + 招商费用额外额\n当年常规运营成本 = 基准常规运营成本 × 运营成本系数\n当年运营成本合计 = 调整后常规成本 + 调整后招商费用 + 土地/物业租赁支出 + 年度额外成本', ['IF', 'SUM'], '系数100%表示维持基准；120%表示增加20%；额外成本正数增加、负数减少。')}
+    <div class="annual-cost-toolbar"><span>共 <strong>${years}</strong> 个运营年度</span><button type="button" class="btn btn-secondary btn-sm" id="reset-annual-cost-adjustments">全部恢复100%</button></div>
+    <div class="data-table-wrap annual-cost-table-wrap">
+      <table class="data-table budget-table annual-cost-table">
+        <thead><tr><th>运营年</th><th class="num">招商费用系数（%）</th><th class="num">运营成本系数（%）</th><th class="num">额外成本（万元）</th><th>调整说明</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
 }
 
 function renderOperationsStep() {
@@ -2131,6 +2198,7 @@ function renderOperationsStep() {
     ${renderLeasingBudgetSection(state.current.model)}
     ${renderMarketingBudgetSection(state.current.model, state.preview)}
     ${renderMaintenanceBudgetSection(state.current.model)}
+    ${renderAnnualCostAdjustmentSection(state.current.model)}
     ${renderOperatingCostSummary(state.preview)}
     <details class="advanced">
       <summary>税费与属地公共费用（高级）</summary>

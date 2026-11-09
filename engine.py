@@ -126,6 +126,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "salesGrowth": 0.03,
             "rampY1": 0.80,
             "rampY2": 0.90,
+            "annualCostAdjustments": {},
         },
         "organization": {
             "socialInsuranceRate": 0.28,
@@ -672,6 +673,19 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             factor = (1 + owner_rent_growth_rate) ** periods
         return owner_land_rent_base_annual * factor, owner_property_rent_base_annual * factor
 
+    annual_cost_adjustments = operations.get("annualCostAdjustments") if isinstance(operations.get("annualCostAdjustments"), dict) else {}
+
+    def cost_adjustment_for_year(operation_year: int) -> tuple[float, float, float]:
+        adjustment = annual_cost_adjustments.get(str(operation_year), annual_cost_adjustments.get(operation_year, {}))
+        if not isinstance(adjustment, dict):
+            adjustment = {}
+        leasing_value = adjustment.get("leasingFactor")
+        operations_value = adjustment.get("operationsFactor")
+        leasing_factor = 1.0 if leasing_value is None else max(0.0, as_float(leasing_value, 1.0))
+        operations_factor = 1.0 if operations_value is None else max(0.0, as_float(operations_value, 1.0))
+        extra_cost = as_float(adjustment.get("extraCost"))
+        return leasing_factor, operations_factor, extra_cost
+
     for idx in range(total_periods):
         period = idx + 1
         op_year = idx - construction_years + 1
@@ -694,6 +708,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                     "ownerRent": 0.0,
                     "ownerLandRent": 0.0,
                     "ownerPropertyRent": 0.0,
+                    "leasingAdjustmentFactor": 1.0,
+                    "operationsAdjustmentFactor": 1.0,
+                    "extraOperatingCost": 0.0,
                     "taxes": 0.0,
                     "noi": 0.0,
                     "depreciation": 0.0,
@@ -768,7 +785,23 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         other_opex = revenue_net * as_float(operations.get("otherOpexRate"))
         owner_land_rent, owner_property_rent = owner_rent_components_for_year(op_year)
         owner_rent = owner_land_rent + owner_property_rent
-        operating_cost_gross = property_ops + energy + staff + admin + leasing + marketing + repair + insurance + bad_debt + other_opex + owner_rent
+        leasing_adjustment_factor, operations_adjustment_factor, extra_operating_cost = cost_adjustment_for_year(op_year)
+        property_ops *= operations_adjustment_factor
+        energy *= operations_adjustment_factor
+        staff *= operations_adjustment_factor
+        admin *= operations_adjustment_factor
+        marketing *= operations_adjustment_factor
+        repair *= operations_adjustment_factor
+        insurance *= operations_adjustment_factor
+        bad_debt *= operations_adjustment_factor
+        other_opex *= operations_adjustment_factor
+        operations_team *= operations_adjustment_factor
+        property_team *= operations_adjustment_factor
+        security_team *= operations_adjustment_factor
+        cleaning_team *= operations_adjustment_factor
+        recruitment_training *= operations_adjustment_factor
+        leasing *= leasing_adjustment_factor
+        operating_cost_gross = property_ops + energy + staff + admin + leasing + marketing + repair + insurance + bad_debt + other_opex + owner_rent + extra_operating_cost
         input_vat = min(
             output_vat,
             (property_ops + energy + staff + admin + leasing + marketing + repair + insurance + other_opex + owner_rent)
@@ -856,6 +889,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "ownerRent": owner_rent,
                 "ownerLandRent": owner_land_rent,
                 "ownerPropertyRent": owner_property_rent,
+                "leasingAdjustmentFactor": leasing_adjustment_factor,
+                "operationsAdjustmentFactor": operations_adjustment_factor,
+                "extraOperatingCost": extra_operating_cost,
                 "headcount": structured_headcount,
                 "taxes": total_taxes,
                 "noi": noi,
@@ -894,6 +930,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_owner_rent_cost = as_float(stable_row.get("ownerRent"))
     stable_owner_land_rent_cost = as_float(stable_row.get("ownerLandRent"))
     stable_owner_property_rent_cost = as_float(stable_row.get("ownerPropertyRent"))
+    stable_extra_operating_cost = as_float(stable_row.get("extraOperatingCost"))
     stable_operating_cost = as_float(stable_row.get("operatingCost"))
     stable_taxes = as_float(stable_row.get("taxes"))
     marketing_contingency_rate = max(0.0, as_float(marketing_budget.get("contingencyRate")))
@@ -936,6 +973,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "其他运营费用", "value": as_float(stable_row.get("otherOpexCost"))},
         {"name": "土地租赁支出", "value": stable_owner_land_rent_cost},
         {"name": "物业租赁支出", "value": stable_owner_property_rent_cost},
+        {"name": "年度成本调整额", "value": stable_extra_operating_cost},
         {"name": "税费", "value": stable_taxes},
     ]
     average_rent = safe_div(total_monthly_revenue, gla)
@@ -994,6 +1032,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "ownerPropertyRentBaseAnnual": owner_property_rent_base_annual,
             "ownerLandMonthlyRentComputed": land_monthly_rent,
             "ownerPropertyMonthlyRentComputed": property_monthly_rent,
+            "stableExtraOperatingCost": stable_extra_operating_cost,
             "stableOperatingCost": stable_operating_cost,
             "stableTaxes": stable_taxes,
             "noiYield": safe_div(stable_noi, total_investment),
@@ -1169,6 +1208,12 @@ def build_analysis(
     owner_rent_config = model.get("ownerRent") if isinstance(model.get("ownerRent"), dict) else {}
     if owner_rent_config.get("enabled"):
         recommendations.append("项目已计入土地或物业租赁支出，应分别核对租期、免租期、支付节奏、递增条款、发票税率及提前解约责任，并单独测算土地和物业租金上涨情景。")
+    cost_adjustment_config = model.get("operations", {}).get("annualCostAdjustments", {}) if isinstance(model.get("operations"), dict) else {}
+    if isinstance(cost_adjustment_config, dict) and any(
+        isinstance(item, dict) and (item.get("leasingFactor") not in (None, 1, 1.0, "1", "100%") or item.get("operationsFactor") not in (None, 1, 1.0, "1", "100%") or as_float(item.get("extraCost")) != 0)
+        for item in cost_adjustment_config.values()
+    ):
+        recommendations.append("项目设置了年度招商或运营成本调整，应逐项核对调整年份、人员编制、招商计划和费用合同，避免因爬坡或一次性活动导致成本重复或遗漏。")
     development_type = str(model.get("project", {}).get("developmentType") or "new_build")
     if development_type == "renovation":
         recommendations.append("旧改项目应在投资决策前完成结构安全鉴定、消防改造可行性、机电容量和停业施工组织评估，并预留不可预见改造费用。")
