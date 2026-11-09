@@ -1,7 +1,7 @@
-import './backend.js?v=20261107-type3';
+import './backend.js?v=20261107-type4';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');

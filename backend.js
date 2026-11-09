@@ -137,12 +137,28 @@ async function cloudRequest(path, options = {}) {
   headers.set('apikey', CLOUD_CONFIG.anonKey);
   headers.set('Authorization', `Bearer ${token}`);
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  return nativeFetch(`${CLOUD_CONFIG.url}${path}`, {
-    method: options.method || 'GET',
-    headers,
-    body: options.body == null ? undefined : (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)),
-    cache: 'no-store',
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Number(options.timeoutMs) || 25000);
+  try {
+    return await nativeFetch(`${CLOUD_CONFIG.url}${path}`, {
+      method: options.method || 'GET',
+      headers,
+      body: options.body == null ? undefined : (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const timeout = error?.name === 'AbortError';
+    const networkError = new Error(timeout
+      ? '连接云端服务超时。请切换 Wi-Fi 或手机移动网络，关闭 VPN、代理和广告拦截后重试。'
+      : '无法连接云端服务。请切换 Wi-Fi 或手机移动网络，关闭 VPN、代理和广告拦截后重试。');
+    networkError.status = 503;
+    networkError.code = timeout ? 'CLOUD_TIMEOUT' : 'CLOUD_NETWORK';
+    networkError.cause = error;
+    throw networkError;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function cloudJSON(path, options = {}) {
@@ -1499,6 +1515,7 @@ async function handleApi(path, init) {
       });
     } catch (error) {
       if (error.status === 403) return jsonResponse({ error: error.message, code: error.code || '', status: error.accountStatus || '' }, 403);
+      if (error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT') return jsonResponse({ error: error.message, code: error.code }, 503);
       return jsonResponse({ error: '用户名或密码错误，或账号尚未开通' }, 401);
     }
   }
@@ -1512,6 +1529,8 @@ async function handleApi(path, init) {
     if (password.length < 6) return jsonResponse({ error: '密码至少6个字符' }, 400);
     if (!CLOUD_ENABLED) return jsonResponse({ error: '云端账号服务尚未配置' }, 503);
     try {
+      const health = await cloudRequest('/auth/v1/health', { token: CLOUD_CONFIG.anonKey, timeoutMs: 12000 });
+      if (!health.ok) throw Object.assign(new Error(`云端注册服务暂时不可用（HTTP ${health.status}）`), { status: 503, code: 'CLOUD_UNAVAILABLE' });
       const auth = await cloudJSON('/auth/v1/signup', {
         method: 'POST',
         body: {
@@ -1550,6 +1569,13 @@ async function handleApi(path, init) {
     } catch (error) {
       const detail = String(error.message || '');
       if (/already|registered|duplicate|unique/i.test(detail)) return jsonResponse({ error: '该用户名已被使用，请更换后重试' }, 409);
+      if (error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT') {
+        return jsonResponse({
+          error: `${error.message} 如果重试时提示用户名已存在，说明上一次注册可能已经提交，请直接登录或联系超级管理员审核。`,
+          code: error.code,
+        }, 503);
+      }
+      if (error.status >= 500) return jsonResponse({ error: detail || '云端注册服务暂时不可用，请稍后重试' }, 503);
       return jsonResponse({ error: `注册失败：${detail}` }, error.status || 400);
     }
   }
