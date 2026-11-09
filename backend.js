@@ -540,6 +540,11 @@ function optionalNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function roundArea(value) {
+  const number = safeNumber(value);
+  return Math.round((number + Number.EPSILON) * 100) / 100;
+}
+
 function normalizeHeader(value) {
   return String(value ?? '').toLowerCase().replace(/[\s_\-—:：()（）[\]【】,，.。/\\]/g, '');
 }
@@ -571,6 +576,68 @@ function normalizeRentAreaBasis(value, fallback = 'inherit') {
   if (/建筑/.test(text)) return 'building';
   if (/实用|套内|租赁/.test(text)) return 'leasable';
   return fallback;
+}
+
+const CN_DIGITS = { '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+
+function chineseNumber(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (/^\d+$/.test(text)) return Number(text);
+  if (text === '十') return 10;
+  if (/^十[一二三四五六七八九]$/.test(text)) return 10 + CN_DIGITS[text[1]];
+  if (/^[一二三四五六七八九]十$/.test(text)) return CN_DIGITS[text[0]] * 10;
+  if (/^[一二三四五六七八九]十[一二三四五六七八九]$/.test(text)) return CN_DIGITS[text[0]] * 10 + CN_DIGITS[text[2]];
+  return CN_DIGITS[text] ?? null;
+}
+
+function normalizeBuildingName(value) {
+  let text = String(value ?? '').trim().replace(/（/g, '(').replace(/）/g, ')');
+  if (!text) return '1号楼';
+  if (/^\d+$/.test(text)) return `${Number(text)}号楼`;
+  if (/^[一二三四五六七八九十]+$/.test(text)) {
+    const n = chineseNumber(text);
+    return n == null ? text : `${n}号楼`;
+  }
+  text = text.replace(/^([一二三四五六七八九十]+)(号楼|栋|座)$/, (_, num, suffix) => {
+    const n = chineseNumber(num);
+    return `${n == null ? num : n}${suffix === '号楼' ? '号楼' : '号楼'}`;
+  });
+  text = text.replace(/^([A-Za-z0-9]+)(栋|座)$/, '$1号楼');
+  return text;
+}
+
+function normalizeFloorName(value) {
+  const text = String(value ?? '').trim().replace(/\s+/g, '').replace(/Ｆ/gi, 'F');
+  if (!text) return '';
+  const upper = text.toUpperCase();
+  if (/^B\d+$/.test(upper)) return upper;
+  const basement = upper.match(/^(?:负|地下|-)([0-9一二三四五六七八九十]+)(?:层|楼)?$/);
+  if (basement) {
+    const n = chineseNumber(basement[1]);
+    return n == null ? text : `B${n}`;
+  }
+  if (/^(?:首层|一层)$/.test(text)) return '1F';
+  const floor = text.match(/^([0-9一二三四五六七八九十]+)(?:层|楼|F)$/i);
+  if (floor) {
+    const n = chineseNumber(floor[1]);
+    return n == null ? text : `${n}F`;
+  }
+  const prefixed = upper.match(/^(?:F|L)(\d+)$/);
+  if (prefixed) return `${Number(prefixed[1])}F`;
+  return upper.replace(/^(\d+)$/, '$1F');
+}
+
+function splitBuildingFloor(buildingValue, floorValue) {
+  let building = String(buildingValue ?? '').trim();
+  let floor = String(floorValue ?? '').trim();
+  const combined = `${building} ${floor}`.trim();
+  const match = combined.match(/([A-Za-z0-9一二三四五六七八九十]+(?:号楼|栋|座|楼))[\s\-—_]*(负[0-9一二三四五六七八九十]+层|地下[0-9一二三四五六七八九十]+层|B\d+|(?:\d+|[一二三四五六七八九十]+)(?:层|楼|F)|F\d+|L\d+|首层|M层)/i);
+  if (match) {
+    building = match[1];
+    floor = match[2];
+  }
+  return { building: normalizeBuildingName(building), floor: normalizeFloorName(floor) };
 }
 
 const MARKET_ALIASES = {
@@ -655,15 +722,19 @@ function parseShopWorkbook(base64, filename) {
   const shops = [];
   for (const row of rows.slice(headerIdx + 1)) {
     const id = String(rowValue(row, indexes, 'id') || '').trim();
-    const buildingArea = safeNumber(rowValue(row, indexes, 'buildingArea'));
-    const leasableArea = safeNumber(rowValue(row, indexes, 'leasableArea'));
+    const buildingArea = roundArea(rowValue(row, indexes, 'buildingArea'));
+    const leasableArea = roundArea(rowValue(row, indexes, 'leasableArea'));
     if (!id && buildingArea <= 0 && leasableArea <= 0) continue;
+    const normalizedLocation = splitBuildingFloor(
+      rowValue(row, indexes, 'building'),
+      rowValue(row, indexes, 'floor'),
+    );
     shops.push({
       id,
-      building: String(rowValue(row, indexes, 'building') || '1号楼').trim(),
+      building: normalizedLocation.building,
       buildingArea,
       leasableArea,
-      floor: String(rowValue(row, indexes, 'floor') || '').trim(),
+      floor: normalizedLocation.floor,
       rentAreaBasis: normalizeRentAreaBasis(rowValue(row, indexes, 'rentAreaBasis'), 'inherit'),
       category: String(rowValue(row, indexes, 'category') || '零售').trim(),
       status: String(rowValue(row, indexes, 'status') || '营业').trim(),
@@ -700,6 +771,8 @@ function shopWarnings(shops) {
   if (missingArea) warnings.push(`${missingArea}个铺位缺少建筑面积`);
   const missingLease = shops.filter(s => safeNumber(s.leasableArea) <= 0).length;
   if (missingLease) warnings.push(`${missingLease}个铺位缺少实际租赁面积`);
+  const missingFloor = shops.filter(shop => !shop.floor).length;
+  if (missingFloor) warnings.push(`${missingFloor}个铺位缺少可识别的楼层，请填写1F、2F、B1或“一楼”等格式`);
   const invalidArea = shops.filter(s => safeNumber(s.leasableArea) > safeNumber(s.buildingArea) && safeNumber(s.buildingArea) > 0).length;
   if (invalidArea) warnings.push(`${invalidArea}个铺位实际租赁面积大于建筑面积`);
   return warnings;
@@ -723,7 +796,7 @@ function parseMarketWorkbook(base64, filename) {
       address,
       floor: String(rowValue(row, indexes, 'floor') || '').trim(),
       category: String(rowValue(row, indexes, 'category') || '零售').trim(),
-      leasableArea: safeNumber(rowValue(row, indexes, 'leasableArea')),
+      leasableArea: roundArea(rowValue(row, indexes, 'leasableArea')),
       rent,
       date: String(rowValue(row, indexes, 'date') || '').trim(),
       distanceKm: optionalNumber(rowValue(row, indexes, 'distanceKm')),
@@ -752,6 +825,17 @@ function addSheet(wb, name, rows, widths = []) {
   return ws;
 }
 
+function setSheetColumnNumberFormat(ws, zeroBasedColumns, format = '0.00') {
+  if (!ws?.['!ref']) return;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let row = range.s.r; row <= range.e.r; row++) {
+    for (const column of zeroBasedColumns) {
+      const address = XLSX.utils.encode_cell({ r: row, c: column });
+      if (ws[address] && typeof ws[address].v === 'number') ws[address].z = format;
+    }
+  }
+}
+
 function shopTemplate() {
   const wb = XLSX.utils.book_new();
   addSheet(wb, '项目信息', [
@@ -773,12 +857,26 @@ function shopTemplate() {
   ], [24, 32, 44]);
   const rows = [
     ['商铺明细导入表'],
-    ['示例：1号楼｜A-101｜120.00｜90.00｜1F｜实用面积｜零售｜营业｜租金可留空｜电梯口、转角铺。请从第6行开始录入，不要移动表头。'],
+    ['填写顺序：楼栋 → 楼层 → 铺位号 → 建筑面积 → 实用面积 → 计租口径。面积统一保留两位小数；请从第6行开始录入，不要移动表头。'],
     [],
-    ['楼栋', '铺位号', '建筑面积（㎡）', '实用面积/套内面积（㎡）', '楼层', '租金核算面积口径', '业态', '状态', '租金单价覆盖（元/㎡/月）', '铺位条件', '备注'],
-    ['1号楼', 'A-101', 120, 90, '1F', '实用面积', '零售', '营业', '', '电梯口、转角铺', '示例行，可删除'],
+    ['楼栋', '楼层', '铺位号', '建筑面积（㎡）', '实用面积/套内面积（㎡）', '租金核算面积口径', '业态', '状态', '租金单价覆盖（元/㎡/月）', '铺位条件', '备注'],
+    ['1号楼', '1F', 'A-101', 120.00, 90.00, '实用面积', '零售', '营业', '', '电梯口、转角铺', '示例行，可删除'],
   ];
-  addSheet(wb, '商铺明细', rows, [12, 16, 18, 20, 10, 20, 16, 12, 24, 24, 28]);
+  const shopWs = addSheet(wb, '商铺明细', rows, [14, 10, 16, 18, 22, 20, 16, 12, 24, 24, 28]);
+  setSheetColumnNumberFormat(shopWs, [3, 4], '0.00');
+  addSheet(wb, '楼栋楼层填写说明', [
+    ['楼栋与楼层填写规范'],
+    ['推荐写法', '说明'],
+    ['1号楼', '楼栋名称。也可填写“1栋”“A栋”“商业中心主楼”等，系统会按原文保留。'],
+    ['B1 / 1F / 2F / 3F', '楼层推荐统一写成地下B1、地上1F、2F。也可填写“负一层”“一楼”“2层”，导入时会自动标准化。'],
+    ['1号楼1F', '如果只在一个单元格内填写楼栋和楼层，系统会尝试自动拆分。'],
+    ['计租口径', '可选：继承项目、建筑面积、实用面积。建议每行明确填写，避免混用口径。'],
+    ['面积精度', '建筑面积和实用面积自动四舍五入保留两位小数。'],
+    [''], ['楼栋楼层示例字典'],
+    ['楼栋', '楼层'],
+    ['1号楼', 'B1'], ['1号楼', '1F'], ['1号楼', '2F'], ['1号楼', '3F'],
+    ['2号楼', 'B1'], ['2号楼', '1F'], ['2号楼', '2F'],
+  ], [22, 78]);
   return wb;
 }
 
@@ -1091,8 +1189,10 @@ function exportExcel(result) {
     ...Object.entries(EXPORT_FUNCTIONS).map(([name, f]) => [name, f.syntax, f.meaning, f.example, f.note])
   ], [16, 38, 55, 55, 70]);
   addSheet(wb, '投资构成', [['项目', '金额（万元）', '占比'], ...result.investmentBreakdown.map(x => [x.name, x.value, s.totalInvestment ? x.value / s.totalInvestment : 0])], [28, 18, 14]);
-  addSheet(wb, '楼层均价', [['楼栋', '楼层', '计租口径', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '平均月租金（元/㎡/月）', '月租金收入（万元/月）', '年租金收入（万元/年）', '收入占比'], ...(result.floors || []).map(x => { const monthlyWan = Number(x.monthlyRevenue || x.monthlyRent || 0) / 10000; return [x.building || '1号楼', x.name, x.rentAreaBasis === 'building' ? '建筑面积' : x.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径', x.buildingArea, x.leasableArea, x.rentArea, x.weightedRent || x.avgRent, monthlyWan, monthlyWan * 12, s.totalMonthlyRent ? (Number(x.monthlyRevenue || x.monthlyRent || 0) / s.totalMonthlyRent) : 0]; })], [12, 10, 14, 18, 18, 18, 26, 22, 24, 14]);
-  addSheet(wb, '商铺明细', [['楼栋', '铺位号', '楼层', '计租口径', '业态', '状态', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '租金单价（元/㎡/月）', '条件', '满租月收益（万元）'], ...(result.shops || []).map(x => [x.building || '1号楼', x.id, x.floor, x.rentAreaBasis === 'building' ? '建筑面积' : '实用面积', x.category, x.status || '', x.buildingArea, x.leasableArea, x.rentArea, x.rent, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [12, 16, 10, 14, 16, 12, 18, 18, 18, 22, 24, 22]);
+  const floorWs = addSheet(wb, '楼层均价', [['楼栋', '楼层', '计租口径', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '平均月租金（元/㎡/月）', '月租金收入（万元/月）', '年租金收入（万元/年）', '收入占比'], ...(result.floors || []).map(x => { const monthlyWan = Number(x.monthlyRevenue || x.monthlyRent || 0) / 10000; return [x.building || '1号楼', x.name, x.rentAreaBasis === 'building' ? '建筑面积' : x.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.weightedRent || x.avgRent, monthlyWan, monthlyWan * 12, s.totalMonthlyRent ? (Number(x.monthlyRevenue || x.monthlyRent || 0) / s.totalMonthlyRent) : 0]; })], [12, 10, 14, 18, 18, 18, 26, 22, 24, 14]);
+  setSheetColumnNumberFormat(floorWs, [3, 4, 5], '0.00');
+  const exportShopWs = addSheet(wb, '商铺明细', [['楼栋', '铺位号', '楼层', '计租口径', '业态', '状态', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '租金单价（元/㎡/月）', '条件', '满租月收益（万元）'], ...(result.shops || []).map(x => [x.building || '1号楼', x.id, x.floor, x.rentAreaBasis === 'building' ? '建筑面积' : '实用面积', x.category, x.status || '', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.rent, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [12, 16, 10, 14, 16, 12, 18, 18, 18, 22, 24, 22]);
+  setSheetColumnNumberFormat(exportShopWs, [6, 7, 8], '0.00');
   addSheet(wb, '租赁联营规则', [['业态', '基准月租金（元/㎡/月）', '业态系数', '销售基数（元/㎡/月）', '扣点率', '结算方式'], ...(model.categories || []).map(x => [x.name, x.rent, x.factor, x.salesPerSqmMonth, x.concessionRate, x.revenueMode])], [20, 24, 14, 22, 14, 20]);
   addSheet(wb, '周边市场分析', [['指标', '结果'], ['项目平均租金（元/㎡/月）', result.marketSummary.projectAverageRent], ['市场加权均价（元/㎡/月）', result.marketSummary.weightedAverageRent], ['市场中位数（元/㎡/月）', result.marketSummary.medianRent], ['市场25分位（元/㎡/月）', result.marketSummary.p25Rent], ['市场75分位（元/㎡/月）', result.marketSummary.p75Rent], ['项目定价位置', result.marketSummary.position], ...(result.marketSummary.conclusions || []).map((x, i) => [`结论${i + 1}`, x])], [30, 80]);
   const detection = model.market?.lastAnalysis || {};

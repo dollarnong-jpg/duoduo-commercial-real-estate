@@ -255,6 +255,8 @@ def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
     explicit_mode = (raw or {}).get("calculationMode")
     if raw:
         deep_merge(model, raw)
+    model["project"]["gbaOverride"] = round_area(model["project"].get("gbaOverride"))
+    model["project"]["landArea"] = round_area(model["project"].get("landArea"))
     raw_organization = (raw or {}).get("organization") if isinstance((raw or {}).get("organization"), dict) else None
     if raw_organization is not None and "annualSalaryMonths" not in raw_organization:
         previous_bonus = max(0.0, as_float(raw_organization.get("annualBonusMonths")))
@@ -300,8 +302,8 @@ def normalize_floor(floor: dict[str, Any]) -> dict[str, Any]:
     return {
         "building": str(floor.get("building", floor.get("楼栋", "1号楼")) or "1号楼").strip(),
         "name": str(floor.get("name", floor.get("floor", "")) or "").strip(),
-        "buildingArea": as_float(floor.get("buildingArea", 0)),
-        "leasableArea": as_float(floor.get("leasableArea", 0)),
+        "buildingArea": round_area(floor.get("buildingArea", 0)),
+        "leasableArea": round_area(floor.get("leasableArea", 0)),
         "avgRent": as_float(floor.get("avgRent", 0)),
         "salesPerSqmMonth": as_float(floor.get("salesPerSqmMonth", 0)),
         "concessionRate": as_float(floor.get("concessionRate", 0)),
@@ -320,8 +322,8 @@ def normalize_shop(shop: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": str(shop.get("id") or shop.get("shopId") or shop.get("铺位号") or "").strip(),
         "building": str(shop.get("building", shop.get("楼栋", "1号楼")) or "1号楼").strip(),
-        "buildingArea": as_float(shop.get("buildingArea", shop.get("建筑面积", 0))),
-        "leasableArea": as_float(shop.get("leasableArea", shop.get("实际租赁面积", 0))),
+        "buildingArea": round_area(shop.get("buildingArea", shop.get("建筑面积", 0))),
+        "leasableArea": round_area(shop.get("leasableArea", shop.get("实际租赁面积", 0))),
         "floor": str(shop.get("floor", shop.get("楼层", "")) or "").strip(),
         "category": str(shop.get("category", shop.get("业态", "零售")) or "零售").strip(),
         "status": str(shop.get("status", shop.get("状态", "营业")) or "营业").strip(),
@@ -338,7 +340,7 @@ def normalize_market_comp(item: dict[str, Any]) -> dict[str, Any]:
         "address": str(item.get("address", item.get("地址", "")) or "").strip(),
         "floor": str(item.get("floor", item.get("楼层", "")) or "").strip(),
         "category": str(item.get("category", item.get("业态", "零售")) or "零售").strip(),
-        "leasableArea": as_float(item.get("leasableArea", item.get("可租赁面积", 0))),
+        "leasableArea": round_area(item.get("leasableArea", item.get("可租赁面积", 0))),
         "rent": as_float(item.get("rent", item.get("月租金单价", 0))),
         "date": str(item.get("date", item.get("数据日期", "")) or "").strip(),
         "distanceKm": optional_float(item.get("distanceKm", item.get("距项目km", None))),
@@ -366,6 +368,10 @@ def optional_float(value: Any) -> float | None:
 
 def safe_div(a: float, b: float, default: float = 0.0) -> float:
     return a / b if b else default
+
+
+def round_area(value: Any) -> float:
+    return round(max(0.0, as_float(value)), 2)
 
 
 def resolved_rent_area_basis(record: dict[str, Any], project: dict[str, Any]) -> str:

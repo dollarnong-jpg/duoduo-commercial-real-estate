@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-hrstaff1';
+import './backend.js?v=20261109-template1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.9.1';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -457,8 +457,38 @@ function buildingFloorKey(record) {
   return `${building}||${floor}`;
 }
 
+function normalizeBuildingInput(value) {
+  let text = String(value || '').trim();
+  if (!text) return '1号楼';
+  const cn = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+  if (/^\d+$/.test(text)) return `${Number(text)}号楼`;
+  if (cn[text]) return `${cn[text]}号楼`;
+  text = text.replace(/^([一二三四五六七八九十])(号楼|栋|座)$/, (_, num, suffix) => `${cn[num] || num}号楼`);
+  return text.replace(/^([A-Za-z0-9]+)(栋|座)$/, '$1号楼');
+}
+
+function normalizeFloorInput(value) {
+  let text = String(value || '').trim().replace(/\s+/g, '').replace(/Ｆ/gi, 'F').toUpperCase();
+  if (!text) return '';
+  const cn = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+  if (/^B\d+$/.test(text)) return text;
+  let match = text.match(/^(?:负|地下|-)([0-9一二三四五六七八九十]+)(?:层|楼)?$/);
+  if (match) return `B${match[1].replace(/[一二三四五六七八九十]/g, c => cn[c] || c)}`;
+  match = text.match(/^([0-9一二三四五六七八九十]+)(?:层|楼|F)$/);
+  if (match) return `${match[1].replace(/[一二三四五六七八九十]/g, c => cn[c] || c)}F`;
+  if (/^首层$/.test(text)) return '1F';
+  match = text.match(/^(?:F|L)(\d+)$/);
+  if (match) return `${Number(match[1])}F`;
+  return text.replace(/^(\d+)$/, '$1F');
+}
+
 function shopRecordKey(shop) {
   return `${String(shop?.building || '1号楼').trim()}||${String(shop?.id || '').trim()}`;
+}
+
+function roundAreaValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round((number + Number.EPSILON) * 100) / 100 : 0;
 }
 
 function applyFontScale(value, notify = false) {
@@ -733,6 +763,10 @@ function setPath(obj, path, value) {
 function fmt(value, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function fmtArea(value) {
+  return fmt(value, 2);
 }
 
 function fmtPct(value, digits = 1) {
@@ -1369,8 +1403,8 @@ async function openAdminProject(projectId) {
               <span>开发状态：${escapeHtml(DEVELOPMENT_TYPE_LABELS[summary.developmentType] || '新建项目')}</span>
               <span>计租方式：${escapeHtml({ rent: '纯租金', concession: '纯联营扣点', guarantee_or_concession: '保底与扣点取高' }[summary.revenueModel] || '—')}</span>
               <span>测算模式：${summary.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价'}</span>
-              <span>总建筑面积：${fmt(summary.grossFloorArea)} ㎡</span>
-              <span>可租赁面积：${fmt(summary.leasableArea)} ㎡</span>
+              <span>总建筑面积：${fmtArea(summary.grossFloorArea)} ㎡</span>
+              <span>可租赁面积：${fmtArea(summary.leasableArea)} ㎡</span>
               <span>铺位 / 楼层：${summary.shopsCount || 0} 个 / ${summary.floorCount || 0} 层</span>
               <span>静态回收期：${summary.staticPayback == null ? '—' : fmt(summary.staticPayback, 1) + ' 年'}</span>
             </div>
@@ -1828,8 +1862,8 @@ function renderProjectStep() {
     <div class="form-section">
       <div class="section-title">面积与土地</div>
       <div class="form-grid">
-        ${textField('项目总建筑面积', 'project.gbaOverride', { type: 'number', unit: '㎡', help: '留空或为0时，系统按商铺面积自动推算', optional: true })}
-        ${textField('项目占地面积', 'project.landArea', { type: 'number', unit: '㎡', help: '用于城镇土地使用税' })}
+        ${textField('项目总建筑面积', 'project.gbaOverride', { type: 'number', unit: '㎡', step: '0.01', help: '留空或为0时，系统按商铺面积自动推算；保留两位小数', optional: true })}
+        ${textField('项目占地面积', 'project.landArea', { type: 'number', unit: '㎡', step: '0.01', help: '用于城镇土地使用税；保留两位小数' })}
         ${textField('公共部位及设备房分摊系数', 'project.commonAreaFactor', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('土地取得价款', 'project.landPrice', { type: 'number', unit: '万元', help: '土地出让金或转让价款' })}
         ${textField('其他前期及开办费用', 'project.otherPreOpening', { type: 'number', unit: '万元', help: '咨询、尽调、筹备办公等' })}
@@ -1842,8 +1876,8 @@ function renderProjectStep() {
       <div class="section-title">当前基础结果</div>
       <div class="stats-row">
         <div class="mini-stat"><strong>${fmt(preliminary ? floors.filter(floor => Number(floor.buildingArea) > 0).length : (m.shops?.length || 0))}</strong><span>${preliminary ? '已填写楼层' : '已导入铺位'}</span></div>
-        <div class="mini-stat"><strong>${fmt((preliminary ? floorBuilding : shopBuilding) || m.project.gbaOverride || 0)}</strong><span>${preliminary ? '楼层建筑面积合计/㎡' : '商铺建筑面积合计/㎡'}</span></div>
-        <div class="mini-stat"><strong>${fmt(preliminary ? floorLease : shopLease)}</strong><span>可租赁面积合计/㎡</span></div>
+        <div class="mini-stat"><strong>${fmtArea((preliminary ? floorBuilding : shopBuilding) || m.project.gbaOverride || 0)}</strong><span>${preliminary ? '楼层建筑面积合计/㎡' : '商铺建筑面积合计/㎡'}</span></div>
+        <div class="mini-stat"><strong>${fmtArea(preliminary ? floorLease : shopLease)}</strong><span>可租赁面积合计/㎡</span></div>
         <div class="mini-stat"><strong data-live="investment">${preview ? fmt(preview.summary.totalInvestment) : '待计算'}</strong><span>项目总投资/万元</span></div>
       </div>
     </div>`;
@@ -1882,7 +1916,7 @@ function renderCostStep() {
     </div>
     <div class="stats-row">
       <div class="mini-stat"><strong id="cost-estimate">${state.result ? fmt(state.result.summary.totalInvestment) : '保存后计算'}</strong><span>预计项目总投资/万元</span></div>
-      <div class="mini-stat"><strong>${fmt(state.current.model.project.gbaOverride || state.current.model.shops.reduce((s, x) => s + Number(x.buildingArea || 0), 0) * (1 + Number(state.current.model.project.commonAreaFactor || 0)) || 0)}</strong><span>计算用总建筑面积/㎡</span></div>
+      <div class="mini-stat"><strong>${fmtArea(state.current.model.project.gbaOverride || state.current.model.shops.reduce((s, x) => s + Number(x.buildingArea || 0), 0) * (1 + Number(state.current.model.project.commonAreaFactor || 0)) || 0)}</strong><span>计算用总建筑面积/㎡</span></div>
       <div class="mini-stat"><strong>${fmtPct(state.current.model.project.contingencyRate)}</strong><span>预备费费率</span></div>
       <div class="mini-stat"><strong>${fmt(state.current.model.shops.length)}</strong><span>铺位数量</span></div>
     </div>`;
@@ -1963,8 +1997,8 @@ function renderFloorEditor(m, mode, preview) {
             <td><input class="table-input floor-name-input" data-path="floors.${i}.building" data-type="text" list="building-options" value="${escapeHtml(floor.building || '1号楼')}"></td>
             <td><input class="table-input floor-name-input" data-path="floors.${i}.name" data-type="text" value="${escapeHtml(floor.name || '')}"></td>
             <td><select class="table-select" data-path="floors.${i}.rentAreaBasis" data-type="text">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((floor.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
-            <td class="num"><input class="table-input" data-path="floors.${i}.buildingArea" data-type="number" type="number" step="any" value="${floor.buildingArea ?? 0}"></td>
-            <td class="num"><input class="table-input" data-path="floors.${i}.leasableArea" data-type="number" type="number" step="any" value="${floor.leasableArea ?? 0}"></td>
+            <td class="num"><input class="table-input" data-path="floors.${i}.buildingArea" data-type="number" type="number" step="0.01" value="${Number(floor.buildingArea ?? 0).toFixed(2)}"></td>
+            <td class="num"><input class="table-input" data-path="floors.${i}.leasableArea" data-type="number" type="number" step="0.01" value="${Number(floor.leasableArea ?? 0).toFixed(2)}"></td>
             <td class="num">${fmtPct(ratio)}</td>
             <td class="num"><input class="table-input highlight-input" data-path="floors.${i}.avgRent" data-type="number" type="number" step="any" value="${floor.avgRent ?? 0}"></td>
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
@@ -1988,8 +2022,8 @@ function renderPreliminarySummary(shops, floors, totalBuilding, totalLease, tota
     <div class="section-title">初步测算说明</div>
     <div class="preliminary-grid">
       <div class="insight-card"><span>楼层数量</span><strong>${fmt(floors.length)}</strong><em>已纳入测算</em></div>
-      <div class="insight-card"><span>建筑面积</span><strong>${fmt(totalBuilding, 1)}</strong><em>㎡</em></div>
-      <div class="insight-card"><span>可租赁面积</span><strong>${fmt(totalLease, 1)}</strong><em>㎡</em></div>
+      <div class="insight-card"><span>建筑面积</span><strong>${fmtArea(totalBuilding)}</strong><em>㎡</em></div>
+      <div class="insight-card"><span>可租赁面积</span><strong>${fmtArea(totalLease)}</strong><em>㎡</em></div>
       <div class="insight-card"><span>满租月收益</span><strong>${fmt(totalMonthly)}</strong><em>元/月</em></div>
     </div>
     <div class="callout soft">${ICONS.spark}<div>初步测算适合项目拿地、定位和投资机会研判阶段。招商铺位明确后，切换到“一铺一价”，可按楼层均价、业态系数和电梯口、转角铺等条件自动分配单铺租金。</div></div>
@@ -2016,10 +2050,10 @@ function renderFloorRentSummary(preview) {
           ${floors.map(floor => {
             const basisLabel = floor.rentAreaBasis === 'building' ? '建筑面积' : floor.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径';
             const monthly = Number(floor.monthlyRevenue || 0);
-            return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || '—')}</td><td><span class="tag">${basisLabel}</span></td><td class="num">${fmt(floor.buildingArea, 1)}</td><td class="num">${fmt(floor.leasableArea, 1)}</td><td class="num">${fmt(floor.rentArea, 1)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(monthly)}</td><td class="num">${fmt(monthly * 12 / 10000, 1)}</td><td class="num">${fmtPct(total.monthly ? monthly / total.monthly : 0)}</td></tr>`;
+            return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || '—')}</td><td><span class="tag">${basisLabel}</span></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmtArea(floor.rentArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(monthly)}</td><td class="num">${fmt(monthly * 12 / 10000, 1)}</td><td class="num">${fmtPct(total.monthly ? monthly / total.monthly : 0)}</td></tr>`;
           }).join('')}
         </tbody>
-        <tfoot><tr><td colspan="3"><strong>项目合计</strong></td><td class="num"><strong>${fmt(total.buildingArea, 1)}</strong></td><td class="num"><strong>${fmt(total.leasableArea, 1)}</strong></td><td class="num"><strong>${fmt(total.rentArea, 1)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 1)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 1)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
+        <tfoot><tr><td colspan="3"><strong>项目合计</strong></td><td class="num"><strong>${fmtArea(total.buildingArea)}</strong></td><td class="num"><strong>${fmtArea(total.leasableArea)}</strong></td><td class="num"><strong>${fmtArea(total.rentArea)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 1)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 1)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
       </table>
     </div>
   </div>`;
@@ -2071,7 +2105,7 @@ function renderDetailedPricing(m, shops, preview) {
           const base = calc?.baseRent ?? (categoryRent[shop.category] || 0);
           const modeLabels = { rent:'纯租金', concession:'纯扣点', guarantee_or_concession:'保底/扣点取高' };
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
-          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)])}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmt(shop.buildingArea, 1)}</td><td class="num">${fmt(shop.leasableArea, 1)}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
+          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)])}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
         }).join('') : `<tr><td colspan="13" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
       </tbody></table>
     </div>
@@ -2728,7 +2762,7 @@ function renderResultsStep() {
   const kpiClass = value => value > 0 ? 'positive' : value < 0 ? 'negative' : '';
   return `
     <div class="result-hero">
-      <div class="result-hero-top"><div><span class="result-status">${escapeHtml(s.status)}</span><h2>${escapeHtml(s.projectName || '商业项目')}</h2><p>${escapeHtml(s.location || '')}｜总建筑面积 ${fmt(s.grossFloorArea)}㎡｜可租赁面积 ${fmt(s.leasableArea)}㎡｜${s.calculationMode === 'preliminary' ? `${fmt(s.floorCount)}个楼层` : `${fmt(s.shopsCount)}个铺位`}</p></div><div style="color:#c9dad5;font-size:var(--fs-10);text-align:right">${s.calculationMode === 'preliminary' ? '初步楼层均价测算' : '一铺一价精细测算'}<br>${new Date().toLocaleDateString('zh-CN')}</div></div>
+      <div class="result-hero-top"><div><span class="result-status">${escapeHtml(s.status)}</span><h2>${escapeHtml(s.projectName || '商业项目')}</h2><p>${escapeHtml(s.location || '')}｜总建筑面积 ${fmtArea(s.grossFloorArea)}㎡｜可租赁面积 ${fmtArea(s.leasableArea)}㎡｜${s.calculationMode === 'preliminary' ? `${fmt(s.floorCount)}个楼层` : `${fmt(s.shopsCount)}个铺位`}</p></div><div style="color:#c9dad5;font-size:var(--fs-10);text-align:right">${s.calculationMode === 'preliminary' ? '初步楼层均价测算' : '一铺一价精细测算'}<br>${new Date().toLocaleDateString('zh-CN')}</div></div>
     </div>
     <div class="kpi-grid">
       ${kpiCard('项目总投资', fmt(s.totalInvestment), '万元', '')}
@@ -2791,7 +2825,7 @@ function renderFloorResultTable() {
   const floors = (state.result?.floors || []).filter(floor => Number(floor.buildingArea || 0) > 0 || Number(floor.leasableArea || 0) > 0);
   if (!floors.length) return '';
   const totalMonthly = floors.reduce((sum, floor) => sum + Number(floor.monthlyRevenue ?? floor.monthlyRent ?? 0), 0);
-  return `<div class="card" style="margin-bottom:16px"><h3>楼层收益拆分</h3><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>楼层</th><th class="num">建筑面积</th><th class="num">可租赁面积</th><th class="num">平均月收益</th><th class="num">满租月收益</th><th class="num">收益占比</th></tr></thead><tbody>${floors.map(floor => `<tr><td><strong>${escapeHtml(floor.name || '未命名')}</strong></td><td class="num">${fmt(floor.buildingArea, 1)}</td><td class="num">${fmt(floor.leasableArea, 1)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(floor.monthlyRevenue ?? floor.monthlyRent)}</td><td class="num">${fmtPct(totalMonthly ? (floor.monthlyRevenue ?? floor.monthlyRent) / totalMonthly : 0)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  return `<div class="card" style="margin-bottom:16px"><h3>楼层收益拆分</h3><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>楼层</th><th class="num">建筑面积</th><th class="num">可租赁面积</th><th class="num">平均月收益</th><th class="num">满租月收益</th><th class="num">收益占比</th></tr></thead><tbody>${floors.map(floor => `<tr><td><strong>${escapeHtml(floor.name || '未命名')}</strong></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(floor.monthlyRevenue ?? floor.monthlyRent)}</td><td class="num">${fmtPct(totalMonthly ? (floor.monthlyRevenue ?? floor.monthlyRent) / totalMonthly : 0)}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 function kpiCard(label, value, unit, cls) {
@@ -2812,6 +2846,9 @@ function bindStepInputs() {
       let value = input.value;
       if (input.type === 'checkbox') value = input.checked;
       else if (type === 'number') value = value === '' ? 0 : Number(value) * scale;
+      if (type === 'number' && (['project.gbaOverride', 'project.landArea'].includes(path) || /(?:buildingArea|leasableArea)$/.test(path))) {
+        value = roundAreaValue(value);
+      }
       if (type === 'boolean' || (path === 'valuation.includeExit')) {
         if (value === 'true') value = true;
         if (value === 'false') value = false;
@@ -2863,6 +2900,16 @@ function bindStepInputs() {
         renderWorkspace();
       }
     });
+    if (/^floors\.\d+\.(building|name)$/.test(input.dataset.path || '')) {
+      input.addEventListener('blur', () => {
+        const normalized = input.dataset.path.endsWith('.building') ? normalizeBuildingInput(input.value) : normalizeFloorInput(input.value);
+        input.value = normalized;
+        setPath(state.current.model, input.dataset.path, normalized);
+        state.dirty = true;
+        updateSaveState();
+        scheduleLivePreview();
+      });
+    }
   });
   bindCostReferenceAction();
   document.getElementById('open-map-picker')?.addEventListener('click', openMapPicker);
@@ -3456,8 +3503,8 @@ function openAddShopModal(editIndex = null) {
               <div class="field"><label>楼栋</label><input class="input" name="building" list="building-options" placeholder="例如 1号楼" value="${escapeHtml(editing?.building || '1号楼')}"><datalist id="building-options">${[...new Set([...(m.floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])].map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist></div>
               <div class="field"><label>楼层</label><input class="input" name="floor" list="floor-options" placeholder="例如 1F" value="${escapeHtml(editing?.floor || '')}"><datalist id="floor-options">${(m.floors || []).map(floor => `<option value="${escapeHtml(floor.name)}"></option>`).join('')}</datalist></div>
               <div class="field"><label>租金核算面积口径</label><select class="select" name="rentAreaBasis">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((editing?.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
-              <div class="field"><label>建筑面积（㎡）</label><input class="input" name="buildingArea" type="number" step="any" required value="${editing?.buildingArea ?? ''}"></div>
-              <div class="field"><label>实用面积（套内/租赁面积，㎡）</label><input class="input" name="leasableArea" type="number" step="any" required value="${editing?.leasableArea ?? ''}"></div>
+              <div class="field"><label>建筑面积（㎡）</label><input class="input" name="buildingArea" type="number" step="0.01" required value="${editing ? Number(editing.buildingArea || 0).toFixed(2) : ''}"></div>
+              <div class="field"><label>实用面积（套内/租赁面积，㎡）</label><input class="input" name="leasableArea" type="number" step="0.01" required value="${editing ? Number(editing.leasableArea || 0).toFixed(2) : ''}"></div>
               <div class="field"><label>业态</label><select class="select" name="category">${(m.categories || []).map(c => `<option ${editing?.category === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
               <div class="field"><label>状态</label><select class="select" name="status">${['营业','未开业','停业'].map(status => `<option ${editing?.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div>
               <div class="field"><label>租金单价覆盖 <small>可选</small></label><input class="input" name="rentOverride" type="number" step="any" placeholder="留空则自动定价" value="${editing?.rentOverride ?? ''}"></div>
@@ -3475,7 +3522,7 @@ function openAddShopModal(editIndex = null) {
     event.preventDefault();
     const f = new FormData(event.currentTarget);
     const nextShop = {
-      id: String(f.get('id')).trim(), building: String(f.get('building') || '1号楼').trim(), floor: String(f.get('floor')).trim(), rentAreaBasis: String(f.get('rentAreaBasis') || 'inherit'), buildingArea: Number(f.get('buildingArea')), leasableArea: Number(f.get('leasableArea')), category: f.get('category'), status: f.get('status'), rentOverride: f.get('rentOverride') ? Number(f.get('rentOverride')) : null, note: '',
+      id: String(f.get('id')).trim(), building: normalizeBuildingInput(f.get('building')), floor: normalizeFloorInput(f.get('floor')), rentAreaBasis: String(f.get('rentAreaBasis') || 'inherit'), buildingArea: roundAreaValue(f.get('buildingArea')), leasableArea: roundAreaValue(f.get('leasableArea')), category: f.get('category'), status: f.get('status'), rentOverride: f.get('rentOverride') ? Number(f.get('rentOverride')) : null, note: '',
       conditions: f.getAll('conditions'),
     };
     if (editing) state.current.model.shops[editIndex] = { ...editing, ...nextShop };
