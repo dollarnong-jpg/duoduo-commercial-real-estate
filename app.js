@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-rentgrowth1';
+import './backend.js?v=20261110-org3';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.10.4';
+const APP_VERSION = '1.10.6';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -665,7 +665,7 @@ function operatingCostReference(model = state.current?.model, overrides = {}) {
   const gba = Number(project.gbaOverride || 0) || floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0) || shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0) * (1 + Number(project.commonAreaFactor || 0));
   const gla = floors.reduce((sum, floor) => sum + Number(floor.leasableArea || 0), 0) || shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
   const departments = model?.organization?.departments || [];
-  const headcount = departments.reduce((sum, dept) => sum + Number(dept.headcount || 0), 0) || 7;
+  const headcount = departments.reduce((sum, dept) => sum + (Array.isArray(dept.positions) ? dept.positions : []).reduce((n, position) => n + Number(position.headcount || 0), 0), 0) || 7;
   const cityFactor = Math.max(0.85, Math.min(1.35, city.factor));
   const format = Math.max(0.82, Math.min(1.15, formatFactor));
   const standardFactor = standard.factor;
@@ -705,10 +705,11 @@ function operatingCostReference(model = state.current?.model, overrides = {}) {
       landscapeAnnual: Number((9 * cityFactor * standardFactor).toFixed(1)),
       otherAnnual: Number((11 * cityFactor * standardFactor).toFixed(1)),
     },
-    salaries: departments.map(dept => {
-      const base = salaryBase[dept.name] || Number(dept.avgMonthlySalary || 8000);
-      return { name: dept.name, avgMonthlySalary: Math.round(base * Math.pow(cityFactor, 0.75) * standardFactor * management.staff / 100) * 100 };
-    }),
+    salaries: departments.flatMap(dept => (Array.isArray(dept.positions) ? dept.positions : []).map(position => ({
+      department: dept.name,
+      name: position.name,
+      avgMonthlySalary: Math.round(Number(position.avgMonthlySalary || salaryBase[dept.name] || 8000) * Math.pow(cityFactor, 0.75) * standardFactor * management.staff / 100) * 100,
+    }))),
   };
   return { standard, management, city, formatFactor, gba, gla, headcount, values };
 }
@@ -741,9 +742,12 @@ function applyOperatingCostReference(model = state.current?.model, options = {})
   if (selected('staff')) {
     model.operations.staffCostMode = 'organization';
     model.operations.staffCostPerSqm = reference.values.staffCostPerSqm;
-    const salaries = new Map(reference.values.salaries.map(item => [item.name, item.avgMonthlySalary]));
+    const salaries = new Map(reference.values.salaries.map(item => [`${item.department}||${item.name}`, item.avgMonthlySalary]));
     (model.organization?.departments || []).forEach(dept => {
-      if (salaries.has(dept.name)) dept.avgMonthlySalary = salaries.get(dept.name);
+      (dept.positions || []).forEach(position => {
+        const key = `${dept.name}||${position.name}`;
+        if (salaries.has(key)) position.avgMonthlySalary = salaries.get(key);
+      });
     });
   }
   if (selected('office')) {
@@ -811,16 +815,32 @@ function setPath(obj, path, value) {
 
 function fmt(value, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
-  return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const precision = Math.min(2, Math.max(0, Number(digits) || 0));
+  return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: precision });
 }
 
 function fmtArea(value) {
   return fmt(value, 2);
 }
 
-function fmtPct(value, digits = 1) {
+function fmtPct(value, digits = 2) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
-  return `${(Number(value) * 100).toFixed(digits)}%`;
+  const precision = Math.min(2, Math.max(0, Number(digits) || 0));
+  return `${Number((Number(value) * 100).toFixed(precision)).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: precision })}%`;
+}
+
+function roundDisplayValue(value, digits = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  const factor = 10 ** Math.min(2, Math.max(0, Number(digits) || 0));
+  return String(Math.round((number + Number.EPSILON) * factor) / factor);
+}
+
+function normalizeNumericInputDisplays() {
+  document.querySelectorAll('input[type="number"]').forEach(input => {
+    if (!input.value || input === document.activeElement) return;
+    input.value = roundDisplayValue(input.value, 2);
+  });
 }
 
 function fmtDate(value) {
@@ -1598,6 +1618,7 @@ function renderWorkspace() {
     </div>`;
   shell(content, 'projects', true);
   bindWorkspace();
+  normalizeNumericInputDisplays();
   bindStepInputs();
   bindFormulaToolbar();
   if (state.step === 5) requestAnimationFrame(renderResultCharts);
@@ -2177,12 +2198,20 @@ function renderDetailedPricing(m, shops, preview) {
 }
 
 
-function organizationAnnualCost(department, organization) {
-  const headcount = Number(department.headcount || 0);
-  const salary = Number(department.avgMonthlySalary || 0);
+function organizationPositionAnnualCost(position, organization) {
+  const headcount = Number(position.headcount || 0);
+  const salary = Number(position.avgMonthlySalary || 0);
   const social = Number(organization.socialInsuranceRate || 0);
   const annualSalaryMonths = Number(organization.annualSalaryMonths || (12 + Number(organization.annualBonusMonths || 0)) || 12);
   return headcount * salary * annualSalaryMonths * (1 + social) / 10000;
+}
+
+function organizationAnnualCost(department, organization) {
+  const positions = Array.isArray(department.positions) ? department.positions : [];
+  if (positions.length) {
+    return positions.reduce((sum, position) => sum + organizationPositionAnnualCost(position, organization), 0);
+  }
+  return organizationPositionAnnualCost(department, organization);
 }
 
 function renderOperatingBudgetImport() {
@@ -2201,29 +2230,43 @@ function renderOperatingBudgetImport() {
 function renderOrganizationSection(model, preview) {
   const organization = model.organization || (model.organization = {});
   const departments = organization.departments || (organization.departments = []);
-  const previewMap = new Map((preview?.organizationBreakdown || []).map((item, index) => [index, item]));
-  const headcount = departments.reduce((sum, dept) => sum + Number(dept.headcount || 0), 0);
+  const headcount = departments.reduce((sum, dept) => sum + (Array.isArray(dept.positions) ? dept.positions : []).reduce((n, position) => n + Number(position.headcount || 0), 0), 0);
   const salaryCost = departments.reduce((sum, dept) => sum + organizationAnnualCost(dept, organization), 0);
   const annualCost = salaryCost + salaryCost * Number(organization.recruitmentTrainingRate || 0);
   return `<div class="form-section budget-section">
-    <div class="section-title">组织架构与人员成本</div>
-    <div class="section-note">按部门、编制人数、平均月薪、年度薪资月数、社保公积金和招聘培训测算年度人员成本；保安、保洁、物业工程和运营团队分别体现。</div>
-    ${formulaPanel('组织架构人员成本公式', '部门年成本 = 编制人数 × 平均月薪 × 年度薪资月数 ×（1 + 社保公积金比例）÷10000\n年度人员成本 = Σ各部门年成本 + 招聘培训费\n招聘培训费 = 年度工资成本 × 招聘培训费率', ['SUM', 'ROUND'], '平均月薪按元/月录入；年度薪资月数可直接填写12、13、14、15薪，系统按年度实际发放月数计算。')}
+    <div class="section-title">组织架构、岗位与人员成本</div>
+    <div class="section-note">按“部门 → 岗位”两级维护组织架构。每个岗位分别填写编制人数、平均月薪和职责，系统自动汇总部门编制、岗位年薪和人员成本。</div>
+    ${formulaPanel('部门与岗位人员成本公式', '岗位年成本 = 岗位编制人数 × 岗位平均月薪 × 年度薪资月数 ×（1 + 社保公积金比例）÷10000\n部门年成本 = Σ部门内各岗位年成本\n年度人员成本 = Σ部门年成本 + 招聘培训费\n招聘培训费 = 年度工资成本 × 招聘培训费率', ['SUM', 'ROUND'], '岗位平均月薪按元/月录入；年度薪资月数可填写12、13、14、15薪。保安、保洁、物业工程根据部门和岗位关键词自动归入对应运营成本。')}
     <div class="form-grid">
       ${textField('社保公积金综合比例', 'organization.socialInsuranceRate', { type: 'number', unit: '%', scale: 0.01 })}
       ${textField('年度薪资月数', 'organization.annualSalaryMonths', { type: 'number', unit: '薪/年', help: '常用12薪、13薪、14薪、15薪' })}
       ${textField('招聘培训费率', 'organization.recruitmentTrainingRate', { type: 'number', unit: '%', scale: 0.01 })}
     </div>
-    <div class="data-table-wrap budget-table-wrap">
-      <table class="data-table budget-table"><thead><tr><th>部门</th><th class="num">编制人数</th><th class="num">平均月薪（元）</th><th class="num">年度成本（万元）</th><th>岗位/职责说明</th><th></th></tr></thead><tbody>
-        ${departments.map((dept, i) => `<tr>
-          <td><input class="table-input text-left" data-path="organization.departments.${i}.name" data-type="text" value="${escapeHtml(dept.name || '')}"></td>
-          <td class="num"><input class="table-input" data-path="organization.departments.${i}.headcount" data-type="number" type="number" step="1" value="${dept.headcount ?? 0}"></td>
-          <td class="num"><input class="table-input" data-path="organization.departments.${i}.avgMonthlySalary" data-type="number" type="number" step="100" value="${dept.avgMonthlySalary ?? 0}"></td>
-          <td class="num"><strong>${fmt(previewMap.get(i)?.annualCost ?? organizationAnnualCost(dept, organization), 1)}</strong></td>
-          <td><input class="table-input text-left" data-path="organization.departments.${i}.note" data-type="text" value="${escapeHtml(dept.note || '')}"></td>
-          <td><button class="btn btn-ghost btn-sm" type="button" data-remove-department="${i}">${ICONS.trash}</button></td>
-        </tr>`).join('') || '<tr><td colspan="6" class="empty-table-cell">尚未设置部门</td></tr>'}
+    <div class="data-table-wrap budget-table-wrap org-structure-wrap">
+      <table class="data-table budget-table org-structure-table"><thead><tr><th>部门 / 岗位</th><th class="num">编制人数</th><th class="num">平均月薪（元）</th><th class="num">年度成本（万元）</th><th>岗位职责说明</th><th class="num">操作</th></tr></thead><tbody>
+        ${departments.map((dept, i) => {
+          const positions = Array.isArray(dept.positions) ? dept.positions : [];
+          const deptHeadcount = positions.reduce((sum, position) => sum + Number(position.headcount || 0), 0);
+          const deptSalaryArea = positions.reduce((sum, position) => sum + Number(position.headcount || 0) * Number(position.avgMonthlySalary || 0), 0);
+          const deptAvgSalary = deptHeadcount ? deptSalaryArea / deptHeadcount : 0;
+          const deptCost = organizationAnnualCost(dept, organization);
+          return `<tr class="org-department-row">
+            <td><span class="org-level-tag">部门</span><input class="table-input text-left" data-path="organization.departments.${i}.name" data-type="text" value="${escapeHtml(dept.name || '')}"></td>
+            <td class="num"><strong>${fmt(deptHeadcount)}</strong></td>
+            <td class="num"><strong>${fmt(deptAvgSalary)}</strong></td>
+            <td class="num"><strong>${fmt(deptCost, 1)}</strong></td>
+            <td><input class="table-input text-left" data-path="organization.departments.${i}.note" data-type="text" value="${escapeHtml(dept.note || '')}"></td>
+            <td class="num org-actions"><button class="btn btn-ghost btn-sm" type="button" data-add-position="${i}">${ICONS.plus}岗位</button><button class="btn btn-ghost btn-sm" type="button" data-remove-department="${i}">${ICONS.trash}</button></td>
+          </tr>
+          ${positions.map((position, j) => `<tr class="org-position-row">
+            <td><span class="org-position-branch">└ 岗位</span><input class="table-input text-left" data-path="organization.departments.${i}.positions.${j}.name" data-type="text" value="${escapeHtml(position.name || '')}"></td>
+            <td class="num"><input class="table-input" data-path="organization.departments.${i}.positions.${j}.headcount" data-type="number" type="number" step="1" value="${position.headcount ?? 0}"></td>
+            <td class="num"><input class="table-input" data-path="organization.departments.${i}.positions.${j}.avgMonthlySalary" data-type="number" type="number" step="100" value="${position.avgMonthlySalary ?? 0}"></td>
+            <td class="num"><strong>${fmt(organizationPositionAnnualCost(position, organization), 1)}</strong></td>
+            <td><input class="table-input text-left" data-path="organization.departments.${i}.positions.${j}.note" data-type="text" value="${escapeHtml(position.note || '')}"></td>
+            <td class="num org-actions"><button class="btn btn-ghost btn-sm" type="button" data-remove-position="${i}" data-position-index="${j}">${ICONS.trash}</button></td>
+          </tr>`).join('')}
+        `; }).join('') || '<tr><td colspan="6" class="empty-table-cell">尚未设置部门和岗位</td></tr>'}
       </tbody></table>
     </div>
     <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-department" type="button">${ICONS.plus}<span>新增部门</span></button><span>合计编制 <strong>${fmt(headcount)}</strong> 人｜年度薪资及社保 <strong>${fmt(salaryCost, 1)}</strong> 万元｜含招聘培训合计 <strong>${fmt(annualCost, 1)}</strong> 万元｜${model.operations?.staffCostMode === 'area' ? '当前未用于成本测算' : '已用于管理团队成本测算'}</span></div>
@@ -2446,7 +2489,7 @@ function updateOperatingPreviewDom(result) {
     if (value == null) return;
     const amountEl = row.querySelector('[data-op-amount]');
     if (amountEl && amountEl !== document.activeElement) {
-      if (amountEl.tagName === 'INPUT') amountEl.value = Number(value.toFixed(1));
+      if (amountEl.tagName === 'INPUT') amountEl.value = roundDisplayValue(value, 2);
       else amountEl.textContent = fmt(value, 1);
     }
     const weightEl = row.querySelector('[data-op-weight]');
@@ -2465,9 +2508,21 @@ function bindOperationsBudgets() {
   document.getElementById('add-department')?.addEventListener('click', () => {
     model.organization ||= { socialInsuranceRate: 0.28, annualSalaryMonths: 12, recruitmentTrainingRate: 0.02, departments: [] };
     model.organization.departments ||= [];
-    model.organization.departments.push({ name: '新增部门', headcount: 1, avgMonthlySalary: 8000, note: '' });
+    model.organization.departments.push({ name: '新增部门', note: '', positions: [{ name: '新增岗位', headcount: 1, avgMonthlySalary: 8000, note: '' }] });
     state.dirty = true; renderWorkspace(); scheduleLivePreview();
   });
+  document.querySelectorAll('[data-add-position]').forEach(btn => btn.addEventListener('click', () => {
+    const department = model.organization.departments[Number(btn.dataset.addPosition)];
+    if (!department) return;
+    department.positions ||= [];
+    department.positions.push({ name: '新增岗位', headcount: 1, avgMonthlySalary: 8000, note: '' });
+    state.dirty = true; renderWorkspace(); scheduleLivePreview();
+  }));
+  document.querySelectorAll('[data-remove-position]').forEach(btn => btn.addEventListener('click', () => {
+    const department = model.organization.departments[Number(btn.dataset.removePosition)];
+    if (department?.positions) department.positions.splice(Number(btn.dataset.positionIndex), 1);
+    state.dirty = true; renderWorkspace(); scheduleLivePreview();
+  }));
   document.querySelectorAll('[data-remove-department]').forEach(btn => btn.addEventListener('click', () => {
     model.organization.departments.splice(Number(btn.dataset.removeDepartment), 1);
     state.dirty = true; renderWorkspace(); scheduleLivePreview();
@@ -3057,7 +3112,7 @@ function renderOperatingResultCards() {
     </div>
     <div class="card">
       <h3>组织架构与人员成本</h3>
-      <div class="data-table-wrap" style="max-height:420px"><table class="data-table"><thead><tr><th>部门</th><th class="num">人数</th><th class="num">平均月薪</th><th class="num">年度成本</th></tr></thead><tbody>${organization.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong><small class="table-subnote">${escapeHtml(item.note || '')}</small></td><td class="num">${fmt(item.headcount)}</td><td class="num">${fmt(item.avgMonthlySalary)}</td><td class="num">${fmt(item.annualCost, 1)}万</td></tr>`).join('')}</tbody></table></div>
+      <div class="data-table-wrap" style="max-height:520px"><table class="data-table"><thead><tr><th>部门</th><th>岗位构成</th><th class="num">人数</th><th class="num">年度成本</th></tr></thead><tbody>${organization.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${(item.positions || []).map(position => `<span class="tag">${escapeHtml(position.name)}${Number(position.headcount) > 1 ? ` × ${fmt(position.headcount)}` : ''}</span>`).join(' ')}</td><td class="num">${fmt(item.headcount)}</td><td class="num">${fmt(item.annualCost, 1)}万</td></tr>`).join('')}</tbody></table></div>
     </div>
   </div>
   <div class="card marketing-allocation-card">
@@ -3086,6 +3141,7 @@ function donutColor(i) {
 function bindStepInputs() {
   document.querySelectorAll('[data-path]').forEach(input => {
     const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+    if (input.type === 'number') input.addEventListener('blur', () => { input.value = roundDisplayValue(input.value, 2); });
     input.addEventListener(eventName, () => {
       const path = input.dataset.path;
       const type = input.dataset.type;

@@ -157,14 +157,45 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "annualBonusMonths": 0.0,
             "recruitmentTrainingRate": 0.02,
             "departments": [
-                {"name": "总经办", "headcount": 2, "avgMonthlySalary": 18000, "note": "项目负责人、综合管理"},
-                {"name": "招商部", "headcount": 6, "avgMonthlySalary": 12000, "note": "招商总监、招商经理、租赁专员"},
-                {"name": "运营部", "headcount": 10, "avgMonthlySalary": 10000, "note": "运营经理、楼层主管、客服"},
-                {"name": "市场推广部", "headcount": 4, "avgMonthlySalary": 11000, "note": "品牌、活动、新媒体、会员"},
-                {"name": "财务行政部", "headcount": 3, "avgMonthlySalary": 9000, "note": "财务、人事行政、采购"},
-                {"name": "物业工程部", "headcount": 6, "avgMonthlySalary": 8500, "note": "物业经理、工程、消防、强弱电"},
-                {"name": "保安部", "headcount": 8, "avgMonthlySalary": 5500, "note": "秩序维护、监控、巡逻"},
-                {"name": "保洁部", "headcount": 10, "avgMonthlySalary": 4200, "note": "公共区域保洁、垃圾清运"},
+                {"name": "总经办", "note": "项目整体经营管理", "positions": [
+                    {"name": "项目总经理", "headcount": 1, "avgMonthlySalary": 25000, "note": "项目整体经营、投资与重大决策"},
+                    {"name": "综合管理经理", "headcount": 1, "avgMonthlySalary": 14000, "note": "计划运营、制度流程与跨部门协调"},
+                ]},
+                {"name": "招商部", "note": "招商策略、品牌引进与租赁管理", "positions": [
+                    {"name": "招商总监", "headcount": 1, "avgMonthlySalary": 20000, "note": "招商策略、主力店及重点品牌"},
+                    {"name": "招商经理", "headcount": 2, "avgMonthlySalary": 13000, "note": "业态招商、品牌储备与商务谈判"},
+                    {"name": "租赁专员", "headcount": 3, "avgMonthlySalary": 8500, "note": "客户拓展、带看、合同及台账"},
+                ]},
+                {"name": "运营部", "note": "现场营运、租户服务和经营分析", "positions": [
+                    {"name": "运营总监", "headcount": 1, "avgMonthlySalary": 18000, "note": "经营目标、营运统筹与重大事项"},
+                    {"name": "运营经理", "headcount": 2, "avgMonthlySalary": 12000, "note": "楼层经营、租户管理与经营分析"},
+                    {"name": "楼层主管", "headcount": 3, "avgMonthlySalary": 9000, "note": "现场巡检、租户服务和问题处理"},
+                    {"name": "客服专员", "headcount": 4, "avgMonthlySalary": 6500, "note": "服务台、投诉、会员及活动支持"},
+                ]},
+                {"name": "市场推广部", "note": "品牌、活动、媒体和会员运营", "positions": [
+                    {"name": "市场总监", "headcount": 1, "avgMonthlySalary": 18000, "note": "市场策略、预算和品牌统筹"},
+                    {"name": "品牌经理", "headcount": 1, "avgMonthlySalary": 11000, "note": "品牌传播、公关和异业合作"},
+                    {"name": "新媒体专员", "headcount": 1, "avgMonthlySalary": 8000, "note": "内容、短视频和线上平台"},
+                    {"name": "会员运营", "headcount": 1, "avgMonthlySalary": 8000, "note": "会员体系、私域和会员活动"},
+                ]},
+                {"name": "财务行政部", "note": "财务、人事、行政和采购", "positions": [
+                    {"name": "财务经理", "headcount": 1, "avgMonthlySalary": 13000, "note": "预算、核算、税务和资金管理"},
+                    {"name": "会计", "headcount": 1, "avgMonthlySalary": 9000, "note": "账务、报表、结算和发票"},
+                    {"name": "人事行政专员", "headcount": 1, "avgMonthlySalary": 8000, "note": "招聘、薪酬、行政和采购"},
+                ]},
+                {"name": "物业工程部", "note": "物业工程、设施设备及安全管理", "positions": [
+                    {"name": "物业经理", "headcount": 1, "avgMonthlySalary": 13000, "note": "物业统筹、供应商和品质管理"},
+                    {"name": "工程主管", "headcount": 2, "avgMonthlySalary": 9000, "note": "机电、暖通、给排水和维修"},
+                    {"name": "消防及强弱电", "headcount": 3, "avgMonthlySalary": 7000, "note": "消防、弱电、配电及设备巡检"},
+                ]},
+                {"name": "保安部", "note": "秩序维护、监控和应急处置", "positions": [
+                    {"name": "保安主管", "headcount": 1, "avgMonthlySalary": 7000, "note": "秩序维护、排班和应急管理"},
+                    {"name": "保安员", "headcount": 7, "avgMonthlySalary": 5000, "note": "门岗、巡逻、监控和车辆管理"},
+                ]},
+                {"name": "保洁部", "note": "公共区域保洁和垃圾清运", "positions": [
+                    {"name": "保洁主管", "headcount": 1, "avgMonthlySalary": 6000, "note": "保洁品质、排班和物料管理"},
+                    {"name": "保洁员", "headcount": 9, "avgMonthlySalary": 4000, "note": "公共区域、卫生间和垃圾清运"},
+                ]},
             ],
         },
         "officeBudget": {
@@ -267,6 +298,7 @@ def deep_merge(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]
 def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
     model = default_model()
     default_marketing_budget = copy.deepcopy(model["marketingBudget"])
+    default_organization = copy.deepcopy(model["organization"])
     explicit_mode = (raw or {}).get("calculationMode")
     if raw:
         deep_merge(model, raw)
@@ -319,6 +351,72 @@ def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
     marketing_budget["annualItems"] = normalize_marketing_items(default_marketing_budget["annualItems"], marketing_budget.get("annualItems"))
     marketing_budget["openingYearItems"] = normalize_marketing_items(default_marketing_budget["openingYearItems"], marketing_budget.get("openingYearItems"))
     model["marketingBudget"] = marketing_budget
+    raw_organization = model.get("organization") if isinstance(model.get("organization"), dict) else {}
+    legacy_default_departments = {
+        "总经办": (2.0, 18000.0),
+        "招商部": (6.0, 12000.0),
+        "运营部": (10.0, 10000.0),
+        "市场推广部": (4.0, 11000.0),
+        "财务行政部": (3.0, 9000.0),
+        "物业工程部": (6.0, 8500.0),
+        "保安部": (8.0, 5500.0),
+        "保洁部": (10.0, 4200.0),
+    }
+    normalized_departments: list[dict[str, Any]] = []
+    for department in raw_organization.get("departments", []):
+        if not isinstance(department, dict):
+            continue
+        department_name = str(department.get("name") or "未命名部门").strip() or "未命名部门"
+        raw_positions = department.get("positions") if isinstance(department.get("positions"), list) else []
+        positions: list[dict[str, Any]] = []
+        for index, position in enumerate(raw_positions):
+            if not isinstance(position, dict):
+                continue
+            headcount = max(0.0, as_float(position.get("headcount")))
+            monthly_salary = max(0.0, as_float(position.get("avgMonthlySalary", position.get("monthlySalary"))))
+            positions.append({
+                "name": str(position.get("name") or f"岗位{index + 1}").strip() or f"岗位{index + 1}",
+                "headcount": headcount,
+                "avgMonthlySalary": monthly_salary,
+                "note": str(position.get("note") or ""),
+            })
+        if not positions:
+            legacy_headcount = max(0.0, as_float(department.get("headcount")))
+            legacy_salary = max(0.0, as_float(department.get("avgMonthlySalary")))
+            default_department = next((item for item in default_organization["departments"] if item.get("name") == department_name), None)
+            default_positions = default_department.get("positions", []) if default_department else []
+            default_headcount = sum(max(0.0, as_float(item.get("headcount"))) for item in default_positions)
+            default_salary_area = sum(max(0.0, as_float(item.get("headcount"))) * max(0.0, as_float(item.get("avgMonthlySalary"))) for item in default_positions)
+            default_avg_salary = safe_div(default_salary_area, default_headcount)
+            known_legacy = legacy_default_departments.get(department_name)
+            matches_known_legacy = bool(
+                known_legacy
+                and abs(legacy_headcount - known_legacy[0]) < 0.01
+                and abs(legacy_salary - known_legacy[1]) < 1.0
+            )
+            if default_positions and (matches_known_legacy or (abs(legacy_headcount - default_headcount) < 0.01 and abs(legacy_salary - default_avg_salary) < 1.0)):
+                positions = copy.deepcopy(default_positions)
+            else:
+                positions = [{
+                    "name": "部门综合岗位",
+                    "headcount": legacy_headcount,
+                    "avgMonthlySalary": legacy_salary,
+                    "note": str(department.get("note") or "由旧版部门数据自动转换"),
+                }]
+        total_headcount = sum(position["headcount"] for position in positions)
+        weighted_salary = safe_div(
+            sum(position["headcount"] * position["avgMonthlySalary"] for position in positions),
+            total_headcount,
+        )
+        normalized_departments.append({
+            "name": department_name,
+            "note": str(department.get("note") or ""),
+            "positions": positions,
+            "headcount": total_headcount,
+            "avgMonthlySalary": weighted_salary,
+        })
+    raw_organization["departments"] = normalized_departments
+    model["organization"] = raw_organization
     if not explicit_mode:
         model["calculationMode"] = "detailed" if (raw or {}).get("shops") else "preliminary"
     default_categories = {c["name"]: c for c in CATEGORY_PRESETS}
@@ -465,28 +563,64 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     annual_salary_months = max(1.0, as_float(organization.get("annualSalaryMonths"), 12.0))
     recruitment_training_rate = max(0.0, as_float(organization.get("recruitmentTrainingRate")))
     organization_breakdown = []
+    position_breakdown = []
     structured_headcount = 0
     structured_personnel_cost = 0.0
     for department in departments:
-        headcount = max(0.0, as_float(department.get("headcount")))
-        monthly_salary = max(0.0, as_float(department.get("avgMonthlySalary")))
-        annual_cost = headcount * monthly_salary * annual_salary_months * (1 + social_insurance_rate) / 10000
+        department_name = str(department.get("name") or "未命名部门")
+        department_positions = []
+        headcount = 0.0
+        annual_cost = 0.0
+        salary_area = 0.0
+        for position in department.get("positions", []) if isinstance(department.get("positions"), list) else []:
+            if not isinstance(position, dict):
+                continue
+            position_headcount = max(0.0, as_float(position.get("headcount")))
+            monthly_salary = max(0.0, as_float(position.get("avgMonthlySalary", position.get("monthlySalary"))))
+            position_cost = position_headcount * monthly_salary * annual_salary_months * (1 + social_insurance_rate) / 10000
+            headcount += position_headcount
+            annual_cost += position_cost
+            salary_area += position_headcount * monthly_salary
+            position_record = {
+                "department": department_name,
+                "name": str(position.get("name") or "未命名岗位"),
+                "headcount": position_headcount,
+                "avgMonthlySalary": monthly_salary,
+                "annualSalaryMonths": annual_salary_months,
+                "annualCost": position_cost,
+                "note": str(position.get("note") or ""),
+            }
+            department_positions.append(position_record)
+            position_breakdown.append(position_record)
+        if not department_positions:
+            continue
         structured_headcount += headcount
         structured_personnel_cost += annual_cost
         organization_breakdown.append({
-            "name": str(department.get("name") or "未命名部门"),
+            "name": department_name,
             "headcount": headcount,
-            "avgMonthlySalary": monthly_salary,
+            "avgMonthlySalary": safe_div(salary_area, headcount),
             "annualSalaryMonths": annual_salary_months,
             "annualCost": annual_cost,
             "note": str(department.get("note") or ""),
+            "positions": department_positions,
         })
     structured_recruitment_training = structured_personnel_cost * recruitment_training_rate
     for item in organization_breakdown:
         item["share"] = safe_div(item["annualCost"], structured_personnel_cost)
-    security_personnel_cost = sum(item["annualCost"] for item in organization_breakdown if "保安" in item["name"])
-    cleaning_personnel_cost = sum(item["annualCost"] for item in organization_breakdown if "保洁" in item["name"])
-    property_personnel_cost = sum(item["annualCost"] for item in organization_breakdown if ("物业" in item["name"] or "工程" in item["name"]))
+    for item in position_breakdown:
+        item["share"] = safe_div(item["annualCost"], structured_personnel_cost)
+
+    def personnel_cost_matching(*keywords: str) -> float:
+        return sum(
+            item["annualCost"]
+            for item in position_breakdown
+            if any(keyword in f'{item["department"]}{item["name"]}{item["note"]}' for keyword in keywords)
+        )
+
+    security_personnel_cost = personnel_cost_matching("保安", "秩序维护", "监控")
+    cleaning_personnel_cost = personnel_cost_matching("保洁", "环境卫生", "垃圾清运")
+    property_personnel_cost = personnel_cost_matching("物业", "工程", "消防", "强弱电", "暖通", "机电")
     operations_team_cost = max(0.0, structured_personnel_cost - security_personnel_cost - cleaning_personnel_cost - property_personnel_cost)
     office_items = [
         ("办公室租金", "officeRentAnnual"),
@@ -1249,6 +1383,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         },
         "investmentBreakdown": investment_breakdown,
         "organizationBreakdown": organization_breakdown,
+        "positionBreakdown": position_breakdown,
         "officeBreakdown": office_breakdown,
         "leasingBreakdown": leasing_breakdown,
         "marketingAllocation": marketing_allocation,

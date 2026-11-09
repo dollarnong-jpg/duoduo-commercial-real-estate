@@ -505,6 +505,15 @@ a { color: inherit; }
 .shop-rent-recognition em { display:block; margin-top:3px; color:#7f8984; font-size:var(--fs-8); font-style:normal; line-height:1.45; }
 .shop-detail-table { min-width:1280px; }
 .rent-source { display:block; margin-top:3px; color:var(--green); font-size:var(--fs-8); font-weight:600; }
+.org-structure-wrap { max-height:760px; }
+.org-structure-table { min-width:980px; }
+.org-department-row td { background:#edf5f1; border-top:2px solid #c8dcd3; }
+.org-department-row .table-input { background:#fff; font-weight:700; color:var(--navy); }
+.org-position-row td:first-child { padding-left:26px; }
+.org-level-tag { display:inline-flex; margin-right:6px; padding:3px 6px; border-radius:999px; background:var(--green); color:#fff; font-size:var(--fs-8); font-weight:700; }
+.org-position-branch { display:inline-block; width:54px; color:var(--green); font-size:var(--fs-8); font-weight:700; }
+.org-actions { white-space:nowrap; }
+.org-actions .btn { padding:5px 6px; }
 
 details.advanced { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; background: #fff; }
 details.advanced summary { list-style: none; cursor: pointer; padding: 14px 16px; color: var(--navy); font-size: var(--fs-12); font-weight: 700; display: flex; align-items: center; justify-content: space-between; }

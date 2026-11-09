@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261109-rentgrowth1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-org3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -875,6 +875,15 @@ function workbookBlob(wb) {
 
 function addSheet(wb, name, rows, widths = []) {
   const ws = XLSX.utils.aoa_to_sheet(rows);
+  if (ws['!ref']) {
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let row = range.s.r; row <= range.e.r; row++) {
+      for (let column = range.s.c; column <= range.e.c; column++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: row, c: column })];
+        if (cell && cell.t === 'n' && !cell.z) cell.z = Number.isInteger(cell.v) ? '0' : '0.00';
+      }
+    }
+  }
   if (widths.length) ws['!cols'] = widths.map(wch => ({ wch }));
   wb.SheetNames.push(name);
   wb.Sheets[name] = ws;
@@ -1023,16 +1032,31 @@ function operatingBudgetTemplate() {
     ...BUDGET_BASIC_DEFS.map(item => [item.label, item.value, item.unit, '按项目实际预算和属地政策填写']),
   ], [28, 18, 16, 56]);
   addSheet(wb, '组织架构', [
-    ['部门', '编制人数', '平均月薪（元/月）', '岗位职责说明'],
-    ['总经办', 2, 18000, '项目负责人、综合管理'],
-    ['招商部', 6, 12000, '招商总监、招商经理、租赁专员'],
-    ['运营部', 10, 10000, '运营经理、楼层主管、客服'],
-    ['市场推广部', 4, 11000, '品牌、活动、新媒体、会员'],
-    ['财务行政部', 3, 9000, '财务、人事行政、采购'],
-    ['物业工程部', 6, 8500, '物业经理、工程、消防、强弱电'],
-    ['保安部', 8, 5500, '秩序维护、监控、巡逻'],
-    ['保洁部', 10, 4200, '公共区域保洁、垃圾清运'],
-  ], [20, 14, 22, 52]);
+    ['部门', '岗位', '编制人数', '平均月薪（元/月）', '岗位职责说明'],
+    ['总经办', '项目总经理', 1, 25000, '项目整体经营、投资与重大决策'],
+    ['总经办', '综合管理经理', 1, 14000, '计划运营、制度流程与跨部门协调'],
+    ['招商部', '招商总监', 1, 20000, '招商策略、主力店及重点品牌'],
+    ['招商部', '招商经理', 2, 13000, '业态招商、品牌储备与商务谈判'],
+    ['招商部', '租赁专员', 3, 8500, '客户拓展、带看、合同及台账'],
+    ['运营部', '运营总监', 1, 18000, '经营目标、营运统筹与重大事项'],
+    ['运营部', '运营经理', 2, 12000, '楼层经营、租户管理与经营分析'],
+    ['运营部', '楼层主管', 3, 9000, '现场巡检、租户服务和问题处理'],
+    ['运营部', '客服专员', 4, 6500, '服务台、投诉、会员及活动支持'],
+    ['市场推广部', '市场总监', 1, 18000, '市场策略、预算和品牌统筹'],
+    ['市场推广部', '品牌经理', 1, 11000, '品牌传播、公关和异业合作'],
+    ['市场推广部', '新媒体专员', 1, 8000, '内容、短视频和线上平台'],
+    ['市场推广部', '会员运营', 1, 8000, '会员体系、私域和会员活动'],
+    ['财务行政部', '财务经理', 1, 13000, '预算、核算、税务和资金管理'],
+    ['财务行政部', '会计', 1, 9000, '账务、报表、结算和发票'],
+    ['财务行政部', '人事行政专员', 1, 8000, '招聘、薪酬、行政和采购'],
+    ['物业工程部', '物业经理', 1, 13000, '物业统筹、供应商和品质管理'],
+    ['物业工程部', '工程主管', 2, 9000, '机电、暖通、给排水和维修'],
+    ['物业工程部', '消防及强弱电', 3, 7000, '消防、弱电、配电及设备巡检'],
+    ['保安部', '保安主管', 1, 7000, '秩序维护、排班和应急管理'],
+    ['保安部', '保安员', 7, 5000, '门岗、巡逻、监控和车辆管理'],
+    ['保洁部', '保洁主管', 1, 6000, '保洁品质、排班和物料管理'],
+    ['保洁部', '保洁员', 9, 4000, '公共区域、卫生间和垃圾清运'],
+  ], [18, 20, 14, 22, 52]);
   addSheet(wb, '办公预算', [['费用项目', '年度金额（万元）', '说明'], ...OFFICE_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
   addSheet(wb, '招商预算', [['费用项目', '年度金额（万元）', '说明'], ...LEASING_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
   addSheet(wb, '营销常规预算', [
@@ -1100,21 +1124,27 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   }
 
   const orgRows = getTemplateRows(wb, '组织架构');
-  const orgHeader = findHeaderRow(orgRows, { name: ['部门'], headcount: ['编制人数'], salary: ['平均月薪'], note: ['岗位职责', '说明'] }, ['name', 'headcount', 'salary']);
+  const orgHeader = findHeaderRow(orgRows, { name: ['部门', '部门名称'], position: ['岗位', '岗位名称', '职位'], headcount: ['编制人数'], salary: ['平均月薪'], note: ['岗位职责', '职责说明', '说明'] }, ['name', 'headcount', 'salary']);
   if (orgHeader >= 0) {
-    const indexes = headerIndexes(orgRows[orgHeader], { name: ['部门'], headcount: ['编制人数'], salary: ['平均月薪'], note: ['岗位职责', '说明'] });
+    const indexes = headerIndexes(orgRows[orgHeader], { name: ['部门', '部门名称'], position: ['岗位', '岗位名称', '职位'], headcount: ['编制人数'], salary: ['平均月薪'], note: ['岗位职责', '职责说明', '说明'] });
+    const departmentMap = new Map();
     for (const row of orgRows.slice(orgHeader + 1)) {
       const name = String(rowValue(row, indexes, 'name') || '').trim();
       if (!name) continue;
-      organization.departments.push({
-        name,
+      if (!departmentMap.has(name)) departmentMap.set(name, { name, note: '', positions: [] });
+      const department = departmentMap.get(name);
+      const positionName = String(rowValue(row, indexes, 'position') || '部门综合岗位').trim() || '部门综合岗位';
+      const note = String(rowValue(row, indexes, 'note') || '').trim();
+      department.positions.push({
+        name: positionName,
         headcount: safeNumber(rowValue(row, indexes, 'headcount')),
         avgMonthlySalary: safeNumber(rowValue(row, indexes, 'salary')),
-        note: String(rowValue(row, indexes, 'note') || '').trim(),
+        note,
       });
     }
+    organization.departments = [...departmentMap.values()];
   }
-  if (!organization.departments.length) warnings.push('组织架构工作表没有有效部门记录');
+  if (!organization.departments.length) warnings.push('组织架构工作表没有有效部门或岗位记录');
 
   function parseAmountSheet(sheetName, defs, target) {
     const rows = getTemplateRows(wb, sheetName);
@@ -1206,9 +1236,9 @@ function exportExcel(result) {
     ['人员', '招聘培训费率', model.organization?.recruitmentTrainingRate], ['营销', '核算方式', model.marketingBudget?.amountMode === false ? '旧版权重（建议转换）' : '按金额录入，自动计算权重'],
   ], [18, 28, 20]);
   addSheet(wb, '组织架构与人员成本', [
-    ['部门','编制人数','平均月薪（元/月）','社保公积金比例','年度薪资月数','年度人员成本（万元）','岗位/职责说明'],
-    ...(result.organizationBreakdown || []).map(x => [x.name, x.headcount, x.avgMonthlySalary, model.organization?.socialInsuranceRate, x.annualSalaryMonths || model.organization?.annualSalaryMonths || 12, x.annualCost, x.note])
-  ], [20, 12, 20, 18, 14, 22, 48]);
+    ['部门','岗位','编制人数','平均月薪（元/月）','社保公积金比例','年度薪资月数','岗位年度成本（万元）','岗位职责说明'],
+    ...(result.positionBreakdown || []).map(x => [x.department, x.name, x.headcount, x.avgMonthlySalary, model.organization?.socialInsuranceRate, x.annualSalaryMonths || model.organization?.annualSalaryMonths || 12, x.annualCost, x.note])
+  ], [20, 20, 12, 20, 18, 14, 22, 48]);
   const officeBudgetTotal = (result.officeBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
   const leasingBudgetTotal = (result.leasingBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
   addSheet(wb, '办公与招商预算', [
@@ -1393,8 +1423,8 @@ async function exportPPT(result) {
   addSlideTitle(slide, '组织架构与人员成本', result.model.operations?.staffCostMode === 'area'
     ? `当前按面积估算人员成本 ${(result.summary.stableStaffCost || 0).toFixed(1)} 万元/年｜组织架构为测算参考`
     : `合计编制 ${result.summary.stableHeadcount || 0} 人｜年度薪资 ${result.model.organization?.annualSalaryMonths || 12} 薪｜年度人员成本 ${(result.summary.stableStaffCost || 0).toFixed(1)} 万元`);
-  const orgRows = [['部门','编制','平均月薪','年成本(万元)','职责'], ...(result.organizationBreakdown || []).map(x => [x.name, `${x.headcount}人`, `${x.avgMonthlySalary.toLocaleString('zh-CN')}元`, x.annualCost.toFixed(1), x.note])];
-  slide.addTable(orgRows, { x: 0.7, y: 1.42, w: 12.0, colW: [2.0, 1.0, 1.8, 1.6, 5.6], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 8, margin: 0.04, rowH: 0.4, autoFit: false });
+  const orgRows = [['部门','岗位构成','编制','年成本(万元)'], ...(result.organizationBreakdown || []).map(x => [x.name, (x.positions || []).map(p => `${p.name}${Number(p.headcount) > 1 ? `×${p.headcount}` : ''}`).join('、'), `${x.headcount}人`, x.annualCost.toFixed(1)])];
+  slide.addTable(orgRows, { x: 0.7, y: 1.42, w: 12.0, colW: [1.8, 6.7, 1.0, 2.5], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 8, margin: 0.04, rowH: 0.48, autoFit: false });
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '年度运营成本与营销预算', '稳定运营年｜金额单位：万元/年');
