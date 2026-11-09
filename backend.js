@@ -823,6 +823,7 @@ const BUDGET_BASIC_DEFS = [
   { label: '社保公积金综合比例', path: 'organization.socialInsuranceRate', unit: '%', scale: 0.01, value: 28 },
   { label: '年度薪资月数（如12/15薪）', path: 'organization.annualSalaryMonths', unit: '薪/年', scale: 1, value: 12, aliases: ['年度薪资月数', '年终奖月数'] },
   { label: '招聘培训费率', path: 'organization.recruitmentTrainingRate', unit: '%', scale: 0.01, value: 2 },
+  { label: '人员成本来源', path: 'operations.staffCostMode', unit: '', scale: 1, value: '按组织架构薪资倒推' },
   { label: '物业基础运营单价', path: 'operations.propertyOpsCost', unit: '元/㎡/月', scale: 1, value: 10 },
   { label: '公共能耗单价', path: 'operations.energyCost', unit: '元/㎡/月', scale: 1, value: 4.5 },
   { label: '日常维修费率', path: 'operations.repairRate', unit: '%', scale: 0.01, value: 1 },
@@ -916,6 +917,8 @@ function parseOperatingBudgetWorkbook(base64, filename) {
       if (def.path === 'marketingBudget.useFixedAnnual') {
         const value = String(raw || '').trim();
         marketingBudget.useFixedAnnual = value.includes('固定') || value === '1' || value === 'true' || value === '是';
+      } else if (def.path === 'operations.staffCostMode') {
+        operations.staffCostMode = String(raw || '').includes('面积') ? 'area' : 'organization';
       } else {
         let number = safeNumber(raw) * def.scale;
         if (def.path === 'organization.annualSalaryMonths' && normalizeHeader(label) === normalizeHeader('年终奖月数')) number += 12;
@@ -1024,6 +1027,7 @@ function exportExcel(result) {
     ['公式', '亏损结转年限', formulas.taxLossCarryforwardYears], ['公式', '贷款还款方式', formulas.loanRepaymentMethod],
     ['公式', '退出估值方法', formulas.exitValueMethod], ['公式', '退出收入倍数', formulas.exitRevenueMultiple],
     ['人员', '社保公积金比例', model.organization?.socialInsuranceRate], ['人员', '年度薪资月数', model.organization?.annualSalaryMonths || 12],
+    ['人员', '人员成本来源', model.operations?.staffCostMode === 'area' ? '按面积快速估算' : '按组织架构薪资倒推'],
     ['人员', '招聘培训费率', model.organization?.recruitmentTrainingRate], ['营销', '年度预算方式', model.marketingBudget?.useFixedAnnual ? '固定预算' : '营业收入比例'],
   ], [18, 28, 20]);
   addSheet(wb, '组织架构与人员成本', [
@@ -1071,6 +1075,7 @@ function exportExcel(result) {
     ['收益', 'IRR', '求使NPV(IRR)=0的折现率', ['IRR','二分法'], '系统在合理区间内反复二分，寻找让NPV等于0的折现率。', 'IRR高于企业门槛才通过初筛；现金流异常时IRR可能无解，应结合NPV。', 'valuation.discountRate', model.valuation.discountRate, '用于比较项目自身收益能力。'],
     ['收益', '静态回收期', '累计现金流由负转正的插值年份', ['LOOKUP','IF'], '逐年累计现金流，找到由负转正的年份，并按当年现金流比例插值。', '回收期越短，资金占用风险越低；可与融资期限和退出计划对照。', 'project.operationYears', model.project.operationYears, '用于判断投资回收速度。'],
     ['人员', '部门年度人员成本', '人数×平均月薪×年度薪资月数×(1+社保公积金比例)÷10000', ['SUM'], '按部门和编制逐项计算工资、社保、公积金和年度薪资，汇总为年度人员成本。', '按定编定岗和属地社保政策填写人数、月薪、年度薪资月数和综合费率；年度薪资月数可填12、13、14或15薪。', 'organization.annualSalaryMonths', model.organization?.annualSalaryMonths || 12, '人员成本直接进入年度运营成本。'],
+    ['人员', '人员成本来源', '按组织架构=Σ部门人数×月薪×薪资月数×社保；按面积=总建筑面积×人员成本单价×12', ['IF','SUM'], '选择组织架构模式后，管理团队及物业人员成本由HR薪资明细倒推。', '前期可用面积快速估算，招商运营阶段应使用组织架构薪资成本。', 'operations.staffCostMode', model.operations?.staffCostMode || 'organization', '决定管理团队人员成本采用薪资倒推还是面积估算。'],
     ['办公', '年度办公行政成本', '租金+水电通讯+IT软件+办公用品+差旅招待+其他', ['SUM'], '逐项汇总年度办公行政预算。', '按行政预算和已签合同调整；办公室租金、IT服务和差旅标准应与团队规模匹配。', 'officeBudget.officeRentAnnual', model.officeBudget?.officeRentAnnual, '办公成本直接扣减NOI。'],
     ['招商', '年度招商费用', '渠道代理+活动+物料+差旅+平台+其他；续租佣金按周期另计', ['SUM','MOD','IF'], '年度固定招商预算与续租佣金分开计算，避免重复。', '按招商策略和渠道政策填写；首开佣金、年度招商费用和续租佣金分别管理。', 'leasingBudget.channelFeeAnnual', model.leasingBudget?.channelFeeAnnual, '招商费用直接扣减运营现金流。'],
     ['营销', '年度营销预算分解', 'IF(固定预算,固定额,营业收入×营销率)；渠道预算=(总额-机动预备)×权重÷权重合计', ['IF','SUM','ROUND'], '先确定年度营销总额，再预留机动费，按渠道权重归一化分配。', '按年度推广计划和渠道KPI调整权重；开业期提高媒体和活动，稳定期提高会员数字和品牌公关。', 'marketingBudget.contingencyRate', model.marketingBudget?.contingencyRate, '营销预算进入年度运营成本。'],
@@ -1199,7 +1204,9 @@ async function exportPPT(result) {
   slide.addTable(catRows, { x: 0.7, y: 1.45, w: 12.0, colW: [1.5, 2.2, 1.4, 2.3, 1.4, 2.4], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.32, autoFit: false });
 
   slide = pptx.addSlide();
-  addSlideTitle(slide, '组织架构与人员成本', `合计编制 ${result.summary.stableHeadcount || 0} 人｜年度薪资 ${result.model.organization?.annualSalaryMonths || 12} 薪｜年度人员成本 ${(result.summary.stableStaffCost || 0).toFixed(1)} 万元`);
+  addSlideTitle(slide, '组织架构与人员成本', result.model.operations?.staffCostMode === 'area'
+    ? `当前按面积估算人员成本 ${(result.summary.stableStaffCost || 0).toFixed(1)} 万元/年｜组织架构为测算参考`
+    : `合计编制 ${result.summary.stableHeadcount || 0} 人｜年度薪资 ${result.model.organization?.annualSalaryMonths || 12} 薪｜年度人员成本 ${(result.summary.stableStaffCost || 0).toFixed(1)} 万元`);
   const orgRows = [['部门','编制','平均月薪','年成本(万元)','职责'], ...(result.organizationBreakdown || []).map(x => [x.name, `${x.headcount}人`, `${x.avgMonthlySalary.toLocaleString('zh-CN')}元`, x.annualCost.toFixed(1), x.note])];
   slide.addTable(orgRows, { x: 0.7, y: 1.42, w: 12.0, colW: [2.0, 1.0, 1.8, 1.6, 5.6], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 8, margin: 0.04, rowH: 0.4, autoFit: false });
 

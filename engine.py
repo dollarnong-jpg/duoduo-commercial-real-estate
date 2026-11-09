@@ -118,6 +118,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "propertyOpsCost": 9.0,
             "energyCost": 4.0,
             "staffCostPerSqm": 11.0,
+            "staffCostMode": "organization",
             "adminCostPerSqm": 2.0,
             "marketingRate": 0.02,
             "repairRate": 0.01,
@@ -603,7 +604,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     # First-pass investment, then add working capital based on stabilized operating costs.
     investment_without_wc = land_price + deed_tax + direct_engineering + contingency + commission + preopening_marketing + other_preopening
-    personnel_proxy = (structured_personnel_cost + structured_recruitment_training) if structured_headcount > 0 else gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000
+    staff_cost_mode = str(operations.get("staffCostMode") or "organization")
+    if staff_cost_mode not in {"organization", "area"}:
+        staff_cost_mode = "organization" if structured_headcount > 0 else "area"
+    personnel_proxy = (structured_personnel_cost + structured_recruitment_training) if staff_cost_mode == "organization" and structured_headcount > 0 else gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000
     office_proxy = structured_office_cost if structured_office_cost > 0 else gba * as_float(operations.get("adminCostPerSqm")) * 12 / 10000
     marketing_proxy = total_monthly_revenue * 12 * 0.95 / 10000 * as_float(operations.get("marketingRate"))
     stable_opex_proxy = (
@@ -801,14 +805,19 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         ramp = as_float(operations.get("rampY1")) if op_year == 1 else as_float(operations.get("rampY2")) if op_year == 2 else 1.0
         property_ops = gba * as_float(operations.get("propertyOpsCost")) * 12 / 10000 * ramp
         energy = gba * as_float(operations.get("energyCost")) * 12 / 10000 * occupancy
-        operations_team = operations_team_cost * ramp
-        property_team = property_personnel_cost * ramp
-        security_team = security_personnel_cost * ramp
-        cleaning_team = cleaning_personnel_cost * ramp
-        recruitment_training = structured_recruitment_training * ramp
-        if structured_headcount > 0:
+        if staff_cost_mode == "organization" and structured_headcount > 0:
+            operations_team = operations_team_cost * ramp
+            property_team = property_personnel_cost * ramp
+            security_team = security_personnel_cost * ramp
+            cleaning_team = cleaning_personnel_cost * ramp
+            recruitment_training = structured_recruitment_training * ramp
             staff = operations_team + property_team + security_team + cleaning_team + recruitment_training
         else:
+            operations_team = gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000 * ramp
+            property_team = 0.0
+            security_team = 0.0
+            cleaning_team = 0.0
+            recruitment_training = 0.0
             staff = gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000 * ramp
         admin = structured_office_cost * ramp if structured_office_cost > 0 else gba * as_float(operations.get("adminCostPerSqm")) * 12 / 10000 * ramp
         renewal_commission = 0.0
@@ -1002,7 +1011,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     operating_cost_breakdown = [
         {"name": "物业基础运营", "value": as_float(stable_row.get("propertyOpsCost"))},
         {"name": "公共能耗", "value": as_float(stable_row.get("energyCost"))},
-        {"name": "运营团队人员成本", "value": as_float(stable_row.get("operationsTeamCost"))},
+        {"name": "管理团队人员成本", "value": as_float(stable_row.get("operationsTeamCost"))},
         {"name": "物业工程人员成本", "value": as_float(stable_row.get("propertyTeamCost"))},
         {"name": "保安人员成本", "value": as_float(stable_row.get("securityCost"))},
         {"name": "保洁人员成本", "value": as_float(stable_row.get("cleaningCost"))},
@@ -1068,6 +1077,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableNoi": stable_noi,
             "stableNoiMargin": safe_div(stable_noi, stable_revenue),
             "stableHeadcount": structured_headcount,
+            "staffCostMode": staff_cost_mode,
             "stableStaffCost": stable_staff_cost,
             "stableOfficeCost": stable_office_cost,
             "stableLeasingCost": stable_leasing_cost,
@@ -1261,6 +1271,11 @@ def build_analysis(
         for item in cost_adjustment_config.values()
     ):
         recommendations.append("项目设置了年度招商或运营成本调整，应逐项核对调整年份、人员编制、招商计划和费用合同，避免因爬坡或一次性活动导致成本重复或遗漏。")
+    staff_source = str(model.get("operations", {}).get("staffCostMode") or "organization")
+    if staff_source == "organization":
+        recommendations.append("当前管理团队及物业人员成本按组织架构、编制人数、月薪、年度薪资月数和社保公积金倒推，应继续核对定编定岗方案和属地薪酬水平。")
+    else:
+        recommendations.append("当前人员成本按面积单价快速估算，适合前期初筛；进入招商运营深化阶段后应切换为组织架构薪资成本。")
     development_type = str(model.get("project", {}).get("developmentType") or "new_build")
     if development_type == "renovation":
         recommendations.append("旧改项目应在投资决策前完成结构安全鉴定、消防改造可行性、机电容量和停业施工组织评估，并预留不可预见改造费用。")

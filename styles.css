@@ -387,6 +387,10 @@ a { color: inherit; }
 .opex-category-item small { display: block; margin-top: 4px; color: var(--muted); font-size: var(--fs-8); line-height: 1.5; }
 .opex-reference-foot { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-top: 13px; padding-top: 11px; border-top: 1px dashed #cfe0d8; }
 .opex-reference-foot > span { color: #7d8a85; font-size: var(--fs-8); }
+.staff-cost-derived { padding: 11px 13px; border: 1px solid #c8ddd3; border-radius: 10px; background: var(--green-soft); }
+.staff-cost-derived span { display: block; color: var(--muted); font-size: var(--fs-8); }
+.staff-cost-derived strong { display: block; margin: 4px 0; color: var(--navy); font-size: var(--fs-15); }
+.staff-cost-derived small { color: #71817b; font-size: var(--fs-8); line-height: 1.45; }
 .cost-reference-card { margin: 0 0 22px; padding: 18px 19px; border: 1px solid #c8ddd3; border-radius: 15px; background: linear-gradient(135deg,#f1f8f4,#fcfaf4); }
 .cost-reference-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
 .cost-reference-head h3 { margin: 5px 0 6px; color: var(--navy); font-size: var(--fs-15); }

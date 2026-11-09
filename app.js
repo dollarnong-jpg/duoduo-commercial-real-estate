@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-opex1';
+import './backend.js?v=20261109-hrstaff1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -73,6 +73,7 @@ const FIELD_FORMULAS = {
   'operations.propertyOpsCost': { title: '物业运营成本', formula: '物业运营成本 = 总建筑面积 × 单价 × 12 × 运营爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本、NOI和铺底流动资金估算。' },
   'operations.energyCost': { title: '公共能耗', formula: '公共能耗 = 总建筑面积 × 能耗单价 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '按出租率联动，空置率越高能耗成本越低。' },
   'operations.staffCostPerSqm': { title: '商管团队成本', formula: '商管团队成本 = 总建筑面积 × 团队成本单价 × 12 × 爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本和NOI。' },
+  'operations.staffCostMode': { title: '人员成本来源', formula: '按组织架构：Σ部门年度薪资及社保；按面积：总建筑面积×人员成本单价×12', functions: ['IF', 'SUM'], role: '组织架构模式会通过人力资源月薪成本倒推管理团队和物业人员成本。' },
   'operations.adminCostPerSqm': { title: '行政办公成本', formula: '行政办公成本 = 总建筑面积 × 行政成本单价 × 12 × 爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本和NOI。' },
   'operations.marketingRate': { title: '年度营销费用', formula: '营销费用 = 不含税营业收入 × 营销费用率', functions: ['SUM'], role: '与筹备期营销费用分开计算。' },
   'operations.repairRate': { title: '维修改造费', formula: '维修改造费 =（建安 + 装修 + 设备 + 其他工程 + 预备费）× 维修改造费率 × 爬坡系数', functions: ['SUM'], role: '用于年度运营成本。' },
@@ -679,6 +680,7 @@ function applyOperatingCostReference(model = state.current?.model, options = {})
   if (selected('property')) model.operations.propertyOpsCost = reference.values.propertyOpsCost;
   if (selected('energy')) model.operations.energyCost = reference.values.energyCost;
   if (selected('staff')) {
+    model.operations.staffCostMode = 'organization';
     model.operations.staffCostPerSqm = reference.values.staffCostPerSqm;
     const salaries = new Map(reference.values.salaries.map(item => [item.name, item.avgMonthlySalary]));
     (model.organization?.departments || []).forEach(dept => {
@@ -2103,7 +2105,8 @@ function renderOrganizationSection(model, preview) {
   const departments = organization.departments || (organization.departments = []);
   const previewMap = new Map((preview?.organizationBreakdown || []).map((item, index) => [index, item]));
   const headcount = departments.reduce((sum, dept) => sum + Number(dept.headcount || 0), 0);
-  const annualCost = departments.reduce((sum, dept) => sum + organizationAnnualCost(dept, organization), 0);
+  const salaryCost = departments.reduce((sum, dept) => sum + organizationAnnualCost(dept, organization), 0);
+  const annualCost = salaryCost + salaryCost * Number(organization.recruitmentTrainingRate || 0);
   return `<div class="form-section budget-section">
     <div class="section-title">组织架构与人员成本</div>
     <div class="section-note">按部门、编制人数、平均月薪、年度薪资月数、社保公积金和招聘培训测算年度人员成本；保安、保洁、物业工程和运营团队分别体现。</div>
@@ -2125,7 +2128,7 @@ function renderOrganizationSection(model, preview) {
         </tr>`).join('') || '<tr><td colspan="6" class="empty-table-cell">尚未设置部门</td></tr>'}
       </tbody></table>
     </div>
-    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-department" type="button">${ICONS.plus}<span>新增部门</span></button><span>合计编制 <strong>${fmt(headcount)}</strong> 人｜年度人员成本 <strong>${fmt(annualCost, 1)}</strong> 万元</span></div>
+    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-department" type="button">${ICONS.plus}<span>新增部门</span></button><span>合计编制 <strong>${fmt(headcount)}</strong> 人｜年度薪资及社保 <strong>${fmt(salaryCost, 1)}</strong> 万元｜含招聘培训合计 <strong>${fmt(annualCost, 1)}</strong> 万元｜${model.operations?.staffCostMode === 'area' ? '当前未用于成本测算' : '已用于管理团队成本测算'}</span></div>
   </div>`;
 }
 
@@ -2419,6 +2422,10 @@ function updateOperatingReferenceValues() {
 }
 
 function renderOperationsStep() {
+  const model = state.current.model;
+  const staffCostMode = model.operations?.staffCostMode || 'organization';
+  const organizationSalary = (model.organization?.departments || []).reduce((sum, dept) => sum + organizationAnnualCost(dept, model.organization || {}), 0);
+  const organizationAnnual = organizationSalary + organizationSalary * Number(model.organization?.recruitmentTrainingRate || 0);
   return `
     <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会按“${fmt(state.current.model.project.operationYears || 20)}年招商运营年限”自动形成现金流、税费和投资收益。</div></div>
     <div class="form-section">
@@ -2448,7 +2455,8 @@ function renderOperationsStep() {
         ${textField('停车月租', 'revenues.parkingMonthly', { type: 'number', unit: '元/位/月', optional: true })}
         ${textField('物业运营成本', 'operations.propertyOpsCost', { type: 'number', unit: '元/㎡/月' })}
         ${textField('公共能耗', 'operations.energyCost', { type: 'number', unit: '元/㎡/月' })}
-        ${textField('商管团队成本', 'operations.staffCostPerSqm', { type: 'number', unit: '元/㎡/月' })}
+        ${selectField('人员成本来源', 'operations.staffCostMode', [{ value: 'organization', label: '按组织架构薪资倒推' }, { value: 'area', label: '按面积快速估算' }], { help: '推荐使用组织架构薪资倒推；面积估算仅用于前期快速判断' })}
+        ${staffCostMode === 'area' ? textField('商管团队成本', 'operations.staffCostPerSqm', { type: 'number', unit: '元/㎡/月' }) : `<div class="staff-cost-derived"><span>当前由人力资源倒推</span><strong>${fmt(organizationAnnual, 1)} 万元/年</strong><small>编制、月薪、年度薪资月数及社保变动后自动更新</small></div>`}
         ${textField('行政办公成本', 'operations.adminCostPerSqm', { type: 'number', unit: '元/㎡/月' })}
         ${textField('营销费用率', 'operations.marketingRate', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('维修改造费率', 'operations.repairRate', { type: 'number', unit: '%', scale: 0.01 })}
@@ -2810,6 +2818,13 @@ function bindStepInputs() {
       }
       setPath(state.current.model, path, value);
       if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode'].includes(path)) {
+        state.dirty = true;
+        state.preview = null;
+        renderWorkspace();
+        scheduleLivePreview();
+        return;
+      }
+      if (path === 'operations.staffCostMode') {
         state.dirty = true;
         state.preview = null;
         renderWorkspace();
