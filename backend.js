@@ -1015,6 +1015,8 @@ function exportExcel(result) {
     ['成本', '装修单价（元/㎡）', model.costs.fitoutRate], ['成本', '设备单价（元/㎡）', model.costs.equipmentRate],
     ['运营', '首年出租率', model.operations.occupancyY1], ['运营', '第二年出租率', model.operations.occupancyY2],
     ['运营', '稳定期出租率', model.operations.stableOccupancy], ['运营', '租金增长率', model.operations.rentGrowth],
+    ['运营成本参考', '运营标准', model.operations.opexPreset?.standard || 'standard'], ['运营成本参考', '管理模式', model.operations.opexPreset?.managementMode || 'mixed'],
+    ['运营成本参考', '所在地参考', model.operations.opexPreset?.locationLabel || model.project.location],
     ['税费', '租金增值税', model.taxes.vatRent], ['税费', '房产税（从租）', model.taxes.propertyTaxRateRent], ['税费', '企业所得税', model.taxes.corporateTax],
     ['融资', '债务比例', model.finance.debtRatio], ['融资', '贷款利率', model.finance.loanRate], ['估值', '折现率', model.valuation.discountRate],
     ['公式', '租金增长方式', formulas.rentGrowthMode], ['公式', '建筑折旧年限', formulas.buildingDepreciationYears],

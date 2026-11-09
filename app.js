@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-building1';
+import './backend.js?v=20261109-opex1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -580,6 +580,131 @@ function applyCostReference(model, overrides = {}, rerender = false) {
   state.preview = null;
   updateSaveState();
   if (rerender) renderWorkspace();
+  return reference;
+}
+
+const OPEX_STANDARD_OPTIONS = [
+  { value: 'basic', label: '基础运营标准', factor: 0.86 },
+  { value: 'standard', label: '标准运营标准', factor: 1.0 },
+  { value: 'premium', label: '品质运营标准', factor: 1.18 },
+];
+
+const OPEX_MANAGEMENT_OPTIONS = [
+  { value: 'self', label: '自管团队', property: 0.94, staff: 1.10, leasing: 1.0 },
+  { value: 'mixed', label: '自管 + 外包混合', property: 1.0, staff: 1.0, leasing: 1.0 },
+  { value: 'outsourced', label: '委托专业团队', property: 1.16, staff: 0.82, leasing: 1.06 },
+];
+
+const OPEX_CATEGORY_OPTIONS = [
+  { value: 'property', label: '物业基础运营' },
+  { value: 'energy', label: '公共能耗' },
+  { value: 'staff', label: '组织架构及人员成本' },
+  { value: 'office', label: '办公及行政费用' },
+  { value: 'leasing', label: '招商费用' },
+  { value: 'marketing', label: '营销推广' },
+  { value: 'maintenance', label: '日常及专项维保' },
+  { value: 'insurance', label: '保险及风险准备' },
+  { value: 'other', label: '其他运营费用' },
+];
+
+function operatingCostReference(model = state.current?.model, overrides = {}) {
+  const project = model?.project || {};
+  const preset = model?.operations?.opexPreset || {};
+  const standard = OPEX_STANDARD_OPTIONS.find(item => item.value === (overrides.standard || preset.standard)) || OPEX_STANDARD_OPTIONS[1];
+  const management = OPEX_MANAGEMENT_OPTIONS.find(item => item.value === (overrides.managementMode || preset.managementMode)) || OPEX_MANAGEMENT_OPTIONS[1];
+  const city = cityCostProfile(project.location);
+  const formatFactor = FORMAT_COST_FACTORS[project.projectType || '其他'] || 1;
+  const floors = model?.floors || [];
+  const shops = model?.shops || [];
+  const gba = Number(project.gbaOverride || 0) || floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0) || shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0) * (1 + Number(project.commonAreaFactor || 0));
+  const gla = floors.reduce((sum, floor) => sum + Number(floor.leasableArea || 0), 0) || shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
+  const departments = model?.organization?.departments || [];
+  const headcount = departments.reduce((sum, dept) => sum + Number(dept.headcount || 0), 0) || 7;
+  const cityFactor = Math.max(0.85, Math.min(1.35, city.factor));
+  const format = Math.max(0.82, Math.min(1.15, formatFactor));
+  const standardFactor = standard.factor;
+  const salaryBase = {
+    '总经办': 19000, '招商部': 11000, '运营部': 9500, '市场推广部': 10500,
+    '财务行政部': 8500, '物业工程部': 8000, '保安部': 5200, '保洁部': 4000,
+  };
+  const values = {
+    propertyOpsCost: Number((9.0 * Math.pow(cityFactor, 0.45) * format * standardFactor * management.property).toFixed(1)),
+    energyCost: Number((4.0 * Math.pow(cityFactor, 0.35) * format * standardFactor).toFixed(1)),
+    staffCostPerSqm: Number((11.0 * Math.pow(cityFactor, 0.55) * format * standardFactor * management.staff).toFixed(1)),
+    adminCostPerSqm: Number((2.0 * Math.pow(cityFactor, 0.35) * format * standardFactor).toFixed(1)),
+    marketingRate: Number((0.02 * format * standardFactor).toFixed(4)),
+    repairRate: Number((0.01 * Math.pow(cityFactor, 0.2) * standardFactor).toFixed(4)),
+    insuranceRate: 0.0015,
+    otherOpexRate: Number((0.005 * format * standardFactor).toFixed(4)),
+    officeBudget: {
+      officeRentAnnual: Number((Math.max(18, headcount * 0.33 * 12) * cityFactor * standardFactor).toFixed(1)),
+      utilitiesAnnual: Number((9 * cityFactor * standardFactor).toFixed(1)),
+      itSoftwareAnnual: Number((18 + headcount * 1.6).toFixed(1)),
+      officeSuppliesAnnual: Number((5 * cityFactor * standardFactor).toFixed(1)),
+      travelEntertainmentAnnual: Number((9 * cityFactor * standardFactor).toFixed(1)),
+      otherAnnual: Number((8 * cityFactor * standardFactor).toFixed(1)),
+    },
+    leasingBudget: {
+      channelFeeAnnual: Number((Math.max(20, gla * 0.008) * cityFactor * format * standardFactor * management.leasing).toFixed(1)),
+      eventsAnnual: Number((45 * cityFactor * format * standardFactor * management.leasing).toFixed(1)),
+      materialsAnnual: Number((10 * cityFactor * standardFactor).toFixed(1)),
+      travelAnnual: Number((8 * cityFactor * standardFactor).toFixed(1)),
+      platformAnnual: Number((7 * cityFactor * standardFactor).toFixed(1)),
+      otherAnnual: Number((4 * cityFactor * standardFactor).toFixed(1)),
+    },
+    maintenanceBudget: {
+      elevatorAnnual: Number((20 * cityFactor * standardFactor).toFixed(1)),
+      hvacAnnual: Number((24 * cityFactor * standardFactor).toFixed(1)),
+      fireAnnual: Number((8 * cityFactor * standardFactor).toFixed(1)),
+      landscapeAnnual: Number((9 * cityFactor * standardFactor).toFixed(1)),
+      otherAnnual: Number((11 * cityFactor * standardFactor).toFixed(1)),
+    },
+    salaries: departments.map(dept => {
+      const base = salaryBase[dept.name] || Number(dept.avgMonthlySalary || 8000);
+      return { name: dept.name, avgMonthlySalary: Math.round(base * Math.pow(cityFactor, 0.75) * standardFactor * management.staff / 100) * 100 };
+    }),
+  };
+  return { standard, management, city, formatFactor, gba, gla, headcount, values };
+}
+
+function applyOperatingCostReference(model = state.current?.model, options = {}) {
+  if (!model) return null;
+  model.operations ||= {};
+  const preset = model.operations.opexPreset || (model.operations.opexPreset = {});
+  const standard = options.standard || preset.standard || 'standard';
+  const managementMode = options.managementMode || preset.managementMode || 'mixed';
+  const categories = options.categories || preset.categories || Object.fromEntries(OPEX_CATEGORY_OPTIONS.map(item => [item.value, true]));
+  const reference = operatingCostReference(model, { standard, managementMode });
+  const selected = value => categories[value] !== false;
+  if (selected('property')) model.operations.propertyOpsCost = reference.values.propertyOpsCost;
+  if (selected('energy')) model.operations.energyCost = reference.values.energyCost;
+  if (selected('staff')) {
+    model.operations.staffCostPerSqm = reference.values.staffCostPerSqm;
+    const salaries = new Map(reference.values.salaries.map(item => [item.name, item.avgMonthlySalary]));
+    (model.organization?.departments || []).forEach(dept => {
+      if (salaries.has(dept.name)) dept.avgMonthlySalary = salaries.get(dept.name);
+    });
+  }
+  if (selected('office')) {
+    model.operations.adminCostPerSqm = reference.values.adminCostPerSqm;
+    model.officeBudget = { ...(model.officeBudget || {}), ...reference.values.officeBudget };
+  }
+  if (selected('leasing')) model.leasingBudget = { ...(model.leasingBudget || {}), ...reference.values.leasingBudget };
+  if (selected('marketing')) {
+    model.operations.marketingRate = reference.values.marketingRate;
+    model.marketingBudget ||= { useFixedAnnual: false, fixedAnnual: 0, contingencyRate: 0.05, channels: [] };
+    model.marketingBudget.useFixedAnnual = false;
+  }
+  if (selected('maintenance')) {
+    model.operations.repairRate = reference.values.repairRate;
+    model.maintenanceBudget = { ...(model.maintenanceBudget || {}), ...reference.values.maintenanceBudget };
+  }
+  if (selected('insurance')) model.operations.insuranceRate = reference.values.insuranceRate;
+  if (selected('other')) model.operations.otherOpexRate = reference.values.otherOpexRate;
+  model.operations.opexPreset = { standard, managementMode, categories, appliedAt: new Date().toISOString(), locationLabel: reference.city.label };
+  state.dirty = true;
+  state.preview = null;
+  updateSaveState();
   return reference;
 }
 
@@ -1309,6 +1434,7 @@ function openNewProjectModal() {
       updated.project.model.project.rentAreaBasis = form.get('rentAreaBasis');
       updated.project.model.project.revenueModel = form.get('revenueModel');
       applyCostReference(updated.project.model);
+      applyOperatingCostReference(updated.project.model);
       await api(`/api/projects/${id}`, { method: 'PUT', body: { model: updated.project.model } });
       state.adminLoaded = false;
       close();
@@ -2147,6 +2273,17 @@ function bindOperationsBudgets() {
     scheduleLivePreview();
     toast('年度招商及运营成本已全部恢复100%', 'success');
   });
+  document.getElementById('opex-standard-select')?.addEventListener('change', updateOperatingReferenceValues);
+  document.getElementById('opex-management-select')?.addEventListener('change', updateOperatingReferenceValues);
+  document.querySelectorAll('[data-opex-category]').forEach(input => input.addEventListener('change', updateOperatingReferenceValues));
+  document.getElementById('apply-opex-reference')?.addEventListener('click', () => {
+    const selections = currentOperatingReferenceSelections();
+    const reference = applyOperatingCostReference(model, selections);
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast(`已按${reference.city.label} · ${reference.standard.label}应用运营成本参考`, 'success');
+  });
 }
 
 
@@ -2221,6 +2358,66 @@ function renderAnnualCostAdjustmentSection(model) {
   </div>`;
 }
 
+function operatingReferenceCategoryText(reference, category) {
+  const values = reference.values;
+  const sum = object => Object.values(object || {}).reduce((total, value) => total + Number(value || 0), 0);
+  return {
+    property: `${fmt(values.propertyOpsCost, 1)} 元/㎡/月`,
+    energy: `${fmt(values.energyCost, 1)} 元/㎡/月`,
+    staff: `${fmt(reference.headcount)} 人 · 参考人均月薪 ${fmt(values.salaries.length ? values.salaries.reduce((sum, item) => sum + item.avgMonthlySalary, 0) / values.salaries.length : 0)} 元`,
+    office: `${fmt(sum(values.officeBudget), 1)} 万元/年`,
+    leasing: `${fmt(sum(values.leasingBudget), 1)} 万元/年`,
+    marketing: `营业收入的 ${fmtPct(values.marketingRate, 1)}`,
+    maintenance: `${fmt(sum(values.maintenanceBudget), 1)} 万元/年 + 资产原值 ${fmtPct(values.repairRate, 1)}`,
+    insurance: `资产原值的 ${fmtPct(values.insuranceRate, 2)}`,
+    other: `营业收入的 ${fmtPct(values.otherOpexRate, 1)}`,
+  }[category] || '—';
+}
+
+function renderOperatingReferencePanel(model) {
+  const preset = model.operations?.opexPreset || {};
+  const standard = preset.standard || 'standard';
+  const managementMode = preset.managementMode || 'mixed';
+  const categories = preset.categories || Object.fromEntries(OPEX_CATEGORY_OPTIONS.map(item => [item.value, true]));
+  const reference = operatingCostReference(model, { standard, managementMode });
+  return `<div class="form-section opex-reference-section">
+    <div class="section-title">运营成本参考与快速录入</div>
+    <div class="section-note">根据项目所在地、商业形态、运营标准和自管/委托模式生成初始参考。勾选需要应用的成本大项，未勾选项目保持当前值。</div>
+    <div class="opex-reference-card">
+      <div class="opex-reference-head">
+        <div><span class="eyebrow">Location operating benchmark</span><h3>${escapeHtml(reference.city.label)} · ${escapeHtml(reference.standard.label)} · ${escapeHtml(reference.management.label)}</h3><p>参考值为内置地区基准，按项目所在地和运营模式修正；应用后仍可在各成本明细中逐项调整。</p></div>
+        <div class="opex-reference-controls">
+          <select class="select" id="opex-standard-select">${OPEX_STANDARD_OPTIONS.map(item => `<option value="${item.value}" ${item.value === standard ? 'selected' : ''}>${item.label}</option>`).join('')}</select>
+          <select class="select" id="opex-management-select">${OPEX_MANAGEMENT_OPTIONS.map(item => `<option value="${item.value}" ${item.value === managementMode ? 'selected' : ''}>${item.label}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="opex-category-grid">
+        ${OPEX_CATEGORY_OPTIONS.map(item => `<label class="opex-category-item ${categories[item.value] !== false ? 'selected' : ''}" data-opex-category-row="${item.value}"><input type="checkbox" data-opex-category="${item.value}" ${categories[item.value] !== false ? 'checked' : ''}><span><strong>${item.label}</strong><small data-opex-reference-value="${item.value}">${operatingReferenceCategoryText(reference, item.value)}</small></span></label>`).join('')}
+      </div>
+      <div class="opex-reference-foot"><span>参考口径：${escapeHtml(reference.city.label)} · 商业系数 ${reference.formatFactor.toFixed(2)} · 标准系数 ${reference.standard.factor.toFixed(2)}</span><button type="button" class="btn btn-primary btn-sm" id="apply-opex-reference">按勾选项目应用参考值</button></div>
+    </div>
+  </div>`;
+}
+
+function currentOperatingReferenceSelections() {
+  return {
+    standard: document.getElementById('opex-standard-select')?.value || 'standard',
+    managementMode: document.getElementById('opex-management-select')?.value || 'mixed',
+    categories: Object.fromEntries([...document.querySelectorAll('[data-opex-category]')].map(input => [input.dataset.opexCategory, input.checked])),
+  };
+}
+
+function updateOperatingReferenceValues() {
+  const selections = currentOperatingReferenceSelections();
+  const reference = operatingCostReference(state.current.model, { standard: selections.standard, managementMode: selections.managementMode });
+  document.querySelectorAll('[data-opex-reference-value]').forEach(el => {
+    el.textContent = operatingReferenceCategoryText(reference, el.dataset.opexReferenceValue);
+  });
+  const title = document.querySelector('.opex-reference-head h3');
+  if (title) title.textContent = `${reference.city.label} · ${reference.standard.label} · ${reference.management.label}`;
+  document.querySelectorAll('[data-opex-category-row]').forEach(row => row.classList.toggle('selected', row.querySelector('input')?.checked));
+}
+
 function renderOperationsStep() {
   return `
     <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会按“${fmt(state.current.model.project.operationYears || 20)}年招商运营年限”自动形成现金流、税费和投资收益。</div></div>
@@ -2259,6 +2456,7 @@ function renderOperationsStep() {
         ${textField('资本化改造率', 'operations.capexRate', { type: 'number', unit: '%', scale: 0.01 })}
       </div>
     </div>
+    ${renderOperatingReferencePanel(state.current.model)}
     ${renderOperatingBudgetImport()}
     ${renderOrganizationSection(state.current.model, state.preview)}
     ${renderOfficeBudgetSection(state.current.model)}

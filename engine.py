@@ -128,6 +128,15 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "rampY1": 0.80,
             "rampY2": 0.90,
             "annualCostAdjustments": {},
+            "opexPreset": {
+                "standard": "standard",
+                "managementMode": "mixed",
+                "categories": {
+                    "property": True, "energy": True, "staff": True, "office": True,
+                    "leasing": True, "marketing": True, "maintenance": True,
+                    "insurance": True, "other": True
+                }
+            },
         },
         "organization": {
             "socialInsuranceRate": 0.28,
