@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-orgactions1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-propservice1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1030,6 +1030,16 @@ const MARKETING_ANNUAL_DEFS = [
 const MARKETING_OPENING_DEFS = [
   ['导视导览', 'wayfinding'], ['开业美陈', 'opening_visual'],
 ];
+const PROPERTY_SERVICE_DEFS = [
+  { key: 'property', name: '物业工程服务', note: '物业经理、工程、消防、强弱电、暖通、机电等岗位' },
+  { key: 'security', name: '保安服务', note: '保安、秩序维护、监控等岗位' },
+  { key: 'cleaning', name: '保洁服务', note: '保洁、环境卫生、垃圾清运等岗位' },
+];
+const PROPERTY_SERVICE_MODE_LABELS = {
+  self: '自营（自行招聘）',
+  resident_outsourced: '第三方常驻外包',
+  non_resident: '第三方非常驻服务',
+};
 
 function operatingBudgetTemplate() {
   const wb = XLSX.utils.book_new();
@@ -1040,6 +1050,7 @@ function operatingBudgetTemplate() {
     ['费用优先按金额填写，权重和占比由系统自动计算，无需手工凑100%。金额单位均为万元/年，工资单位为元/月。'],
     ['组织架构中的“税前应发基本月薪”是员工税前工资，不是实发工资。系统会继续计算个人社保公积金、个人所得税、实发工资、单位社保公积金和企业人员成本。'],
     ['社保公积金比例、个税起征点和专项附加扣除必须按项目属地最新政策及员工实际情况调整；模板默认值仅为测算示例。'],
+    ['物业服务模式表可分别设置物业工程、保安、保洁为自营、第三方常驻外包或第三方非常驻服务；三种模式均以岗位成本为基础，第三方模式另计综合管理费。'],
   ], [20, 100]);
   addSheet(wb, '基础参数', [
     ['参数', '填写值', '单位', '说明'],
@@ -1095,6 +1106,12 @@ function operatingBudgetTemplate() {
     ['年度应纳税所得额', '税前年度工资 - 个人社保公积金 - 个税起征点×12 - 专项附加扣除×12'],
     ['说明', '系统用于年度投资测算；正式申报应以累计预扣预缴和年度汇算结果为准。'],
   ], [30, 18, 22]);
+  addSheet(wb, '物业服务模式', [
+    ['服务类别', '服务模式', '非驻场折算比例（%）', '第三方综合管理费率（%）', '说明'],
+    ...PROPERTY_SERVICE_DEFS.map(item => [item.name, PROPERTY_SERVICE_MODE_LABELS.self, 70, 12, `${item.note}。综合管理费率用于第三方模式，自营模式不收取。`]),
+    [''],
+    ['填写说明', '服务模式可填：自营、第三方常驻外包、第三方非常驻服务。', '', '', '非驻场折算比例只在第三方非常驻模式使用；综合管理费率建议包含管理费、利润、保险、装备、培训及税费。'],
+  ], [20, 26, 24, 28, 90]);
   addSheet(wb, '办公预算', [['费用项目', '年度金额（万元）', '说明'], ...OFFICE_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
   addSheet(wb, '招商预算', [['费用项目', '年度金额（万元）', '说明'], ...LEASING_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
   addSheet(wb, '营销常规预算', [
@@ -1127,6 +1144,7 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   const leasingBudget = {};
   const marketingBudget = { amountMode: true, annualItems: [], openingYearItems: [] };
   const maintenanceBudget = {};
+  const propertyService = {};
   const operations = {};
 
   const basicRows = getTemplateRows(wb, '基础参数');
@@ -1184,6 +1202,27 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   }
   if (!organization.departments.length) warnings.push('组织架构工作表没有有效部门或岗位记录');
 
+  const serviceRows = getTemplateRows(wb, '物业服务模式');
+  const serviceHeader = findHeaderRow(serviceRows, { name: ['服务类别', '服务项目'], mode: ['服务模式'], factor: ['非驻场折算比例', '折算比例'], fee: ['第三方综合管理费率', '管理费率'] }, ['name', 'mode']);
+  if (serviceHeader >= 0) {
+    const indexes = headerIndexes(serviceRows[serviceHeader], { name: ['服务类别', '服务项目'], mode: ['服务模式'], factor: ['非驻场折算比例', '折算比例'], fee: ['第三方综合管理费率', '管理费率'] });
+    const keyByName = Object.fromEntries(PROPERTY_SERVICE_DEFS.map(item => [normalizeHeader(item.name), item.key]));
+    for (const row of serviceRows.slice(serviceHeader + 1)) {
+      const name = String(rowValue(row, indexes, 'name') || '').trim();
+      const key = keyByName[normalizeHeader(name)];
+      if (!key) continue;
+      const rawMode = normalizeHeader(rowValue(row, indexes, 'mode'));
+      const mode = rawMode.includes('非常驻') ? 'non_resident' : rawMode.includes('外包') || rawMode.includes('第三方') ? 'resident_outsourced' : 'self';
+      const factorValue = rowValue(row, indexes, 'factor');
+      const feeValue = rowValue(row, indexes, 'fee');
+      propertyService[key] = {
+        mode,
+        nonResidentFactor: factorValue === '' ? 0.70 : Math.min(1, Math.max(0, safeNumber(factorValue) / 100)),
+        managementFeeRate: feeValue === '' ? 0.12 : Math.max(0, safeNumber(feeValue) / 100),
+      };
+    }
+  }
+
   function parseAmountSheet(sheetName, defs, target) {
     const rows = getTemplateRows(wb, sheetName);
     const header = findHeaderRow(rows, { name: ['费用项目', '维保项目', '营销类别', '开业专项'], amount: ['年度金额', '首年金额'] }, ['name', 'amount']);
@@ -1220,7 +1259,7 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   if (!Object.keys(openingMarketingAmounts).length) warnings.push('开业首年营销工作表没有有效金额记录');
   marketingBudget.hasImportedAmounts = Boolean(Object.keys(annualMarketingAmounts).length || Object.keys(openingMarketingAmounts).length);
 
-  return { organization, officeBudget, leasingBudget, marketingBudget, maintenanceBudget, operations, warnings };
+  return { organization, propertyService, officeBudget, leasingBudget, marketingBudget, maintenanceBudget, operations, warnings };
 }
 
 function exportExcel(result) {
@@ -1263,6 +1302,8 @@ function exportExcel(result) {
     ['运营', '管理费递增周期（阶梯）', model.operations.propertyFeeStepYears], ['运营', '管理费阶梯递增率', model.operations.propertyFeeStepRate],
     ['运营成本参考', '运营标准', model.operations.opexPreset?.standard || 'standard'], ['运营成本参考', '管理模式', model.operations.opexPreset?.managementMode || 'mixed'],
     ['运营成本参考', '所在地参考', model.operations.opexPreset?.locationLabel || model.project.location],
+    ...(result.propertyServiceBreakdown || []).map(item => ['物业服务', `${item.name}模式`, item.modeLabel || PROPERTY_SERVICE_MODE_LABELS[item.mode] || item.mode]),
+    ['物业服务', '第三方综合管理费（万元/年）', s.annualOutsourcedManagementFee || 0], ['物业服务', '年度物业服务总成本（万元/年）', s.annualPropertyServiceTotal || 0],
     ['税费', '租金增值税', model.taxes.vatRent], ['税费', '房产税（从租）', model.taxes.propertyTaxRateRent], ['税费', '企业所得税', model.taxes.corporateTax],
     ['融资', '债务比例', model.finance.debtRatio], ['融资', '贷款利率', model.finance.loanRate], ['估值', '折现率', model.valuation.discountRate],
     ['公式', '租金增长方式', formulas.rentGrowthMode], ['公式', '管理费增长方式', formulas.propertyFeeGrowthMode], ['公式', '建筑折旧年限', formulas.buildingDepreciationYears],
@@ -1273,7 +1314,7 @@ function exportExcel(result) {
     ['人员', '个税起征点（元/月）', model.organization?.individualIncomeTaxThresholdMonthly ?? 5000], ['人员', '专项附加扣除（元/人/月）', model.organization?.specialAdditionalDeductionMonthly || 0],
     ['人员', '税前年度工资（万元）', s.annualGrossPayroll || 0], ['人员', '个人社保公积金（万元）', s.annualEmployeeSocialInsurance || 0],
     ['人员', '个人所得税（万元）', s.annualIndividualIncomeTax || 0], ['人员', '员工实发工资（万元）', s.annualNetPayroll || 0],
-    ['人员', '单位社保公积金（万元）', s.annualEmployerSocialInsurance || 0], ['人员', '含招聘培训企业人员成本（万元）', s.stableStaffCost || 0],
+    ['人员', '单位社保公积金（万元）', s.annualEmployerSocialInsurance || 0], ['人员', '实际人员及服务成本（万元）', s.stableStaffCost || 0],
     ['人员', '人员成本来源', model.operations?.staffCostMode === 'area' ? '按面积快速估算' : '按组织架构薪资倒推'],
     ['人员', '招聘培训费率', model.organization?.recruitmentTrainingRate], ['营销', '核算方式', model.marketingBudget?.amountMode === false ? '旧版权重（建议转换）' : '按金额录入，自动计算权重'],
   ], [18, 28, 20]);
@@ -1282,7 +1323,7 @@ function exportExcel(result) {
     ...(result.positionBreakdown || []).map(x => [x.department, x.name, x.headcount, x.avgMonthlySalary, x.socialInsuranceBaseMonthly ?? x.avgMonthlySalary, x.annualSalaryMonths || model.organization?.annualSalaryMonths || 12, x.grossPayroll, x.employeeSocialInsurance, x.individualIncomeTax, x.netSalary, x.employerSocialInsurance, x.annualCost, x.note]),
     [''],
     ['合计', '', s.stableHeadcount || 0, '', '', '', s.annualGrossPayroll || 0, s.annualEmployeeSocialInsurance || 0, s.annualIndividualIncomeTax || 0, s.annualNetPayroll || 0, s.annualEmployerSocialInsurance || 0, (s.annualGrossPayroll || 0) + (s.annualEmployerSocialInsurance || 0), '未含招聘培训费'],
-    ['含招聘培训企业人员成本', '', '', '', '', '', '', '', '', '', '', s.stableStaffCost || 0, `招聘培训费率 ${Number(model.organization?.recruitmentTrainingRate || 0) * 100}%`],
+    ['实际人员及服务成本', '', '', '', '', '', '', '', '', '', '', s.stableStaffCost || 0, `含招聘培训及第三方物业服务管理费`],
     [''],
     ['口径说明', '岗位月薪为税前应发基本月薪；社保公积金按税前月薪作为月缴费基数×12个月估算；年度薪资月数只影响税前工资和应税所得。'],
     ['风险提示', '单位/个人社保公积金比例、缴费基数上下限、个税专项附加扣除及适用政策须按项目属地最新规定和员工实际情况复核，默认值仅为测算参考。'],
@@ -1300,6 +1341,16 @@ function exportExcel(result) {
     ['当前专项附加扣除（元/人/月）', model.organization?.specialAdditionalDeductionMonthly || 0],
     ['说明', '系统用于年度投资测算；正式申报应以累计预扣预缴和年度汇算结果为准。'],
   ], [32, 18, 22]);
+  const propertyServiceWs = addSheet(wb, '物业服务模式', [
+    ['服务类别', '服务模式', '自动归类岗位', '编制人数', '岗位基础成本（万元）', '非驻场折算比例', '实际折算比例', '第三方综合管理费率', '折算后岗位成本（万元）', '第三方管理费（万元）', '自营招聘培训费（万元）', '年度服务成本（万元）'],
+    ...(result.propertyServiceBreakdown || []).map(item => [item.name, item.modeLabel, (item.positions || []).join('、'), item.headcount, item.basePositionCost, item.nonResidentFactor, item.positionFactor, item.managementFeeRate, item.positionCostAfterFactor, item.managementFee, item.selfRecruitmentTraining, item.serviceCost]),
+    [''],
+    ['合计', '', '', s.stableHeadcount || 0, s.annualServicePositionBaseCost || 0, '', '', '', '', s.annualOutsourcedManagementFee || 0, (result.propertyServiceBreakdown || []).reduce((sum, item) => sum + Number(item.selfRecruitmentTraining || 0), 0), s.annualPropertyServiceTotal || 0],
+    ['说明', '自营=岗位成本+自营招聘培训；第三方常驻=岗位成本×(1+综合管理费率)；第三方非常驻=岗位成本×非驻场折算比例×(1+综合管理费率)。'],
+  ], [20, 24, 48, 12, 24, 22, 18, 24, 26, 24, 26, 24]);
+  setSheetColumnNumberFormat(propertyServiceWs, [4, 8, 9, 10, 11], '0.00');
+  setSheetColumnNumberFormat(propertyServiceWs, [5, 6, 7], '0.00%');
+  setSheetColumnNumberFormat(propertyServiceWs, [3], '0');
   const officeBudgetTotal = (result.officeBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
   const leasingBudgetTotal = (result.leasingBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
   addSheet(wb, '办公与招商预算', [
@@ -1352,6 +1403,7 @@ function exportExcel(result) {
     ['人员', '税前年度工资与社保', '税前年度工资=Σ(人数×税前应发月薪×年度薪资月数)；个人社保=Σ(税前月薪×12×个人比例)；单位社保=Σ(税前月薪×12×单位比例)', ['SUM'], '岗位月薪按税前应发口径录入。年度多薪增加税前工资；社保公积金按每月缴费基数缴纳12个月，不随13/15薪重复增加缴费月数。', '按定编定岗方案填写人数和税前应发月薪；年度薪资月数可填12、13、14或15薪。单位和个人社保公积金比例必须按项目属地险种、基数和年度政策调整，不能直接套用默认值。', 'organization.employeeSocialInsuranceRate', model.organization?.employeeSocialInsuranceRate, '决定税前工资、员工实发和企业人员成本。'],
     ['人员', '个人所得税与实发工资', '年度应纳税所得额=税前年度工资-个人社保公积金-5000×12-专项附加扣除×12；个税=应纳税所得额×税率-速算扣除数；实发=税前工资-个人社保-个税', ['MAX','IF'], '采用中国居民个人综合所得七级年度超额累进税率：3%、10%、20%、25%、30%、35%、45%，并减去对应速算扣除数。', '核对个税起征点、专项附加扣除和年度薪资结构。系统按年度总额估算，正式申报应采用累计预扣预缴和年度汇算结果。', 'organization.individualIncomeTaxThresholdMonthly', model.organization?.individualIncomeTaxThresholdMonthly ?? 5000, '影响员工个人所得税和实发工资，不直接改变企业现金工资总额。'],
     ['人员', '企业人员成本及招聘培训', '企业人员成本=税前年度工资+单位社保公积金；含招聘培训成本=企业人员成本×(1+招聘培训费率)', ['SUM','IF'], '企业实际承担的是税前工资、单位社保公积金，以及另计的招聘培训支出；个人社保和个税从员工税前工资中代扣，不重复增加企业成本。', '将组织架构倒推的企业人员成本与属地薪酬水平、招聘计划和培训预算交叉核对。', 'organization.recruitmentTrainingRate', model.organization?.recruitmentTrainingRate, '企业人员成本直接进入年度运营成本和NOI。'],
+    ['物业', '物业服务模式与第三方管理费', '自营=岗位基础成本+自营招聘培训；第三方常驻=岗位基础成本×(1+综合管理费率)；第三方非常驻=岗位基础成本×非驻场折算比例×(1+综合管理费率)', ['IF','SUM','MIN'], '系统先按部门/岗位自动归集物业工程、保安、保洁岗位，以岗位工资和单位社保成本为基础，再按服务模式增加招聘培训费或第三方综合管理费。', '自营适合直接管理团队；第三方常驻适合稳定驻场服务；非常驻适合巡检和专项服务。第三方综合管理费率应按合同覆盖管理费、利润、保险、装备、培训及税费。', 'propertyService.security.managementFeeRate', model.propertyService?.security?.managementFeeRate, '服务模式直接影响人员与服务成本、NOI、NPV和IRR。'],
     ['人员', '人员成本来源', '按组织架构=Σ企业人员成本+招聘培训费；按面积=总建筑面积×人员成本单价×12', ['IF','SUM'], '选择组织架构模式后，管理团队及物业人员成本由HR薪资明细倒推。', '前期可用面积快速估算，招商运营阶段应使用组织架构薪资成本。', 'operations.staffCostMode', model.operations?.staffCostMode || 'organization', '决定管理团队人员成本采用薪资倒推还是面积估算。'],
     ['办公', '年度办公行政成本', '租金+水电通讯+IT软件+办公用品+差旅招待+其他', ['SUM'], '逐项汇总年度办公行政预算。', '按行政预算和已签合同调整；办公室租金、IT服务和差旅标准应与团队规模匹配。', 'officeBudget.officeRentAnnual', model.officeBudget?.officeRentAnnual, '办公成本直接扣减NOI。'],
     ['招商', '年度招商费用', '渠道代理+活动+物料+差旅+平台+其他；续租佣金按周期另计', ['SUM','MOD','IF'], '年度固定招商预算与续租佣金分开计算，避免重复。', '按招商策略和渠道政策填写；首开佣金、年度招商费用和续租佣金分别管理。', 'leasingBudget.channelFeeAnnual', model.leasingBudget?.channelFeeAnnual, '招商费用直接扣减运营现金流。'],
@@ -1399,7 +1451,7 @@ function exportExcel(result) {
   ], [22, 30, 70]);
   addSheet(wb, '竞品租金样本', [['样本名称', '地址', '楼层', '业态', '可租赁面积（㎡）', '月租金（元/㎡/月）', '数据日期', '距项目（km）', '备注'], ...(model.market?.comparables || []).map(x => [x.name, x.address, x.floor, x.category, x.leasableArea, x.rent, x.date, x.distanceKm, x.note])], [24, 30, 10, 16, 18, 22, 14, 14, 28]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
-  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '日历年', '租金递增因子', '管理费递增因子', '管理费收入', '营业收入', '人员成本', '办公行政', '招商费用系数', '招商费用', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', '税费', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.calendarYear, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.propertyRevenue, x.revenue, x.staffCost, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.taxes, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,10,14,16,14,16,16,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
+  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '日历年', '租金递增因子', '管理费递增因子', '管理费收入', '营业收入', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', '税费', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.calendarYear, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.propertyRevenue, x.revenue, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.taxes, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,10,14,16,14,16,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
   addSheet(wb, '敏感性分析', [['租金变化 ↓ / 投资变化 →', ...(result.sensitivity.capexSteps || []).map(v => (v * 100).toFixed(0) + '%')], ...(result.sensitivity.rentSteps || []).map((rent, i) => [(rent * 100).toFixed(0) + '%', ...(result.sensitivity.npvMatrix[i] || [])])], [24, 14, 14, 14, 14, 14]);
   addSheet(wb, '分析结论', [['类型', '内容'], ...(result.analysis.bullets || []).map(x => ['分析结论', x]), ...(result.analysis.recommendations || []).map(x => ['建议', x]), ...(result.diagnostics || []).map(x => [x.level, `${x.title}：${x.detail}`])], [18, 100]);
   return workbookBlob(wb);
@@ -1483,15 +1535,17 @@ async function exportPPT(result) {
   slide.addTable(catRows, { x: 0.7, y: 1.45, w: 12.0, colW: [1.5, 2.2, 1.4, 2.3, 1.4, 2.4], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.32, autoFit: false });
 
   slide = pptx.addSlide();
+  const serviceModeShort = { self: '自营', resident_outsourced: '第三方常驻', non_resident: '第三方非常驻' };
+  const serviceModeText = (result.propertyServiceBreakdown || []).map(item => `${item.name.replace('服务', '')}${serviceModeShort[item.mode] || item.mode}`).join('｜');
   addSlideTitle(slide, '组织架构与人员成本', result.model.operations?.staffCostMode === 'area'
     ? `当前按面积估算企业人员成本 ${(result.summary.stableStaffCost || 0).toFixed(2)} 万元/年｜组织架构为测算参考`
-    : `合计编制 ${result.summary.stableHeadcount || 0} 人｜税前工资 ${(result.summary.annualGrossPayroll || 0).toFixed(2)}｜员工实发 ${(result.summary.annualNetPayroll || 0).toFixed(2)}｜企业成本 ${(result.summary.stableStaffCost || 0).toFixed(2)} 万元/年`);
+    : `合计编制 ${result.summary.stableHeadcount || 0} 人｜税前工资 ${(result.summary.annualGrossPayroll || 0).toFixed(2)}｜员工实发 ${(result.summary.annualNetPayroll || 0).toFixed(2)}｜实际人员服务成本 ${(result.summary.stableStaffCost || 0).toFixed(2)} 万元/年｜${serviceModeText}`);
   const orgRows = [
     ['部门','岗位构成','编制','税前工资','个人社保','个税','实发工资','单位社保','企业成本'],
     ...(result.organizationBreakdown || []).map(x => [x.name, (x.positions || []).map(p => `${p.name}${Number(p.headcount) > 1 ? `×${p.headcount}` : ''}`).join('、'), `${x.headcount}人`, (x.grossPayroll || 0).toFixed(2), (x.employeeSocialInsurance || 0).toFixed(2), (x.individualIncomeTax || 0).toFixed(2), (x.netSalary || 0).toFixed(2), (x.employerSocialInsurance || 0).toFixed(2), (x.annualCost || 0).toFixed(2)]),
   ];
   slide.addTable(orgRows, { x: 0.55, y: 1.42, w: 12.2, colW: [1.35, 2.75, 0.65, 1.05, 1.05, 0.85, 1.05, 1.05, 1.2], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 6.8, margin: 0.03, rowH: 0.43, autoFit: false });
-  slide.addText('金额单位：万元/年。月薪按税前应发口径；社保公积金按税前月薪×12个月×配置比例估算。比例、缴费基数上下限和专项附加扣除须按属地政策及员工实际复核。', { x: 0.55, y: 6.55, w: 12.2, h: 0.32, fontFace: 'Microsoft YaHei', fontSize: 7.2, color: '66736F' });
+  slide.addText(`金额单位：万元/年。月薪按税前应发口径；社保公积金按税前月薪×12个月×配置比例估算。第三方综合管理费合计 ${(result.summary.annualOutsourcedManagementFee || 0).toFixed(2)} 万元；比例、基数及物业服务合同须按属地政策和实际条款复核。`, { x: 0.55, y: 6.55, w: 12.2, h: 0.32, fontFace: 'Microsoft YaHei', fontSize: 7.2, color: '66736F' });
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '年度运营成本与营销预算', '稳定运营年｜金额单位：万元/年');

@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-orgactions1';
+import './backend.js?v=20261110-propservice1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.10.8';
+const APP_VERSION = '1.11.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -32,6 +32,18 @@ const DEFAULT_FORMULAS = {
   sensitivityCapexMax: 1.10,
   sensitivityCapexStep: 0.05,
 };
+
+const PROPERTY_SERVICE_DEFINITIONS = [
+  { key: 'property', name: '物业工程服务', keywords: ['物业', '工程', '消防', '强弱电', '暖通', '机电'] },
+  { key: 'security', name: '保安服务', keywords: ['保安', '秩序维护', '监控'] },
+  { key: 'cleaning', name: '保洁服务', keywords: ['保洁', '环境卫生', '垃圾清运'] },
+];
+
+const PROPERTY_SERVICE_MODE_OPTIONS = [
+  { value: 'self', label: '自营（自行招聘）' },
+  { value: 'resident_outsourced', label: '第三方常驻外包' },
+  { value: 'non_resident', label: '第三方非常驻服务' },
+];
 
 const FIELD_FORMULAS = {
   'project.gbaOverride': { title: '总建筑面积', formula: '总建筑面积 = 手动总建筑面积；若为0，则 = 商铺建筑面积 ×（1 + 公区系数）', functions: ['IF', 'SUM'], role: '作为建安、装修、设备、预备费和单位投资指标的计算基数。' },
@@ -176,6 +188,27 @@ const FIELD_FORMULAS = {
   'maintenanceBudget.landscapeAnnual': { title: '景观绿化养护', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '包括室内外绿植、景观和水景养护。' },
   'maintenanceBudget.otherAnnual': { title: '其他专项维保', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '用于未单列的专项维保支出。' },
 };
+
+for (const service of PROPERTY_SERVICE_DEFINITIONS) {
+  FIELD_FORMULAS[`propertyService.${service.key}.mode`] = {
+    title: `${service.name}模式`,
+    formula: '自营 = 岗位基础成本 + 自营招聘培训；第三方常驻 = 岗位基础成本 ×（1 + 综合管理费率）；非常驻 = 岗位基础成本 × 非驻场折算比例 ×（1 + 综合管理费率）',
+    functions: ['IF', 'SUM'],
+    role: '按岗位核算服务成本。第三方综合管理费率应覆盖管理费、利润、保险、服装装备、培训、税费等合同综合费用。'
+  };
+  FIELD_FORMULAS[`propertyService.${service.key}.nonResidentFactor`] = {
+    title: `${service.name}非驻场折算比例`,
+    formula: '非常驻岗位成本 = 岗位基础成本 × 非驻场折算比例',
+    functions: ['SUM'],
+    role: '仅第三方非常驻模式使用。按服务频次、现场覆盖时长和实际岗位配置折算，常驻模式按100%计算。'
+  };
+  FIELD_FORMULAS[`propertyService.${service.key}.managementFeeRate`] = {
+    title: `${service.name}第三方综合管理费率`,
+    formula: '第三方管理费 = 折算后岗位成本 × 第三方综合管理费率',
+    functions: ['SUM'],
+    role: '仅第三方常驻或非常驻模式使用。该费率应结合物业服务合同，覆盖管理费、利润、保险、培训、装备及税费。'
+  };
+}
 const FUNCTION_DEFINITIONS = {
   'IF': { syntax: 'IF(条件, 条件成立时的值, 条件不成立时的值)', meaning: '条件判断函数。系统先判断条件，再选择对应的计算结果。', example: 'IF(运营年=1, 首年出租率, 稳定期出租率)', note: '调整出租率、稳定年或计租方式时，首先会检查 IF 的条件和边界。' },
   'SUM': { syntax: 'SUM(数值1, 数值2, …) 或 Σ', meaning: '把多个分项金额或比率相加，形成合计。', example: '项目总投资 = SUM(土地, 工程, 装修, 预备费, 开办费, 流动资金)', note: '漏项会直接造成投资或收入低估；新增费用时应检查是否已纳入对应 SUM。' },
@@ -230,6 +263,10 @@ const FORMULA_GUIDES = {
     how: '先确定部门和岗位编制，再以税前应发月薪计算税前年度工资；个人和单位社保公积金按税前月薪作为月缴费基数×12个月计算；个税以年度工资减去个人社保公积金、起征点和专项附加扣除后的应纳税所得额，适用中国综合所得七级超额累进税率；最后得到员工实发工资和企业人员成本。年度薪资月数可填12、13、14或15薪。',
     adjust: '按定编定岗方案填写人数和税前应发月薪，按劳动合同及年终奖政策设置年度薪资月数。单位、个人社保公积金比例和缴费基数必须按项目属地最新政策、险种明细和员工情况调整；当前默认值不是任何城市法定统一标准。重点比较企业人员成本、员工实发工资及其对NOI和现金流的影响。'
   },
+  propertyService: {
+    how: '系统先按部门和岗位名称自动归集物业工程、保安、保洁岗位，以岗位企业人员成本作为基础。自营模式加入内部招聘培训费；第三方常驻模式按岗位基础成本加综合管理费；第三方非常驻模式先按非驻场折算比例降低岗位成本，再加综合管理费。',
+    adjust: '自营适合直接控制服务品质和人员管理的项目；第三方常驻适合需要稳定现场团队的保安、保洁和设备服务；非常驻适合巡检、专项维修或低频服务。综合管理费率必须依据合同，覆盖管理费、利润、保险、培训、装备和税费，避免只比较裸工资造成外包成本低估。'
+  },
   ownerRent: {
     how: '土地和物业租赁均可选择按面积单价或按月度总额计价。按面积时，月租金=面积×元/㎡/月÷10000；按总额时直接使用月租金。随后分别乘支付月数，并按合同选择不复递增、复利、单利、固定金额或每N年阶梯递增。',
     adjust: '分别核对土地和物业租赁合同的计价方式、面积、单价或月租金总额、支付月数、递增方式、递增率、免租期、解约责任和发票税率。按面积计价时，应确保面积口径与合同一致。'
@@ -268,6 +305,7 @@ function formulaGuideFor(path, info) {
   if (path.includes('loanRepaymentMethod')) return FORMULA_GUIDES.finance;
   if (path.includes('exitValueMethod') || path.includes('exitRevenueMultiple')) return FORMULA_GUIDES.valuation;
   if (path.startsWith('organization.')) return FORMULA_GUIDES.organization;
+  if (path.startsWith('propertyService.')) return FORMULA_GUIDES.propertyService;
   if (path.startsWith('ownerRent.')) return FORMULA_GUIDES.ownerRent;
   if (path.startsWith('officeBudget.')) return FORMULA_GUIDES.office;
   if (path.startsWith('leasingBudget.')) return FORMULA_GUIDES.leasing;
@@ -2269,18 +2307,79 @@ function organizationPayrollTotals(positions, organization) {
   }, { grossPayroll: 0, employeeSocial: 0, individualIncomeTax: 0, netSalary: 0, employerSocial: 0, companyCost: 0 });
 }
 
-function organizationAnnualCost(department, organization) {
-  const positions = Array.isArray(department.positions) ? department.positions : [];
-  if (positions.length) {
-    return positions.reduce((sum, position) => sum + organizationPositionPayroll(position, organization).companyCost, 0);
+function propertyServiceAnalysis(model) {
+  const organization = model.organization || (model.organization = {});
+  const serviceConfig = model.propertyService || (model.propertyService = {});
+  const recruitmentRate = Number(organization.recruitmentTrainingRate ?? 0.02);
+  const buckets = Object.fromEntries(PROPERTY_SERVICE_DEFINITIONS.map(service => [service.key, []]));
+  const operationsPositions = [];
+  for (const department of organization.departments || []) {
+    for (const position of Array.isArray(department.positions) ? department.positions : []) {
+      const record = { ...position, department: department.name || '' };
+      const text = `${record.department}${record.name || ''}${record.note || ''}`;
+      const matched = PROPERTY_SERVICE_DEFINITIONS.find(service => service.keywords.some(keyword => text.includes(keyword)));
+      if (matched) buckets[matched.key].push(record);
+      else operationsPositions.push(record);
+    }
   }
-  return organizationPositionPayroll(department, organization).companyCost;
+  const records = PROPERTY_SERVICE_DEFINITIONS.map(service => {
+    const positions = buckets[service.key];
+    const payroll = organizationPayrollTotals(positions, organization);
+    const config = serviceConfig[service.key] || (serviceConfig[service.key] = {});
+    if (config.mode == null) config.mode = 'self';
+    if (config.nonResidentFactor == null) config.nonResidentFactor = 0.70;
+    if (config.managementFeeRate == null) config.managementFeeRate = 0.12;
+    const mode = PROPERTY_SERVICE_MODE_OPTIONS.some(option => option.value === config.mode) ? config.mode : 'self';
+    const nonResidentFactor = Math.min(1, Math.max(0, Number(config.nonResidentFactor ?? 0.70)));
+    const managementFeeRate = Math.max(0, Number(config.managementFeeRate ?? 0.12));
+    const positionFactor = mode === 'non_resident' ? nonResidentFactor : 1;
+    const positionCostAfterFactor = payroll.companyCost * positionFactor;
+    const managementFee = ['resident_outsourced', 'non_resident'].includes(mode) ? positionCostAfterFactor * managementFeeRate : 0;
+    const selfRecruitmentTraining = mode === 'self' ? payroll.companyCost * recruitmentRate : 0;
+    return {
+      key: service.key,
+      name: service.name,
+      mode,
+      modeLabel: PROPERTY_SERVICE_MODE_OPTIONS.find(option => option.value === mode)?.label || mode,
+      headcount: positions.reduce((sum, position) => sum + Number(position.headcount || 0), 0),
+      positions: positions.map(position => position.name || '未命名岗位'),
+      basePositionCost: payroll.companyCost,
+      nonResidentFactor,
+      positionFactor,
+      managementFeeRate,
+      positionCostAfterFactor,
+      managementFee,
+      selfRecruitmentTraining,
+      serviceCost: positionCostAfterFactor + managementFee + selfRecruitmentTraining,
+    };
+  });
+  const operationsPayroll = organizationPayrollTotals(operationsPositions, organization);
+  const operationsRecruitmentTraining = operationsPayroll.companyCost * recruitmentRate;
+  const servicePositionBaseCost = records.reduce((sum, record) => sum + record.basePositionCost, 0);
+  const outsourcedManagementFee = records.reduce((sum, record) => sum + record.managementFee, 0);
+  const selfServiceRecruitment = records.reduce((sum, record) => sum + record.selfRecruitmentTraining, 0);
+  const serviceTotal = records.reduce((sum, record) => sum + record.serviceCost, 0);
+  const organizationFullCost = operationsPayroll.companyCost + servicePositionBaseCost + (operationsPayroll.companyCost + servicePositionBaseCost) * recruitmentRate;
+  const totalActiveStaffCost = operationsPayroll.companyCost + operationsRecruitmentTraining + serviceTotal;
+  return {
+    records,
+    operationsTeamCost: operationsPayroll.companyCost,
+    operationsRecruitmentTraining,
+    servicePositionBaseCost,
+    outsourcedManagementFee,
+    selfServiceRecruitment,
+    serviceTotal,
+    organizationFullCost,
+    activeRecruitmentTrainingCost: operationsRecruitmentTraining + selfServiceRecruitment,
+    totalActiveStaffCost,
+    staffCostMode: model.operations?.staffCostMode || 'organization',
+  };
 }
 
 function renderOperatingBudgetImport() {
   return `<div class="form-section budget-import-section">
     <div class="section-title">Excel 运营成本预算导入</div>
-    <div class="section-note">可下载标准模板，填写基础参数、组织架构、办公预算、招商预算、营销金额和维保预算后一次性导入。权重由系统自动计算。</div>
+    <div class="section-note">可下载标准模板，填写基础参数、组织架构、物业服务模式、办公预算、招商预算、营销金额和维保预算后一次性导入。权重由系统自动计算。</div>
     <div class="import-zone" id="budget-import-zone">
       <div class="import-icon">${ICONS.excel}</div>
       <div><h3>运营成本预算模板</h3><p>支持 .xlsx、.xlsm。金额单位为万元/年，工资单位为元/月，比例按百分数填写。</p></div>
@@ -2375,9 +2474,44 @@ function renderOrganizationSection(model, preview) {
       <div><span>员工实发工资</span><strong data-payroll-summary="annualNetPayroll">${fmt(payrollTotals.netSalary, 2)}</strong><em>万元</em></div>
       <div><span>单位社保公积金</span><strong data-payroll-summary="annualEmployerSocialInsurance">${fmt(payrollTotals.employerSocial, 2)}</strong><em>万元</em></div>
       <div><span>企业人员成本</span><strong data-payroll-summary="companyCost">${fmt(payrollTotals.companyCost, 2)}</strong><em>万元</em></div>
-      <div class="highlight"><span>含招聘培训合计</span><strong data-payroll-summary="stableStaffCost">${fmt(annualCost, 2)}</strong><em>万元</em></div>
+      <div class="highlight"><span>组织架构全口径成本</span><strong data-payroll-summary="organizationFullCost">${fmt(annualCost, 2)}</strong><em>万元</em></div>
     </div>
-    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-department" type="button">${ICONS.plus}<span>新增部门</span></button><span>招聘培训费 <strong data-payroll-summary="annualRecruitmentTrainingCost">${fmt(recruitmentTraining, 2)}</strong> 万元｜${model.operations?.staffCostMode === 'area' ? '当前未用于成本测算' : '已按企业人员成本及招聘培训费计入管理团队成本'}</span></div>
+    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-department" type="button">${ICONS.plus}<span>新增部门</span></button><span>组织架构招聘培训费 <strong data-payroll-summary="organizationRecruitmentTrainingCost">${fmt(recruitmentTraining, 2)}</strong> 万元｜${model.operations?.staffCostMode === 'area' ? '当前未用于成本测算' : '物业服务模式及第三方管理费在下方单独核算'}</span></div>
+  </div>`;
+}
+
+function renderPropertyServiceSection(model, preview) {
+  const analysis = propertyServiceAnalysis(model);
+  const staffMode = analysis.staffCostMode;
+  return `<div class="form-section budget-section property-service-section">
+    <div class="section-title">物业服务模式、岗位成本与第三方管理费</div>
+    <div class="section-note">系统自动把“物业工程、保安、保洁”相关岗位归入对应服务。三种模式都先按岗位核算企业人员成本，再根据服务模式增加自营招聘培训费或第三方综合管理费。</div>
+    ${formulaPanel('物业服务模式与岗位成本公式', '岗位基础成本 = Σ(岗位税前年度工资 + 单位社保公积金)\n自营服务成本 = 岗位基础成本 + 自营招聘培训费\n第三方常驻外包 = 岗位基础成本 ×（1 + 第三方综合管理费率）\n第三方非常驻服务 = 岗位基础成本 × 非驻场折算比例 ×（1 + 第三方综合管理费率）\n实际人员及服务成本 = 管理团队成本 + 管理团队招聘培训 + Σ各类服务成本', ['IF','SUM','MIN'], '第三方综合管理费率建议包含管理费、利润、保险、服装装备、培训、税费等全部合同费用。非驻场折算比例按现场服务频次、覆盖时长和岗位配置确定；自营模式不使用第三方费率。')}
+    <div class="property-service-mode-guide">
+      <div><strong>自营</strong><span>自行招聘岗位，承担工资、社保、个税及招聘培训。</span></div>
+      <div><strong>第三方常驻外包</strong><span>物业公司长期驻场，岗位成本基础上增加综合管理费。</span></div>
+      <div><strong>第三方非常驻服务</strong><span>按巡检或专项服务配置，岗位成本先按非驻场比例折算。</span></div>
+    </div>
+    ${staffMode === 'area' ? `<div class="warning-item">当前“人员成本来源”选择了按面积快速估算，物业服务模式仅作为方案参考，不进入本次人员成本核算。切换为按组织架构薪资倒推后生效。</div>` : ''}
+    <div class="property-service-items">${analysis.records.map(record => `<div class="property-service-item" data-service-key="${record.key}">
+      <div class="property-service-item-head"><div><strong>${escapeHtml(record.name)}</strong><div class="service-position-tags">${record.positions.length ? record.positions.map(name => `<span class="tag">${escapeHtml(name)}</span>`).join('') : '<span class="service-empty">未匹配到岗位</span>'}</div></div><span class="service-headcount" data-service-headcount>${fmt(record.headcount)}人</span></div>
+      <div class="property-service-form-grid">
+        <label class="service-control"><span>服务模式</span><select class="table-select service-mode-select" data-path="propertyService.${record.key}.mode" data-type="text">${PROPERTY_SERVICE_MODE_OPTIONS.map(option => `<option value="${option.value}" ${record.mode === option.value ? 'selected' : ''}>${option.label}</option>`).join('')}</select></label>
+        <label class="service-control"><span>非驻场折算比例</span><div class="input-affix compact"><input class="table-input" data-path="propertyService.${record.key}.nonResidentFactor" data-type="number" data-scale="0.01" type="number" step="1" value="${roundDisplayValue(record.nonResidentFactor * 100, 2)}"><span>%</span></div></label>
+        <label class="service-control"><span>第三方综合管理费率</span><div class="input-affix compact"><input class="table-input" data-path="propertyService.${record.key}.managementFeeRate" data-type="number" data-scale="0.01" type="number" step="1" value="${roundDisplayValue(record.managementFeeRate * 100, 2)}"><span>%</span></div></label>
+        <div class="service-metric"><span>岗位基础成本</span><strong data-service-field="basePositionCost">${fmt(record.basePositionCost, 2)}</strong><em>万元</em></div>
+        <div class="service-metric"><span>第三方管理费</span><strong data-service-field="managementFee">${fmt(record.managementFee, 2)}</strong><em>万元</em></div>
+        <div class="service-metric highlight"><span>年度服务成本</span><strong data-service-field="serviceCost">${fmt(record.serviceCost, 2)}</strong><em>万元</em><small data-service-cost-note>${record.mode === 'self' ? '含自营招聘培训' : record.mode === 'non_resident' ? '已按非驻场折算' : '含第三方管理费'}</small></div>
+      </div>
+    </div>`).join('')}</div>
+    <div class="property-service-summary">
+      <div><span>自动归类岗位基础成本</span><strong data-service-summary="servicePositionBaseCost">${fmt(analysis.servicePositionBaseCost, 2)}</strong><em>万元</em></div>
+      <div><span>第三方综合管理费</span><strong data-service-summary="outsourcedManagementFee">${fmt(analysis.outsourcedManagementFee, 2)}</strong><em>万元</em></div>
+      <div><span>自营招聘培训费</span><strong data-service-summary="selfServiceRecruitment">${fmt(analysis.selfServiceRecruitment, 2)}</strong><em>万元</em></div>
+      <div><span>年度物业服务总成本</span><strong data-service-summary="serviceTotal">${fmt(analysis.serviceTotal, 2)}</strong><em>万元</em></div>
+      <div class="highlight"><span>实际人员及服务成本</span><strong data-service-summary="totalActiveStaffCost">${fmt(analysis.totalActiveStaffCost, 2)}</strong><em>万元</em></div>
+    </div>
+    <div class="budget-toolbar"><span>岗位归类规则：部门或岗位名称包含“物业/工程/消防/强弱电/暖通/机电”归入物业工程；包含“保安/秩序维护/监控”归入保安；包含“保洁/环境卫生/垃圾清运”归入保洁。</span></div>
   </div>`;
 }
 
@@ -2519,9 +2653,9 @@ function renderOperatingCostSummary(preview) {
   };
   const sourceLabels = {
     '管理团队人员成本': '组织架构薪资自动汇总',
-    '物业工程人员成本': '组织架构薪资自动汇总',
-    '保安人员成本': '组织架构薪资自动汇总',
-    '保洁人员成本': '组织架构薪资自动汇总',
+    '物业工程服务成本': '岗位成本×物业服务模式自动汇总',
+    '保安服务成本': '岗位成本×物业服务模式自动汇总',
+    '保洁服务成本': '岗位成本×物业服务模式自动汇总',
     '招聘培训成本': '按人员成本×招聘培训费率',
     '办公行政成本': '办公预算金额合计',
     '招商费用': '招商预算金额合计',
@@ -2590,6 +2724,7 @@ function refreshMarketingWeights() {
 function updateOperatingPreviewDom(result) {
   const breakdown = result?.operatingCostBreakdown || [];
   updatePayrollPreviewDom(result);
+  updatePropertyServicePreviewDom(result);
   if (!breakdown.length) return;
   const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
   const values = new Map(breakdown.map(item => [item.name, Number(item.value || 0)]));
@@ -2619,6 +2754,8 @@ function updatePayrollPreviewDom(result) {
     annualNetPayroll: summary.annualNetPayroll ?? 0,
     annualEmployerSocialInsurance: summary.annualEmployerSocialInsurance ?? 0,
     annualRecruitmentTrainingCost: summary.annualRecruitmentTrainingCost ?? 0,
+    organizationFullCost: summary.organizationFullCost ?? 0,
+    organizationRecruitmentTrainingCost: summary.organizationRecruitmentTrainingCost ?? 0,
     companyCost: Number(summary.annualGrossPayroll || 0) + Number(summary.annualEmployerSocialInsurance || 0),
     stableStaffCost: summary.stableStaffCost ?? 0,
   };
@@ -2640,6 +2777,34 @@ function updatePayrollPreviewDom(result) {
         });
       });
     });
+  });
+}
+
+function updatePropertyServicePreviewDom(result) {
+  if (!result) return;
+  const records = result.propertyServiceBreakdown || [];
+  records.forEach(record => {
+    const row = document.querySelector(`[data-service-key="${record.key}"]`);
+    if (!row) return;
+    row.querySelectorAll('[data-service-field]').forEach(el => {
+      el.textContent = fmt(record[el.dataset.serviceField] ?? 0, 2);
+    });
+    const headcount = row.querySelector('[data-service-headcount]');
+    if (headcount) headcount.textContent = `${fmt(record.headcount)}人`;
+    const note = row.querySelector('[data-service-cost-note]');
+    if (note) note.textContent = record.mode === 'self' ? '含自营招聘培训' : record.mode === 'non_resident' ? '已按非驻场折算' : '含第三方管理费';
+  });
+  const summary = result.summary || {};
+  const summaryValues = {
+    servicePositionBaseCost: summary.annualServicePositionBaseCost ?? 0,
+    outsourcedManagementFee: summary.annualOutsourcedManagementFee ?? 0,
+    selfServiceRecruitment: records.reduce((sum, record) => sum + Number(record.selfRecruitmentTraining || 0), 0),
+    serviceTotal: summary.annualPropertyServiceTotal ?? 0,
+    totalActiveStaffCost: summary.stableStaffCost ?? 0,
+  };
+  document.querySelectorAll('[data-service-summary]').forEach(el => {
+    const value = summaryValues[el.dataset.serviceSummary];
+    if (value != null) el.textContent = fmt(value, 2);
   });
 }
 
@@ -2756,6 +2921,12 @@ async function importOperatingBudget(file) {
     const payload = await api('/api/import-operating-budget', { method: 'POST', body: { filename: file.name, contentBase64 } });
     const model = state.current.model;
     if (payload.organization?.departments?.length) model.organization = { ...(model.organization || {}), ...payload.organization };
+    if (payload.propertyService && Object.keys(payload.propertyService).length) {
+      model.propertyService ||= {};
+      Object.entries(payload.propertyService).forEach(([key, value]) => {
+        model.propertyService[key] = { ...(model.propertyService[key] || {}), ...(value || {}) };
+      });
+    }
     if (payload.officeBudget && Object.keys(payload.officeBudget).length) model.officeBudget = { ...(model.officeBudget || {}), ...payload.officeBudget };
     if (payload.leasingBudget && Object.keys(payload.leasingBudget).length) model.leasingBudget = { ...(model.leasingBudget || {}), ...payload.leasingBudget };
     if (payload.marketingBudget) {
@@ -2895,8 +3066,7 @@ function renderOperationsStep() {
     { value: 'simple', label: '每年单利递增' },
     { value: 'step', label: '每N年阶梯递增' },
   ];
-  const organizationSalary = (model.organization?.departments || []).reduce((sum, dept) => sum + organizationAnnualCost(dept, model.organization || {}), 0);
-  const organizationAnnual = organizationSalary + organizationSalary * Number(model.organization?.recruitmentTrainingRate || 0);
+  const organizationAnnual = propertyServiceAnalysis(model).totalActiveStaffCost;
   return `
     <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会按“${fmt(state.current.model.project.operationYears || 20)}年招商运营年限”自动形成现金流、税费和投资收益。</div></div>
     <div class="form-section">
@@ -2933,7 +3103,7 @@ function renderOperationsStep() {
         ${textField('物业运营参考单价', 'operations.propertyOpsCost', { type: 'number', unit: '元/㎡/月', help: '仅在物业基础运营直接金额未填写时用于自动核算' })}
         ${textField('公共能耗参考单价', 'operations.energyCost', { type: 'number', unit: '元/㎡/月', help: '仅在公共能耗直接金额未填写时用于自动核算' })}
         ${selectField('人员成本来源', 'operations.staffCostMode', [{ value: 'organization', label: '按组织架构薪资倒推' }, { value: 'area', label: '按面积快速估算' }], { help: '推荐使用组织架构薪资倒推；面积估算仅用于前期快速判断' })}
-        ${staffCostMode === 'area' ? textField('商管团队成本', 'operations.staffCostPerSqm', { type: 'number', unit: '元/㎡/月' }) : `<div class="staff-cost-derived"><span>当前由人力资源倒推</span><strong data-payroll-summary="stableStaffCost">${fmt(organizationAnnual, 2)} 万元/年</strong><small>按税前月薪、年度薪资月数、个人及单位社保公积金、个税和招聘培训费自动更新</small></div>`}
+        ${staffCostMode === 'area' ? textField('商管团队成本', 'operations.staffCostPerSqm', { type: 'number', unit: '元/㎡/月' }) : `<div class="staff-cost-derived"><span>当前由人力资源与物业服务模式倒推</span><strong data-payroll-summary="stableStaffCost">${fmt(organizationAnnual, 2)} 万元/年</strong><small>含税前工资、单位社保、自营招聘培训及第三方物业服务综合管理费，随岗位和服务模式自动更新</small></div>`}
         ${textField('行政办公参考单价', 'operations.adminCostPerSqm', { type: 'number', unit: '元/㎡/月', help: '办公预算金额合计为0时才使用该参考单价' })}
         ${textField('日常维修参考费率', 'operations.repairRate', { type: 'number', unit: '%', scale: 0.01, help: '仅在未填写日常维修直接金额时使用' })}
         ${textField('保险参考费率', 'operations.insuranceRate', { type: 'number', unit: '%', scale: 0.01, help: '仅在未填写保险直接金额时使用' })}
@@ -2943,6 +3113,7 @@ function renderOperationsStep() {
     ${renderOperatingReferencePanel(state.current.model)}
     ${renderOperatingBudgetImport()}
     ${renderOrganizationSection(state.current.model, state.preview)}
+    ${renderPropertyServiceSection(state.current.model, state.preview)}
     ${renderOfficeBudgetSection(state.current.model)}
     ${renderLeasingBudgetSection(state.current.model)}
     ${renderMarketingBudgetSection(state.current.model, state.preview)}
@@ -3237,6 +3408,7 @@ function renderOperatingResultCards() {
   const breakdown = result.operatingCostBreakdown || [];
   const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
   const organization = result.organizationBreakdown || [];
+  const propertyServices = result.propertyServiceBreakdown || [];
   const marketing = result.marketingAllocation || [];
   const openingMarketing = result.openingMarketingAllocation || [];
   return `<div class="dashboard-grid operating-result-grid">
@@ -3262,12 +3434,31 @@ function renderOperatingResultCards() {
         <div><span>个人所得税</span><strong>${fmt(s.annualIndividualIncomeTax, 2)}</strong><em>万元</em></div>
         <div><span>员工实发工资</span><strong>${fmt(s.annualNetPayroll, 2)}</strong><em>万元</em></div>
         <div><span>单位社保公积金</span><strong>${fmt(s.annualEmployerSocialInsurance, 2)}</strong><em>万元</em></div>
-        <div><span>含招聘培训企业成本</span><strong>${fmt(s.stableStaffCost, 2)}</strong><em>万元</em></div>
+        <div><span>实际人员及服务成本</span><strong>${fmt(s.stableStaffCost, 2)}</strong><em>万元</em></div>
       </div>
       <div class="data-table-wrap" style="max-height:520px"><table class="data-table payroll-result-table"><thead><tr><th>部门</th><th>岗位构成</th><th class="num">人数</th><th class="num">税前工资</th><th class="num">个人社保</th><th class="num">个税</th><th class="num">实发</th><th class="num">单位社保</th><th class="num">企业成本</th></tr></thead><tbody>${organization.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${(item.positions || []).map(position => `<span class="tag">${escapeHtml(position.name)}${Number(position.headcount) > 1 ? ` × ${fmt(position.headcount)}` : ''}</span>`).join(' ')}</td><td class="num">${fmt(item.headcount)}</td><td class="num">${fmt(item.grossPayroll, 2)}万</td><td class="num">${fmt(item.employeeSocialInsurance, 2)}万</td><td class="num">${fmt(item.individualIncomeTax, 2)}万</td><td class="num">${fmt(item.netSalary, 2)}万</td><td class="num">${fmt(item.employerSocialInsurance, 2)}万</td><td class="num"><strong>${fmt(item.annualCost, 2)}万</strong></td></tr>`).join('')}</tbody></table></div>
       <span class="table-subnote">工资均为税前应发口径；社保公积金按税前月薪×12个月×配置比例估算；招聘培训费在企业人员成本之外另计。比例与缴费基数必须按项目属地政策复核。</span>
     </div>
   </div>
+  ${propertyServices.length ? `<div class="card property-service-result-card">
+    <h3>物业服务模式与第三方管理费</h3>
+    <div class="property-service-summary">
+      <div><span>岗位基础成本</span><strong>${fmt(s.annualServicePositionBaseCost, 2)}</strong><em>万元</em></div>
+      <div><span>第三方综合管理费</span><strong>${fmt(s.annualOutsourcedManagementFee, 2)}</strong><em>万元</em></div>
+      <div><span>自营招聘培训费</span><strong>${fmt(propertyServices.reduce((sum, item) => sum + Number(item.selfRecruitmentTraining || 0), 0), 2)}</strong><em>万元</em></div>
+      <div><span>年度物业服务成本</span><strong>${fmt(s.annualPropertyServiceTotal, 2)}</strong><em>万元</em></div>
+      <div class="highlight"><span>实际人员及服务成本</span><strong>${fmt(s.stableStaffCost, 2)}</strong><em>万元</em></div>
+    </div>
+    <div class="property-service-result-list">${propertyServices.map(item => `<div class="property-service-result-row">
+      <div class="service-result-title"><strong>${escapeHtml(item.name)}</strong><span class="tag">${escapeHtml(item.modeLabel)}</span><small>${fmt(item.headcount)}人 · ${(item.positions || []).map(name => escapeHtml(name)).join('、') || '未匹配岗位'}</small></div>
+      <div><span>岗位基础成本</span><strong>${fmt(item.basePositionCost, 2)}万</strong></div>
+      <div><span>折算比例</span><strong>${fmtPct(item.positionFactor)}</strong></div>
+      <div><span>第三方费率</span><strong>${fmtPct(item.managementFeeRate)}</strong></div>
+      <div><span>第三方管理费</span><strong>${fmt(item.managementFee, 2)}万</strong></div>
+      <div class="highlight"><span>年度服务成本</span><strong>${fmt(item.serviceCost, 2)}万</strong></div>
+    </div>`).join('')}</div>
+    <span class="table-subnote">自营服务成本含内部招聘培训；第三方常驻按岗位成本加综合管理费；非常驻先按折算比例计算岗位成本再加综合管理费。第三方费率应包含管理费、利润、保险、装备、培训及税费。</span>
+  </div>` : ''}
   <div class="card marketing-allocation-card">
     <h3>年度营销推广费用分解</h3>
     <div class="section-note">稳定年常规营销预算 ${fmt(s.annualMarketingBudget || s.stableMarketingCost, 1)} 万元/年；开业首年另加专项 ${fmt(s.openingMarketingItemsCost || 0, 1)} 万元，首年合计 ${fmt(s.firstYearMarketingCost || 0, 1)} 万元。权重由金额自动反算。</div>

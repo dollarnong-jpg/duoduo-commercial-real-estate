@@ -27,6 +27,18 @@ CONDITION_PRESETS = [
     {"name": "主力店相邻", "premium": 0.04, "enabled": True},
 ]
 
+PROPERTY_SERVICE_DEFINITIONS = [
+    {"key": "property", "name": "物业工程服务", "costField": "propertyTeamCost", "keywords": ("物业", "工程", "消防", "强弱电", "暖通", "机电")},
+    {"key": "security", "name": "保安服务", "costField": "securityCost", "keywords": ("保安", "秩序维护", "监控")},
+    {"key": "cleaning", "name": "保洁服务", "costField": "cleaningCost", "keywords": ("保洁", "环境卫生", "垃圾清运")},
+]
+
+PROPERTY_SERVICE_MODE_LABELS = {
+    "self": "自营（自行招聘）",
+    "resident_outsourced": "第三方常驻外包",
+    "non_resident": "第三方非常驻服务",
+}
+
 
 def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
     return {
@@ -200,6 +212,11 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
                     {"name": "保洁员", "headcount": 9, "avgMonthlySalary": 4000, "note": "公共区域、卫生间和垃圾清运"},
                 ]},
             ],
+        },
+        "propertyService": {
+            "property": {"mode": "self", "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+            "security": {"mode": "self", "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+            "cleaning": {"mode": "self", "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
         },
         "officeBudget": {
             "officeRentAnnual": 60.0,
@@ -562,6 +579,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     marketing_budget = model.get("marketingBudget") if isinstance(model.get("marketingBudget"), dict) else {}
     maintenance_budget = model.get("maintenanceBudget") if isinstance(model.get("maintenanceBudget"), dict) else {}
     departments = [item for item in organization.get("departments", []) if isinstance(item, dict)]
+    property_service = model.get("propertyService") if isinstance(model.get("propertyService"), dict) else {}
     social_insurance_rate = max(0.0, as_float(organization.get("socialInsuranceRate")))
     employee_social_insurance_rate = max(0.0, as_float(organization.get("employeeSocialInsuranceRate")))
     iit_threshold_monthly = max(0.0, as_float(organization.get("individualIncomeTaxThresholdMonthly"), 5000.0))
@@ -656,17 +674,57 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     for item in position_breakdown:
         item["share"] = safe_div(item["annualCost"], structured_personnel_cost)
 
-    def personnel_cost_matching(*keywords: str) -> float:
-        return sum(
-            item["annualCost"]
-            for item in position_breakdown
-            if any(keyword in f'{item["department"]}{item["name"]}{item["note"]}' for keyword in keywords)
-        )
+    service_positions: dict[str, list[dict[str, Any]]] = {item["key"]: [] for item in PROPERTY_SERVICE_DEFINITIONS}
+    operations_positions: list[dict[str, Any]] = []
+    for position in position_breakdown:
+        text = f'{position.get("department", "")}{position.get("name", "")}{position.get("note", "")}'
+        matched_key = ""
+        for definition in PROPERTY_SERVICE_DEFINITIONS:
+            if any(keyword in text for keyword in definition["keywords"]):
+                matched_key = str(definition["key"])
+                break
+        if matched_key:
+            service_positions[matched_key].append(position)
+        else:
+            operations_positions.append(position)
 
-    security_personnel_cost = personnel_cost_matching("保安", "秩序维护", "监控")
-    cleaning_personnel_cost = personnel_cost_matching("保洁", "环境卫生", "垃圾清运")
-    property_personnel_cost = personnel_cost_matching("物业", "工程", "消防", "强弱电", "暖通", "机电")
-    operations_team_cost = max(0.0, structured_personnel_cost - security_personnel_cost - cleaning_personnel_cost - property_personnel_cost)
+    operations_team_cost = sum(item["annualCost"] for item in operations_positions)
+    property_service_base: list[dict[str, Any]] = []
+    for definition in PROPERTY_SERVICE_DEFINITIONS:
+        key = str(definition["key"])
+        positions = service_positions[key]
+        base_cost = sum(item["annualCost"] for item in positions)
+        raw_config = property_service.get(key) if isinstance(property_service.get(key), dict) else {}
+        mode = str(raw_config.get("mode") or "self")
+        if mode not in PROPERTY_SERVICE_MODE_LABELS:
+            mode = "self"
+        non_resident_factor = min(1.0, max(0.0, as_float(raw_config.get("nonResidentFactor"), 0.70)))
+        management_fee_rate = max(0.0, as_float(raw_config.get("managementFeeRate"), 0.12))
+        position_factor = non_resident_factor if mode == "non_resident" else 1.0
+        position_cost_after_factor = base_cost * position_factor
+        management_fee = position_cost_after_factor * management_fee_rate if mode in {"resident_outsourced", "non_resident"} else 0.0
+        self_recruitment_training = base_cost * recruitment_training_rate if mode == "self" else 0.0
+        service_cost = position_cost_after_factor + management_fee + self_recruitment_training
+        property_service_base.append({
+            "key": key,
+            "name": str(definition["name"]),
+            "costField": str(definition["costField"]),
+            "mode": mode,
+            "modeLabel": PROPERTY_SERVICE_MODE_LABELS[mode],
+            "headcount": sum(as_float(item.get("headcount")) for item in positions),
+            "positions": [str(item.get("name") or "") for item in positions],
+            "basePositionCost": base_cost,
+            "nonResidentFactor": non_resident_factor,
+            "positionFactor": position_factor,
+            "managementFeeRate": management_fee_rate,
+            "positionCostAfterFactor": position_cost_after_factor,
+            "managementFee": management_fee,
+            "selfRecruitmentTraining": self_recruitment_training,
+            "serviceCost": service_cost,
+        })
+    operations_recruitment_training = operations_team_cost * recruitment_training_rate
+    active_service_cost = sum(item["serviceCost"] for item in property_service_base)
+    structured_active_personnel_cost = operations_team_cost + operations_recruitment_training + active_service_cost
     office_items = [
         ("办公室租金", "officeRentAnnual"),
         ("水电通讯", "utilitiesAnnual"),
@@ -857,7 +915,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     staff_cost_mode = str(operations.get("staffCostMode") or "organization")
     if staff_cost_mode not in {"organization", "area"}:
         staff_cost_mode = "organization" if structured_headcount > 0 else "area"
-    personnel_proxy = (structured_personnel_cost + structured_recruitment_training) if staff_cost_mode == "organization" and structured_headcount > 0 else gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000
+    personnel_proxy = structured_active_personnel_cost if staff_cost_mode == "organization" and structured_headcount > 0 else gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000
     office_proxy = structured_office_cost if structured_office_cost > 0 else gba * as_float(operations.get("adminCostPerSqm")) * 12 / 10000
     marketing_proxy = annual_marketing_total if bool(marketing_budget.get("amountMode", True)) else total_monthly_revenue * 12 * 0.95 / 10000 * as_float(operations.get("marketingRate"))
     property_proxy = max(0.0, as_float(annual_cost_overrides.get("propertyOps"))) or gba * as_float(operations.get("propertyOpsCost")) * 12 / 10000
@@ -1086,17 +1144,22 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         energy = energy_override * occupancy if energy_override > 0 else gba * as_float(operations.get("energyCost")) * 12 / 10000 * occupancy
         if staff_cost_mode == "organization" and structured_headcount > 0:
             operations_team = operations_team_cost * ramp
-            property_team = property_personnel_cost * ramp
-            security_team = security_personnel_cost * ramp
-            cleaning_team = cleaning_personnel_cost * ramp
-            recruitment_training = structured_recruitment_training * ramp
-            staff = operations_team + property_team + security_team + cleaning_team + recruitment_training
+            service_cost_by_key = {item["key"]: as_float(item.get("serviceCost")) * ramp for item in property_service_base}
+            property_team = service_cost_by_key.get("property", 0.0)
+            security_team = service_cost_by_key.get("security", 0.0)
+            cleaning_team = service_cost_by_key.get("cleaning", 0.0)
+            self_service_recruitment = sum(as_float(item.get("selfRecruitmentTraining")) for item in property_service_base) * ramp
+            operations_recruitment = operations_recruitment_training * ramp
+            recruitment_training = operations_recruitment + self_service_recruitment
+            outsourced_management_fee = sum(as_float(item.get("managementFee")) for item in property_service_base) * ramp
+            staff = operations_team + operations_recruitment + property_team + security_team + cleaning_team
         else:
             operations_team = gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000 * ramp
             property_team = 0.0
             security_team = 0.0
             cleaning_team = 0.0
             recruitment_training = 0.0
+            outsourced_management_fee = 0.0
             staff = gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000 * ramp
         admin = structured_office_cost * ramp if structured_office_cost > 0 else gba * as_float(operations.get("adminCostPerSqm")) * 12 / 10000 * ramp
         renewal_commission = 0.0
@@ -1210,6 +1273,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "propertyTeamCost": property_team,
                 "securityCost": security_team,
                 "cleaningCost": cleaning_team,
+                "outsourcedManagementFee": outsourced_management_fee,
                 "recruitmentTrainingCost": recruitment_training,
                 "officeCost": admin,
                 "leasingCost": leasing,
@@ -1269,6 +1333,23 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_extra_operating_cost = as_float(stable_row.get("extraOperatingCost"))
     stable_operating_cost = as_float(stable_row.get("operatingCost"))
     stable_taxes = as_float(stable_row.get("taxes"))
+    service_breakdown_base_total = sum(as_float(item.get("serviceCost")) for item in property_service_base)
+    service_breakdown_stable_total = sum(as_float(stable_row.get(item.get("costField"))) for item in property_service_base)
+    service_breakdown_scale = safe_div(service_breakdown_stable_total, service_breakdown_base_total) if staff_cost_mode == "organization" else 0.0
+    property_service_breakdown = []
+    for item in property_service_base:
+        property_service_breakdown.append({
+            **item,
+            "applied": staff_cost_mode == "organization" and structured_headcount > 0,
+            "basePositionCost": as_float(item.get("basePositionCost")) * service_breakdown_scale,
+            "positionCostAfterFactor": as_float(item.get("positionCostAfterFactor")) * service_breakdown_scale,
+            "managementFee": as_float(item.get("managementFee")) * service_breakdown_scale,
+            "selfRecruitmentTraining": as_float(item.get("selfRecruitmentTraining")) * service_breakdown_scale,
+            "serviceCost": as_float(stable_row.get(item.get("costField"))),
+        })
+    stable_outsourced_management_fee = as_float(stable_row.get("outsourcedManagementFee"))
+    stable_active_recruitment_training = as_float(stable_row.get("recruitmentTrainingCost"))
+    stable_service_total = sum(as_float(item.get("serviceCost")) for item in property_service_breakdown)
     marketing_allocation = []
     opening_marketing_allocation = []
     if bool(marketing_budget.get("amountMode", True)):
@@ -1325,9 +1406,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "物业基础运营", "value": as_float(stable_row.get("propertyOpsCost"))},
         {"name": "公共能耗", "value": as_float(stable_row.get("energyCost"))},
         {"name": "管理团队人员成本", "value": as_float(stable_row.get("operationsTeamCost"))},
-        {"name": "物业工程人员成本", "value": as_float(stable_row.get("propertyTeamCost"))},
-        {"name": "保安人员成本", "value": as_float(stable_row.get("securityCost"))},
-        {"name": "保洁人员成本", "value": as_float(stable_row.get("cleaningCost"))},
+        {"name": "物业工程服务成本", "value": as_float(stable_row.get("propertyTeamCost"))},
+        {"name": "保安服务成本", "value": as_float(stable_row.get("securityCost"))},
+        {"name": "保洁服务成本", "value": as_float(stable_row.get("cleaningCost"))},
         {"name": "招聘培训成本", "value": as_float(stable_row.get("recruitmentTrainingCost"))},
         {"name": "办公行政成本", "value": stable_office_cost},
         {"name": "招商费用", "value": stable_leasing_cost},
@@ -1405,7 +1486,15 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "annualEmployeeSocialInsurance": structured_employee_social,
             "annualIndividualIncomeTax": structured_individual_income_tax,
             "annualNetPayroll": max(0.0, structured_gross_payroll - structured_employee_social - structured_individual_income_tax),
-            "annualRecruitmentTrainingCost": structured_recruitment_training,
+            "organizationFullCost": structured_personnel_cost + structured_recruitment_training,
+            "organizationRecruitmentTrainingCost": structured_recruitment_training,
+            "annualRecruitmentTrainingCost": stable_active_recruitment_training,
+            "annualOutsourcedManagementFee": stable_outsourced_management_fee,
+            "annualServicePositionBaseCost": sum(as_float(item.get("basePositionCost")) for item in property_service_breakdown),
+            "annualPropertyServiceCost": next((as_float(item.get("serviceCost")) for item in property_service_breakdown if item.get("key") == "property"), 0.0),
+            "annualSecurityServiceCost": next((as_float(item.get("serviceCost")) for item in property_service_breakdown if item.get("key") == "security"), 0.0),
+            "annualCleaningServiceCost": next((as_float(item.get("serviceCost")) for item in property_service_breakdown if item.get("key") == "cleaning"), 0.0),
+            "annualPropertyServiceTotal": stable_service_total,
             "stableOfficeCost": stable_office_cost,
             "stableLeasingCost": stable_leasing_cost,
             "stableMarketingCost": stable_marketing_cost,
@@ -1435,6 +1524,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         "investmentBreakdown": investment_breakdown,
         "organizationBreakdown": organization_breakdown,
         "positionBreakdown": position_breakdown,
+        "propertyServiceBreakdown": property_service_breakdown,
         "officeBreakdown": office_breakdown,
         "leasingBreakdown": leasing_breakdown,
         "marketingAllocation": marketing_allocation,
@@ -1654,6 +1744,14 @@ def build_analysis(
         recommendations.append("当前管理团队及物业人员成本按组织架构、编制人数、月薪、年度薪资月数和社保公积金倒推，应继续核对定编定岗方案和属地薪酬水平。")
     else:
         recommendations.append("当前人员成本按面积单价快速估算，适合前期初筛；进入招商运营深化阶段后应切换为组织架构薪资成本。")
+    property_service_config = model.get("propertyService", {}) if isinstance(model.get("propertyService"), dict) else {}
+    third_party_services = [
+        str(property_service_config.get(key, {}).get("mode") or "self")
+        for key in ("property", "security", "cleaning")
+        if isinstance(property_service_config.get(key), dict)
+    ]
+    if any(mode in {"resident_outsourced", "non_resident"} for mode in third_party_services):
+        recommendations.append("项目已采用第三方物业服务。应分别取得常驻外包和非常驻服务的正式报价，核对岗位编制、服务频次、管理费、保险、装备、培训、税费、考核扣款及调价条款，不能只比较员工裸工资。")
     development_type = str(model.get("project", {}).get("developmentType") or "new_build")
     if development_type == "renovation":
         recommendations.append("旧改项目应在投资决策前完成结构安全鉴定、消防改造可行性、机电容量和停业施工组织评估，并预留不可预见改造费用。")
