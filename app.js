@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-template1';
+import './backend.js?v=20261109-amount4';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.9.1';
+const APP_VERSION = '1.10.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -70,16 +70,16 @@ const FIELD_FORMULAS = {
   'revenues.otherIncomeRatio': { title: '多经收入', formula: '多经收入 = 租金收入 × 多经收入占比', functions: ['SUM'], role: '包含广告、场地、多经点位等收入。' },
   'revenues.parkingSpaces': { title: '停车收入', formula: '停车收入 = 车位数 × 停车月租 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '与停车月租共同决定停车收入。' },
   'revenues.parkingMonthly': { title: '停车月租', formula: '停车收入 = 车位数 × 停车月租 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '与停车位数量共同决定停车收入。' },
-  'operations.propertyOpsCost': { title: '物业运营成本', formula: '物业运营成本 = 总建筑面积 × 单价 × 12 × 运营爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本、NOI和铺底流动资金估算。' },
-  'operations.energyCost': { title: '公共能耗', formula: '公共能耗 = 总建筑面积 × 能耗单价 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '按出租率联动，空置率越高能耗成本越低。' },
+  'operations.propertyOpsCost': { title: '物业运营参考单价', formula: '未填直接金额时：物业运营成本 = 总建筑面积 × 单价 × 12 × 运营爬坡系数 ÷ 10000', functions: ['IF','SUM'], role: '只在物业基础运营直接金额为0时作为自动核算参考。' },
+  'operations.energyCost': { title: '公共能耗参考单价', formula: '未填直接金额时：公共能耗 = 总建筑面积 × 能耗单价 × 12 × 出租率 ÷ 10000', functions: ['IF','SUM'], role: '只在公共能耗直接金额为0时作为自动核算参考。' },
   'operations.staffCostPerSqm': { title: '商管团队成本', formula: '商管团队成本 = 总建筑面积 × 团队成本单价 × 12 × 爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本和NOI。' },
   'operations.staffCostMode': { title: '人员成本来源', formula: '按组织架构：Σ部门年度薪资及社保；按面积：总建筑面积×人员成本单价×12', functions: ['IF', 'SUM'], role: '组织架构模式会通过人力资源月薪成本倒推管理团队和物业人员成本。' },
-  'operations.adminCostPerSqm': { title: '行政办公成本', formula: '行政办公成本 = 总建筑面积 × 行政成本单价 × 12 × 爬坡系数 ÷ 10000', functions: ['SUM'], role: '进入运营成本和NOI。' },
-  'operations.marketingRate': { title: '年度营销费用', formula: '营销费用 = 不含税营业收入 × 营销费用率', functions: ['SUM'], role: '与筹备期营销费用分开计算。' },
-  'operations.repairRate': { title: '维修改造费', formula: '维修改造费 =（建安 + 装修 + 设备 + 其他工程 + 预备费）× 维修改造费率 × 爬坡系数', functions: ['SUM'], role: '用于年度运营成本。' },
-  'operations.insuranceRate': { title: '保险费用', formula: '保险费用 =（建安 + 装修 + 设备 + 其他工程）× 保险费率', functions: ['SUM'], role: '用于年度运营成本。' },
+  'operations.adminCostPerSqm': { title: '行政办公参考单价', formula: '办公预算为0时：行政办公成本 = 总建筑面积 × 行政成本单价 × 12 × 爬坡系数 ÷ 10000', functions: ['IF','SUM'], role: '办公预算已有金额时优先按金额核算。' },
+  'operations.marketingRate': { title: '旧版营销费率', formula: '仅旧版权重项目兼容：营销费用 = 不含税营业收入 × 营销费用率', functions: ['IF','SUM'], role: '新项目已改为营销金额录入，该费率不再参与新项目计算。' },
+  'operations.repairRate': { title: '日常维修参考费率', formula: '未填日常维修金额时：维修改造费 =（建安 + 装修 + 设备 + 其他工程 + 预备费）× 维修改造费率 × 爬坡系数', functions: ['IF','SUM'], role: '仅在未填写日常维修直接金额时使用。' },
+  'operations.insuranceRate': { title: '保险参考费率', formula: '未填保险金额时：保险费用 =（建安 + 装修 + 设备 + 其他工程）× 保险费率', functions: ['IF','SUM'], role: '仅在未填写保险直接金额时使用。' },
   'operations.capexRate': { title: '资本化改造', formula: '资本化改造 = 不含税租金收入 × 资本化改造率', functions: ['SUM'], role: '作为项目现金流中的年度资本开支扣除项。' },
-  'operations.otherOpexRate': { title: '其他运营费用', formula: '其他运营费用 = 不含税营业收入 × 其他运营费用率', functions: ['SUM'], role: '进入运营成本和NOI。' },
+  'operations.otherOpexRate': { title: '其他运营费用参考费率', formula: '未填其他费用金额时：其他运营费用 = 不含税营业收入 × 其他运营费用率', functions: ['IF','SUM'], role: '仅在未填写其他运营费用直接金额时使用。' },
   'operations.rampY1': { title: '首年运营爬坡', formula: '首年运营成本 = 稳定运营成本 × 首年爬坡系数', functions: ['IF'], role: '降低开业首年物业、商管和行政成本。' },
   'operations.rampY2': { title: '第二年运营爬坡', formula: '第二年运营成本 = 稳定运营成本 × 第二年爬坡系数', functions: ['IF'], role: '用于第二年的成本过渡。' },
   'taxes.vatRent': { title: '租金销项税', formula: '租金销项税 = 含税租金 ÷（1 + 租金增值税率）× 租金增值税率', functions: ['SUM', 'ROUND'], role: '现行租金参考税率通常为9%，以税务认定为准。' },
@@ -153,9 +153,13 @@ const FIELD_FORMULAS = {
   'leasingBudget.travelAnnual': { title: '招商差旅', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '直接计入年度招商费用。' },
   'leasingBudget.platformAnnual': { title: '招商平台及系统', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '包括招商数据库、线上平台和渠道系统。' },
   'leasingBudget.otherAnnual': { title: '其他招商费用', formula: '年度招商费用 = 渠道代理费 + 活动 + 物料 + 差旅 + 平台 + 其他', functions: ['SUM'], role: '直接计入年度招商费用。' },
-  'marketingBudget.useFixedAnnual': { title: '营销预算方式', formula: 'IF(固定预算, 固定年度预算, 营业收入 × 营销费用率)', functions: ['IF'], role: '决定营销预算按固定金额还是营业收入比例生成。' },
-  'marketingBudget.fixedAnnual': { title: '固定年度营销预算', formula: '固定预算模式下：年度营销预算 = 固定年度预算', functions: ['IF'], role: '仅在固定年度预算模式下启用。' },
-  'marketingBudget.contingencyRate': { title: '营销机动预备', formula: '机动预备 = 年度营销预算 × 机动预备比例', functions: ['SUM'], role: '预留临时活动、媒体补位和不可预见支出。' },
+  'marketingBudget.annualItems.amount': { title: '年度营销金额', formula: '年度常规营销预算 = 营销推广 + 商业美陈 + 媒体宣传 + 会员营销\n自动权重 = 单项金额 ÷ 全部常规营销金额', functions: ['SUM'], role: '所有营销费用直接按金额录入，权重与占比由系统自动计算，不需要凑满100%。' },
+  'marketingBudget.openingYearItems.amount': { title: '开业首年专项营销金额', formula: '开业首年营销预算 = 年度常规营销金额 + 导视导览 + 开业美陈', functions: ['SUM'], role: '导视导览和开业美陈只在运营第1年计入，后续年度不重复发生。' },
+  'operations.annualCostOverrides.propertyOps': { title: '物业基础运营直接金额', formula: 'IF(直接金额>0, 直接金额×运营爬坡系数, 总建筑面积×参考单价×12÷10000×运营爬坡系数)', functions: ['IF'], role: '填写稳定年年度金额后，系统优先按金额核算，并自动计算其占运营成本的权重。' },
+  'operations.annualCostOverrides.energy': { title: '公共能耗直接金额', formula: 'IF(直接金额>0, 直接金额×出租率, 总建筑面积×参考单价×12÷10000×出租率)', functions: ['IF'], role: '可录入年度能源预算，空白或0时继续使用面积单价参考。' },
+  'operations.annualCostOverrides.baseMaintenance': { title: '日常维修直接金额', formula: 'IF(直接金额>0, 直接金额×运营爬坡系数, 资产原值×维修费率×运营爬坡系数)', functions: ['IF'], role: '优先使用年度维修预算金额；专项维保金额另计。' },
+  'operations.annualCostOverrides.insurance': { title: '保险费用直接金额', formula: 'IF(直接金额>0, 直接金额, 可投保资产原值×保险费率)', functions: ['IF'], role: '已有保单或年度预算时直接填金额，系统自动进入运营成本和NOI。' },
+  'operations.annualCostOverrides.otherOpex': { title: '其他运营费用直接金额', formula: 'IF(直接金额>0, 直接金额, 不含税营业收入×其他运营费用率)', functions: ['IF'], role: '用于录入上述分类之外的年度费用预算，避免继续依赖比例估算。' },
   'maintenanceBudget.elevatorAnnual': { title: '电梯维保', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '按电梯维保合同计入年度维保成本。' },
   'maintenanceBudget.hvacAnnual': { title: '暖通空调维保', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '按暖通维保合同计入年度维保成本。' },
   'maintenanceBudget.fireAnnual': { title: '消防维保', formula: '专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他', functions: ['SUM'], role: '包括消防设施检测、维保和年检。' },
@@ -220,20 +224,20 @@ const FORMULA_GUIDES = {
     adjust: '分别核对土地和物业租赁合同的计价方式、面积、单价或月租金总额、支付月数、递增方式、递增率、免租期、解约责任和发票税率。按面积计价时，应确保面积口径与合同一致。'
   },
   office: {
-    how: '将办公室租金、水电通讯、IT软件、办公用品、差旅招待和其他行政费用逐项相加，形成年度办公行政成本。',
-    adjust: '优先使用年度行政预算或已签合同。办公室租金和人员编制、办公面积要匹配；系统软件和IT费用应与数字化运营计划一致。'
+    how: '将办公室租金、水电通讯、IT软件、办公用品、差旅招待和其他行政费用逐项按金额相加，形成年度办公行政成本；每项的自动权重=单项金额÷办公预算合计。',
+    adjust: '优先使用年度行政预算或已签合同。办公室租金和人员编制、办公面积要匹配；系统软件和IT费用应与数字化运营计划一致。只改金额，不要手工调整占比。'
   },
   leasing: {
-    how: '年度招商费用由渠道代理费、招商活动、招商物料、招商差旅、平台系统和其他费用相加；续租佣金按续租周期另行计算。',
-    adjust: '按招商策略和渠道政策填写。首开招商佣金、年度招商费用和续租佣金要分开，避免重复计算；招商预算应与开业率、出租率和租户结构目标匹配。'
+    how: '年度招商费用由渠道代理费、招商活动、招商物料、招商差旅、平台系统和其他费用按金额相加；每项自动权重=单项金额÷年度招商预算；续租佣金按续租周期另行计算。',
+    adjust: '按招商策略和渠道政策填写金额。首开招商佣金、年度招商费用和续租佣金要分开，避免重复计算；招商预算应与开业率、出租率和租户结构目标匹配。'
   },
   marketing: {
-    how: '先按“营业收入×营销费用率”或固定年度预算确定营销总额，再预留机动预备，最后按渠道权重归一化分配到品牌公关、媒体、活动、会员数字和物料美陈。',
-    adjust: '开业期可提高媒体投放和活动占比，稳定期提高会员数字和品牌公关占比。权重会自动归一化，但渠道预算应与年度推广计划和KPI一致。'
+    how: '常规年度直接按金额录入营销推广、商业美陈、媒体宣传、会员营销四项，系统汇总年度营销总额；每项自动权重=单项金额÷四项合计。开业第1年再额外加入导视导览和开业美陈两项专项金额。',
+    adjust: '按年度推广计划和合同预算直接填写金额，不需要手工设置权重。系统会用自动权重检查结构是否失衡，例如媒体或美陈占比过高；调整金额后，预算、占比、NOI和现金流会同步重算。'
   },
   maintenance: {
-    how: '日常维修按资产原值×维修费率计提；电梯、暖通、消防、景观等专项维保按年度合同金额相加，两者共同形成维保成本。',
-    adjust: '日常维修费率通常按资产原值的0.5%–2%设置；专项维保优先按合同、报价和年检要求填写。新开业项目可适当提高首年维修预算。'
+    how: '日常维修可优先填写年度金额；未填金额时再按资产原值×维修费率作为参考。电梯、暖通、消防、景观等专项维保均按年度金额录入，系统汇总后自动计算每项权重。',
+    adjust: '有年度维保预算或合同时直接填金额；没有金额数据时才使用资产原值0.5%–2%的费率参考。新开业项目可提高首年维保预算，并通过自动权重检查专项维保结构。'
   },
   generic: {
     how: '系统读取该参数，代入上方公式，并按项目面积、出租率、税率和年度现金流逐年计算；最终汇总到投资、NOI、NPV、IRR或回收期。',
@@ -707,8 +711,22 @@ function applyOperatingCostReference(model = state.current?.model, options = {})
   const categories = options.categories || preset.categories || Object.fromEntries(OPEX_CATEGORY_OPTIONS.map(item => [item.value, true]));
   const reference = operatingCostReference(model, { standard, managementMode });
   const selected = value => categories[value] !== false;
-  if (selected('property')) model.operations.propertyOpsCost = reference.values.propertyOpsCost;
-  if (selected('energy')) model.operations.energyCost = reference.values.energyCost;
+  model.operations.annualCostOverrides ||= {};
+  const annualProperty = reference.gba * reference.values.propertyOpsCost * 12 / 10000;
+  const annualEnergy = reference.gba * reference.values.energyCost * 12 / 10000 * Number(model.operations.stableOccupancy || 0.95);
+  const assetBase = reference.gba * (
+    Number(model.costs?.constructionRate || 0) + Number(model.costs?.fitoutRate || 0) +
+    Number(model.costs?.equipmentRate || 0) + Number(model.costs?.otherEngineeringRate || 0)
+  ) / 10000;
+  const annualRevenue = Number(state.preview?.summary?.stableRevenue || 0);
+  if (selected('property')) {
+    model.operations.propertyOpsCost = reference.values.propertyOpsCost;
+    model.operations.annualCostOverrides.propertyOps = Number(annualProperty.toFixed(1));
+  }
+  if (selected('energy')) {
+    model.operations.energyCost = reference.values.energyCost;
+    model.operations.annualCostOverrides.energy = Number(annualEnergy.toFixed(1));
+  }
   if (selected('staff')) {
     model.operations.staffCostMode = 'organization';
     model.operations.staffCostPerSqm = reference.values.staffCostPerSqm;
@@ -724,15 +742,35 @@ function applyOperatingCostReference(model = state.current?.model, options = {})
   if (selected('leasing')) model.leasingBudget = { ...(model.leasingBudget || {}), ...reference.values.leasingBudget };
   if (selected('marketing')) {
     model.operations.marketingRate = reference.values.marketingRate;
-    model.marketingBudget ||= { useFixedAnnual: false, fixedAnnual: 0, contingencyRate: 0.05, channels: [] };
-    model.marketingBudget.useFixedAnnual = false;
+    model.marketingBudget ||= {};
+    model.marketingBudget.amountMode = true;
+    const annualItems = model.marketingBudget.annualItems || [];
+    const annualRevenue = Number(state.preview?.summary?.stableRevenue || 0);
+    const referenceTotal = annualRevenue * reference.values.marketingRate;
+    if (referenceTotal > 0 && annualItems.length) {
+      const shares = [0.40, 0.25, 0.20, 0.15];
+      annualItems.forEach((item, index) => {
+        item.amount = Number((referenceTotal * (shares[index] ?? 1 / annualItems.length)).toFixed(1));
+      });
+      const openingItems = model.marketingBudget.openingYearItems || [];
+      openingItems.forEach((item, index) => {
+        item.amount = Number((referenceTotal * (index === 0 ? 0.10 : 0.20)).toFixed(1));
+      });
+    }
   }
   if (selected('maintenance')) {
     model.operations.repairRate = reference.values.repairRate;
     model.maintenanceBudget = { ...(model.maintenanceBudget || {}), ...reference.values.maintenanceBudget };
+    model.operations.annualCostOverrides.baseMaintenance = Number((assetBase * reference.values.repairRate).toFixed(1));
   }
-  if (selected('insurance')) model.operations.insuranceRate = reference.values.insuranceRate;
-  if (selected('other')) model.operations.otherOpexRate = reference.values.otherOpexRate;
+  if (selected('insurance')) {
+    model.operations.insuranceRate = reference.values.insuranceRate;
+    model.operations.annualCostOverrides.insurance = Number((assetBase * reference.values.insuranceRate).toFixed(1));
+  }
+  if (selected('other')) {
+    model.operations.otherOpexRate = reference.values.otherOpexRate;
+    if (annualRevenue > 0) model.operations.annualCostOverrides.otherOpex = Number((annualRevenue * reference.values.otherOpexRate).toFixed(1));
+  }
   model.operations.opexPreset = { standard, managementMode, categories, appliedAt: new Date().toISOString(), locationLabel: reference.city.label };
   state.dirty = true;
   state.preview = null;
@@ -2124,7 +2162,7 @@ function organizationAnnualCost(department, organization) {
 function renderOperatingBudgetImport() {
   return `<div class="form-section budget-import-section">
     <div class="section-title">Excel 运营成本预算导入</div>
-    <div class="section-note">可下载标准模板，填写基础参数、组织架构、办公预算、招商预算、营销渠道和维保预算后一次性导入。</div>
+    <div class="section-note">可下载标准模板，填写基础参数、组织架构、办公预算、招商预算、营销金额和维保预算后一次性导入。权重由系统自动计算。</div>
     <div class="import-zone" id="budget-import-zone">
       <div class="import-icon">${ICONS.excel}</div>
       <div><h3>运营成本预算模板</h3><p>支持 .xlsx、.xlsm。金额单位为万元/年，工资单位为元/月，比例按百分数填写。</p></div>
@@ -2167,80 +2205,128 @@ function renderOrganizationSection(model, preview) {
 }
 
 function renderOfficeBudgetSection(model) {
+  const items = [
+    { label: '办公室租金', key: 'officeRentAnnual', note: '办公室、办公场地及配套租金' },
+    { label: '水电及通讯费', key: 'utilitiesAnnual', note: '办公水电、网络、电话及邮寄' },
+    { label: 'IT及软件服务', key: 'itSoftwareAnnual', note: '商管、财务、会员及协同办公系统' },
+    { label: '办公用品', key: 'officeSuppliesAnnual', note: '耗材、打印、日常办公采购' },
+    { label: '差旅及业务招待', key: 'travelEntertainmentAnnual', note: '差旅、接待、业务拓展' },
+    { label: '其他办公费用', key: 'otherAnnual', note: '培训、团建及其他行政支出' },
+  ];
+  const total = items.reduce((sum, item) => sum + Number(model.officeBudget?.[item.key] || 0), 0);
   return `<div class="form-section budget-section">
     <div class="section-title">办公及行政费用</div>
-    <div class="section-note">按年度固定预算录入，不按面积粗略估算；包括办公室租金、水电通讯、IT软件、办公用品、差旅招待等。</div>
-    ${formulaPanel('办公及行政费用公式', '办公行政成本 = 办公室租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他办公费用', ['SUM'], '优先按年度行政预算或已签合同填写；调整后直接进入运营成本和NOI。')}
-    <div class="form-grid">
-      ${textField('办公室租金', 'officeBudget.officeRentAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('水电及通讯费', 'officeBudget.utilitiesAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('IT及软件服务', 'officeBudget.itSoftwareAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('办公用品', 'officeBudget.officeSuppliesAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('差旅及业务招待', 'officeBudget.travelEntertainmentAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('其他办公费用', 'officeBudget.otherAnnual', { type: 'number', unit: '万元/年' })}
+    <div class="section-note">全部按年度金额录入。自动权重由“单项金额 ÷ 办公行政预算合计”计算，作为结构分析结果，不需要手工凑100%。</div>
+    ${formulaPanel('办公及行政费用公式', '办公行政成本 = 办公室租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他办公费用\n自动权重 = 单项年度金额 ÷ 办公行政成本合计', ['SUM'], '优先按年度行政预算或已签合同填写金额；调整后直接进入运营成本和NOI。')}
+    <div class="data-table-wrap budget-table-wrap">
+      <table class="data-table budget-table" data-share-table><thead><tr><th>费用项目</th><th class="num">年度金额（万元）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+        ${items.map(item => {
+          const amount = Number(model.officeBudget?.[item.key] || 0);
+          return `<tr><td><strong>${escapeHtml(item.label)}</strong></td><td class="num"><input class="table-input" data-path="officeBudget.${item.key}" data-type="number" type="number" step="0.1" value="${amount}"></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? amount / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
+        }).join('')}
+      </tbody></table>
     </div>
+    <div class="budget-toolbar"><span>办公及行政费用合计</span><span><strong data-share-total>${fmt(total, 1)}</strong> 万元/年</span></div>
   </div>`;
 }
 
 function renderLeasingBudgetSection(model) {
+  const items = [
+    { label: '渠道及代理费', key: 'channelFeeAnnual', note: '渠道佣金、代理服务及品牌推荐' },
+    { label: '招商活动', key: 'eventsAnnual', note: '招商推介会、品牌对接及路演' },
+    { label: '招商物料', key: 'materialsAnnual', note: '招商手册、效果图、视频和印刷物料' },
+    { label: '招商差旅', key: 'travelAnnual', note: '品牌拜访、项目考察及差旅' },
+    { label: '招商平台及系统', key: 'platformAnnual', note: '招商数据库、线上平台及系统服务' },
+    { label: '其他招商费用', key: 'otherAnnual', note: '其他年度招商专项支出' },
+  ];
+  const total = items.reduce((sum, item) => sum + Number(model.leasingBudget?.[item.key] || 0), 0);
   return `<div class="form-section budget-section">
     <div class="section-title">年度招商费用预算</div>
-    <div class="section-note">首开招商佣金在投资测算中单列；本区域用于年度招商渠道、活动、物料、差旅和平台费用。</div>
-    ${formulaPanel('年度招商费用公式', '招商费用 = 渠道代理费 + 招商活动 + 招商物料 + 招商差旅 + 招商平台系统 + 其他\n运营期续租佣金按“月租金 × 续租佣金月数 × 当年出租率”另计', ['SUM','MOD','IF'], '按招商计划和渠道政策填写；续租佣金在运营期周期性发生，避免与年度固定招商预算重复。')}
-    <div class="form-grid">
-      ${textField('渠道及代理费', 'leasingBudget.channelFeeAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('招商活动', 'leasingBudget.eventsAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('招商物料', 'leasingBudget.materialsAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('招商差旅', 'leasingBudget.travelAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('招商平台及系统', 'leasingBudget.platformAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('其他招商费用', 'leasingBudget.otherAnnual', { type: 'number', unit: '万元/年' })}
+    <div class="section-note">本区域全部按年度金额录入；首开招商佣金在投资测算中单列，续租佣金按周期另计。自动权重仅用于检查费用结构。</div>
+    ${formulaPanel('年度招商费用公式', '招商费用 = 渠道代理费 + 招商活动 + 招商物料 + 招商差旅 + 招商平台系统 + 其他\n自动权重 = 单项年度金额 ÷ 年度招商预算合计\n续租佣金 = 月租金 × 续租佣金月数 × 当年出租率', ['SUM','MOD','IF'], '按招商计划和渠道政策填写金额；续租佣金在运营期周期性发生，避免与年度固定招商预算重复。')}
+    <div class="data-table-wrap budget-table-wrap">
+      <table class="data-table budget-table" data-share-table><thead><tr><th>费用项目</th><th class="num">年度金额（万元）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+        ${items.map(item => {
+          const amount = Number(model.leasingBudget?.[item.key] || 0);
+          return `<tr><td><strong>${escapeHtml(item.label)}</strong></td><td class="num"><input class="table-input" data-path="leasingBudget.${item.key}" data-type="number" type="number" step="0.1" value="${amount}"></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? amount / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
+        }).join('')}
+      </tbody></table>
     </div>
+    <div class="budget-toolbar"><span>年度招商费用合计</span><span><strong data-share-total>${fmt(total, 1)}</strong> 万元/年</span></div>
   </div>`;
 }
 
 function renderMarketingBudgetSection(model, preview) {
   const marketing = model.marketingBudget || (model.marketingBudget = {});
-  const channels = marketing.channels || (marketing.channels = []);
-  const allocation = preview?.marketingAllocation || [];
-  const allocationMap = new Map(allocation.map(item => [item.name, item.amount]));
-  const totalAmount = Number(preview?.summary?.stableMarketingCost || 0);
+  const annualItems = marketing.annualItems || (marketing.annualItems = []);
+  const openingItems = marketing.openingYearItems || (marketing.openingYearItems = []);
+  const annualTotal = annualItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const openingTotal = openingItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const firstYearTotal = annualTotal + openingTotal;
+  const amountMode = marketing.amountMode !== false;
+  const legacyNotice = amountMode ? '' : `<div class="callout soft" id="legacy-marketing-notice">${ICONS.info}<div>该项目使用旧版“权重分配”营销预算。建议点击右侧按钮，将旧预算总额换算为金额项目；之后只调整金额，权重由系统自动计算。</div><button class="btn btn-secondary btn-sm" type="button" id="migrate-marketing-amounts">转换为金额核算</button></div>`;
   return `<div class="form-section budget-section">
     <div class="section-title">年度营销推广费用及分解</div>
-    <div class="section-note">年度营销总额可按营业收入比例自动生成，也可切换为固定年度预算；再按品牌、媒体、活动、会员数字和物料美陈分解。</div>
-    ${formulaPanel('年度营销预算分解公式', '年度营销预算 = IF(使用固定预算, 固定年度预算, 不含税营业收入 × 营销费用率)\n渠道预算 = (年度营销预算 - 机动预备) × 渠道权重 ÷ 权重合计\n机动预备 = 年度营销预算 × 预备比例', ['IF','SUM','ROUND'], '先确定年度营销总额，再调整渠道权重；权重会自动归一化，不要求严格合计100%。')}
-    <div class="form-grid">
-      ${selectField('年度预算方式', 'marketingBudget.useFixedAnnual', [{value:'false',label:'按营业收入比例'},{value:'true',label:'固定年度预算'}])}
-      ${textField('固定年度营销预算', 'marketingBudget.fixedAnnual', { type: 'number', unit: '万元/年', optional: true })}
-      ${textField('营销机动预备比例', 'marketingBudget.contingencyRate', { type: 'number', unit: '%', scale: 0.01 })}
-    </div>
+    <div class="section-note">营销费用全部按年度金额录入。常规年度分为营销推广、商业美陈、媒体宣传、会员营销四大类；开业第1年另加导视导览和开业美陈。自动权重由金额反算，不参与费用分配。</div>
+    ${legacyNotice}
+    ${formulaPanel('年度营销金额与自动权重公式', '年度常规营销预算 = 营销推广 + 商业美陈 + 媒体宣传 + 会员营销\n开业首年营销预算 = 年度常规营销预算 + 导视导览 + 开业美陈\n自动权重 = 单项金额 ÷ 对应预算合计\n单项金额 = 用户录入金额（系统不按权重反推）', ['SUM','IF'], '只录入金额，不录入权重。系统用自动权重检查预算结构；开业首年专项只计入运营第1年。')}
+    <div class="subsection-heading"><div><strong>常规年度营销预算</strong><span>每年持续发生</span></div><div class="amount-total-chip">合计 <strong data-marketing-annual-total>${fmt(annualTotal, 1)}</strong> 万元/年</div></div>
     <div class="data-table-wrap budget-table-wrap">
-      <table class="data-table budget-table"><thead><tr><th>营销渠道</th><th class="num">权重</th><th class="num">实际占比</th><th class="num">预算金额（万元）</th><th>费用内容</th><th></th></tr></thead><tbody>
-        ${channels.map((channel, i) => `<tr>
-          <td><input class="table-input text-left" data-path="marketingBudget.channels.${i}.name" data-type="text" value="${escapeHtml(channel.name || '')}"></td>
-          <td class="num"><input class="table-input" data-path="marketingBudget.channels.${i}.weight" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(channel.weight || 0) * 100).toFixed(1)}"></td>
-          <td class="num">${fmtPct((allocation.find(item => item.name === channel.name)?.share) || 0)}</td>
-          <td class="num"><strong>${fmt(allocationMap.get(channel.name) || 0, 1)}</strong></td>
-          <td><input class="table-input text-left" data-path="marketingBudget.channels.${i}.note" data-type="text" value="${escapeHtml(channel.note || '')}"></td>
-          <td><button class="btn btn-ghost btn-sm" type="button" data-remove-marketing-channel="${i}">${ICONS.trash}</button></td>
-        </tr>`).join('') || '<tr><td colspan="6" class="empty-table-cell">尚未设置营销渠道</td></tr>'}
+      <table class="data-table budget-table" data-marketing-annual-table><thead><tr><th>营销类别</th><th class="num">年度金额（万元）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+        ${annualItems.map((item, i) => `<tr>
+          <td><strong>${escapeHtml(item.name || '未命名类别')}</strong></td>
+          <td class="num"><input class="table-input marketing-amount-input" data-path="marketingBudget.annualItems.${i}.amount" data-type="number" data-marketing-amount="true" type="number" step="0.1" value="${Number(item.amount || 0)}"></td>
+          <td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(annualTotal > 0 ? Number(item.amount || 0) / annualTotal : 0)}</span></td>
+          <td><input class="table-input text-left" data-path="marketingBudget.annualItems.${i}.note" data-type="text" value="${escapeHtml(item.note || '')}"></td>
+        </tr>`).join('') || '<tr><td colspan="4" class="empty-table-cell">尚未设置常规营销类别</td></tr>'}
       </tbody></table>
     </div>
-    <div class="budget-toolbar"><button class="btn btn-secondary btn-sm" id="add-marketing-channel" type="button">${ICONS.plus}<span>新增营销渠道</span></button><span>测算年度营销预算 <strong>${fmt(totalAmount, 1)}</strong> 万元</span></div>
+    <div class="subsection-heading opening-marketing-heading"><div><strong>开业首年专项营销</strong><span>仅在运营第1年计入</span></div><div class="amount-total-chip">首年合计 <strong data-marketing-first-total>${fmt(firstYearTotal, 1)}</strong> 万元</div></div>
+    <div class="data-table-wrap budget-table-wrap">
+      <table class="data-table budget-table" data-marketing-opening-table><thead><tr><th>开业专项</th><th class="num">首年金额（万元）</th><th class="num">占首年营销总预算</th><th>费用内容</th></tr></thead><tbody>
+        ${openingItems.map((item, i) => `<tr>
+          <td><strong>${escapeHtml(item.name || '未命名开业专项')}</strong></td>
+          <td class="num"><input class="table-input marketing-amount-input" data-path="marketingBudget.openingYearItems.${i}.amount" data-type="number" data-marketing-amount="true" type="number" step="0.1" value="${Number(item.amount || 0)}"></td>
+          <td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(firstYearTotal > 0 ? Number(item.amount || 0) / firstYearTotal : 0)}</span></td>
+          <td><input class="table-input text-left" data-path="marketingBudget.openingYearItems.${i}.note" data-type="text" value="${escapeHtml(item.note || '')}"></td>
+        </tr>`).join('') || '<tr><td colspan="4" class="empty-table-cell">尚未设置开业首年专项</td></tr>'}
+      </tbody></table>
+    </div>
+    <div class="budget-toolbar"><span>稳定年营销预算 <strong data-marketing-annual-total>${fmt(annualTotal, 1)}</strong> 万元/年</span><span>开业首年营销预算 <strong data-marketing-first-total>${fmt(firstYearTotal, 1)}</strong> 万元</span></div>
   </div>`;
 }
 
-function renderMaintenanceBudgetSection(model) {
+function renderMaintenanceBudgetSection(model, preview) {
+  const specials = [
+    { label: '电梯维保', key: 'elevatorAnnual', note: '电梯年检、维保及应急服务' },
+    { label: '暖通空调维保', key: 'hvacAnnual', note: '冷机、空调、通风及自控系统' },
+    { label: '消防维保', key: 'fireAnnual', note: '消防设施检测、维保及年检' },
+    { label: '景观绿化养护', key: 'landscapeAnnual', note: '绿化、水景、室外景观养护' },
+    { label: '其他专项维保', key: 'otherAnnual', note: '幕墙、弱电、给排水等其他专项' },
+  ];
+  const specialTotal = specials.reduce((sum, item) => sum + Number(model.maintenanceBudget?.[item.key] || 0), 0);
+  const overrideBase = Number(model.operations?.annualCostOverrides?.baseMaintenance || 0);
+  const previewMaintenance = Number(preview?.summary?.stableMaintenanceCost || 0);
+  const automaticBase = Math.max(0, previewMaintenance - specialTotal);
+  const baseAmount = overrideBase > 0 ? overrideBase : automaticBase;
+  const total = baseAmount + specialTotal;
+  const rows = [
+    { label: '日常维修', key: 'baseMaintenance', path: 'operations.annualCostOverrides.baseMaintenance', note: '未填金额时按资产原值×维修费率自动计提' },
+    ...specials.map(item => ({ ...item, path: `maintenanceBudget.${item.key}` })),
+  ];
   return `<div class="form-section budget-section">
     <div class="section-title">日常维保与专项维修</div>
-    <div class="section-note">日维修费率按建安、装修、设备等资产原值计提；电梯、暖通、消防、景观等专项维保按年度合同或预算单列。</div>
-    ${formulaPanel('维保费用公式', '日常维修 = 资产原值 × 维修费率 × 运营爬坡系数\n专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他\n维保合计 = 日常维修 + 专项维保', ['SUM','ROUND'], '日常维修费率建议按资产原值的0.5%–2%设置；专项维保优先按已签合同或维保报价填写。')}
-    <div class="form-grid">
-      ${textField('电梯维保', 'maintenanceBudget.elevatorAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('暖通空调维保', 'maintenanceBudget.hvacAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('消防维保', 'maintenanceBudget.fireAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('景观绿化养护', 'maintenanceBudget.landscapeAnnual', { type: 'number', unit: '万元/年' })}
-      ${textField('其他专项维保', 'maintenanceBudget.otherAnnual', { type: 'number', unit: '万元/年' })}
+    <div class="section-note">优先按年度金额核算。日常维修未填金额时，系统才用资产原值×维修费率自动计提；专项维保全部按金额录入，系统自动计算权重。</div>
+    ${formulaPanel('维保费用金额与自动权重公式', '日常维修 = IF(直接金额>0, 直接金额, 资产原值×维修费率)×运营爬坡系数\n专项维保 = 电梯 + 暖通 + 消防 + 景观 + 其他\n维保合计 = 日常维修 + 专项维保\n自动权重 = 单项金额 ÷ 维保合计', ['SUM','ROUND','IF'], '有年度维保预算或合同时直接填写金额；没有时日常维修才使用费率参考。')}
+    <div class="data-table-wrap budget-table-wrap">
+      <table class="data-table budget-table" data-share-table><thead><tr><th>维保项目</th><th class="num">年度金额（万元）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+        ${rows.map(item => {
+          const amount = item.key === 'baseMaintenance' ? baseAmount : Number(model.maintenanceBudget?.[item.key] || 0);
+          return `<tr><td><strong>${escapeHtml(item.label)}</strong></td><td class="num"><input class="table-input" data-path="${item.path}" data-type="number" type="number" step="0.1" value="${amount}"></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? amount / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
+        }).join('')}
+      </tbody></table>
     </div>
+    <div class="budget-toolbar"><span>维保费用合计</span><span><strong data-share-total>${fmt(total, 1)}</strong> 万元/年</span></div>
   </div>`;
 }
 
@@ -2248,14 +2334,100 @@ function renderOperatingCostSummary(preview) {
   const breakdown = preview?.operatingCostBreakdown || [];
   const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
   if (!breakdown.length) return '';
+  const directOverrides = {
+    '物业基础运营': { path: 'operations.annualCostOverrides.propertyOps', source: '可直接按金额调整；0/空白时按面积参考单价' },
+    '公共能耗': { path: 'operations.annualCostOverrides.energy', source: '可直接按金额调整；0/空白时按面积参考单价×出租率' },
+    '保险费用': { path: 'operations.annualCostOverrides.insurance', source: '可直接按金额调整；0/空白时按资产原值×费率' },
+    '其他运营费用': { path: 'operations.annualCostOverrides.otherOpex', source: '可直接按金额调整；0/空白时按营业收入×费率' },
+  };
+  const sourceLabels = {
+    '管理团队人员成本': '组织架构薪资自动汇总',
+    '物业工程人员成本': '组织架构薪资自动汇总',
+    '保安人员成本': '组织架构薪资自动汇总',
+    '保洁人员成本': '组织架构薪资自动汇总',
+    '招聘培训成本': '按人员成本×招聘培训费率',
+    '办公行政成本': '办公预算金额合计',
+    '招商费用': '招商预算金额合计',
+    '年度营销费用': '营销四类金额合计',
+    '日常及专项维保': '维保金额合计',
+    '坏账准备': '营业收入×（1-收缴率）',
+    '土地租赁支出': '按土地租赁合同自动计算',
+    '物业租赁支出': '按物业租赁合同自动计算',
+    '年度成本调整额': '年度额外成本',
+    '税费': '按税率和属地政策自动计算',
+  };
   return `<div class="form-section budget-section">
-    <div class="section-title">年度运营成本核算结果</div>
-    <div class="section-note">按稳定运营年汇总，金额单位：万元/年。每项成本可在上方直接调整。</div>
-    <div class="operating-cost-bars">
-      ${breakdown.map((item, i) => `<div class="operating-cost-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(2, Number(item.value || 0) / Math.max(total, 1) * 100)}%;background:${donutColor(i)}"></i></div><strong>${fmt(item.value, 1)}</strong><em>${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</em></div>`).join('')}
+    <div class="section-title">年度运营费用金额汇总与自动权重</div>
+    <div class="section-note">稳定运营年、金额单位：万元/年。所有分项先形成金额，再反算权重；带输入框的项目可直接按金额调整，其余项目请在对应明细中调整。</div>
+    ${formulaPanel('年度运营费用权重公式', '运营费用合计 = 物业 + 能耗 + 人员 + 办公 + 招商 + 营销 + 维保 + 保险 + 坏账 + 其他 + 业主租金 + 年度额外成本 + 税费\n自动权重 = 单项金额 ÷ 运营费用合计', ['SUM','IF'], '权重是结果不是输入项。直接金额调整填0或留空时，系统回到公式自动核算。')}
+    <div class="data-table-wrap operating-amount-table-wrap">
+      <table class="data-table budget-table operating-amount-table"><thead><tr><th>成本项目</th><th class="num">核算金额（万元/年）</th><th class="num">自动权重</th><th>金额来源 / 调整方式</th></tr></thead><tbody>
+        ${breakdown.map(item => {
+          const override = directOverrides[item.name];
+          const value = Number(item.value || 0);
+          const overrideValue = override ? Number(getPath(preview?.model || state.current.model, override.path) || 0) : 0;
+          const inputValue = override ? (overrideValue > 0 ? overrideValue : value) : null;
+          const source = override?.source || sourceLabels[item.name] || '系统自动核算';
+          return `<tr data-op-row="${escapeHtml(item.name)}"><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${override ? `<input class="table-input" data-op-amount data-path="${override.path}" data-type="number" type="number" step="0.1" value="${Number(inputValue || 0)}">` : `<strong data-op-amount>${fmt(value, 1)}</strong>`}</td><td class="num"><span class="auto-weight" data-op-weight>${fmtPct(total > 0 ? value / total : 0)}</span></td><td><span class="amount-source">${escapeHtml(source)}</span></td></tr>`;
+        }).join('')}
+      </tbody></table>
     </div>
-    <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong>${fmt(total, 1)} 万元/年</strong></div>
+    <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong data-operating-total>${fmt(total, 1)} 万元/年</strong></div>
   </div>`;
+}
+
+function refreshShareTables() {
+  document.querySelectorAll('[data-share-table]').forEach(table => {
+    const rows = [...table.querySelectorAll('tbody tr')];
+    const values = rows.map(row => Number(row.querySelector('input[type="number"]')?.value || 0));
+    const total = values.reduce((sum, value) => sum + value, 0);
+    rows.forEach((row, index) => {
+      const weight = row.querySelector('[data-auto-weight]');
+      if (weight) weight.textContent = fmtPct(total > 0 ? values[index] / total : 0);
+    });
+    const totalEl = table.closest('.budget-section')?.querySelector('[data-share-total]');
+    if (totalEl) totalEl.textContent = fmt(total, 1);
+  });
+}
+
+function refreshMarketingWeights() {
+  const readTableValues = selector => [...document.querySelectorAll(`${selector} tbody tr`)]
+    .map(row => Number(row.querySelector('input[type="number"]')?.value || 0));
+  const annualValues = readTableValues('[data-marketing-annual-table]');
+  const openingValues = readTableValues('[data-marketing-opening-table]');
+  const annualTotal = annualValues.reduce((sum, value) => sum + value, 0);
+  const openingTotal = openingValues.reduce((sum, value) => sum + value, 0);
+  const firstYearTotal = annualTotal + openingTotal;
+  document.querySelectorAll('[data-marketing-annual-table] tbody tr').forEach((row, index) => {
+    const weight = row.querySelector('[data-auto-weight]');
+    if (weight) weight.textContent = fmtPct(annualTotal > 0 ? annualValues[index] / annualTotal : 0);
+  });
+  document.querySelectorAll('[data-marketing-opening-table] tbody tr').forEach((row, index) => {
+    const weight = row.querySelector('[data-auto-weight]');
+    if (weight) weight.textContent = fmtPct(firstYearTotal > 0 ? openingValues[index] / firstYearTotal : 0);
+  });
+  document.querySelectorAll('[data-marketing-annual-total]').forEach(el => { el.textContent = fmt(annualTotal, 1); });
+  document.querySelectorAll('[data-marketing-first-total]').forEach(el => { el.textContent = fmt(firstYearTotal, 1); });
+}
+
+function updateOperatingPreviewDom(result) {
+  const breakdown = result?.operatingCostBreakdown || [];
+  if (!breakdown.length) return;
+  const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const values = new Map(breakdown.map(item => [item.name, Number(item.value || 0)]));
+  document.querySelectorAll('[data-op-row]').forEach(row => {
+    const value = values.get(row.dataset.opRow);
+    if (value == null) return;
+    const amountEl = row.querySelector('[data-op-amount]');
+    if (amountEl && amountEl !== document.activeElement) {
+      if (amountEl.tagName === 'INPUT') amountEl.value = Number(value.toFixed(1));
+      else amountEl.textContent = fmt(value, 1);
+    }
+    const weightEl = row.querySelector('[data-op-weight]');
+    if (weightEl) weightEl.textContent = fmtPct(total > 0 ? value / total : 0);
+  });
+  const totalEl = document.querySelector('[data-operating-total]');
+  if (totalEl) totalEl.textContent = `${fmt(total, 1)} 万元/年`;
 }
 
 function bindOperationsBudgets() {
@@ -2274,16 +2446,42 @@ function bindOperationsBudgets() {
     model.organization.departments.splice(Number(btn.dataset.removeDepartment), 1);
     state.dirty = true; renderWorkspace(); scheduleLivePreview();
   }));
-  document.getElementById('add-marketing-channel')?.addEventListener('click', () => {
-    model.marketingBudget ||= { useFixedAnnual: false, fixedAnnual: 0, contingencyRate: 0.05, channels: [] };
-    model.marketingBudget.channels ||= [];
-    model.marketingBudget.channels.push({ name: '新增渠道', weight: 0.1, note: '' });
-    state.dirty = true; renderWorkspace(); scheduleLivePreview();
-  });
-  document.querySelectorAll('[data-remove-marketing-channel]').forEach(btn => btn.addEventListener('click', () => {
-    model.marketingBudget.channels.splice(Number(btn.dataset.removeMarketingChannel), 1);
-    state.dirty = true; renderWorkspace(); scheduleLivePreview();
+  document.querySelectorAll('[data-marketing-amount]').forEach(input => input.addEventListener('input', () => {
+    model.marketingBudget ||= {};
+    model.marketingBudget.amountMode = true;
+    document.getElementById('legacy-marketing-notice')?.remove();
+    refreshMarketingWeights();
   }));
+  document.querySelectorAll('[data-share-table] input[type="number"]').forEach(input => input.addEventListener('input', refreshShareTables));
+  document.getElementById('migrate-marketing-amounts')?.addEventListener('click', () => {
+    model.marketingBudget ||= {};
+    const total = Number(state.preview?.summary?.stableMarketingCost || 0);
+    const allocation = state.preview?.marketingAllocation || [];
+    const bucketNames = {
+      promotion: ['品牌', '公关', '活动', '推广'],
+      visual: ['物料', '美陈'],
+      media: ['媒体'],
+      member: ['会员', '数字'],
+    };
+    const bucketShares = {};
+    for (const [key, keywords] of Object.entries(bucketNames)) {
+      bucketShares[key] = allocation
+        .filter(item => keywords.some(word => String(item.name || '').includes(word)))
+        .reduce((sum, item) => sum + Number(item.share || item.weight || 0), 0);
+    }
+    const shareSum = Object.values(bucketShares).reduce((sum, value) => sum + value, 0);
+    const fallbackShares = { promotion: 0.40, visual: 0.25, media: 0.20, member: 0.15 };
+    (model.marketingBudget.annualItems || []).forEach(item => {
+      const share = shareSum > 0 ? bucketShares[item.key] / shareSum : fallbackShares[item.key] || 0;
+      item.amount = Number((total * share).toFixed(1));
+    });
+    model.marketingBudget.amountMode = true;
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast('旧版权重预算已转换为金额核算', 'success');
+  });
   document.querySelectorAll('[data-annual-cost-field]').forEach(input => input.addEventListener('input', () => {
     model.operations ||= {};
     model.operations.annualCostAdjustments ||= {};
@@ -2336,8 +2534,14 @@ async function importOperatingBudget(file) {
     if (payload.officeBudget && Object.keys(payload.officeBudget).length) model.officeBudget = { ...(model.officeBudget || {}), ...payload.officeBudget };
     if (payload.leasingBudget && Object.keys(payload.leasingBudget).length) model.leasingBudget = { ...(model.leasingBudget || {}), ...payload.leasingBudget };
     if (payload.marketingBudget) {
-      model.marketingBudget = { ...(model.marketingBudget || {}), ...payload.marketingBudget };
-      if (!payload.marketingBudget.channels?.length) model.marketingBudget.channels = model.marketingBudget.channels || [];
+      model.marketingBudget ||= {};
+      if (payload.marketingBudget.hasImportedAmounts) {
+        model.marketingBudget = { ...model.marketingBudget, ...payload.marketingBudget };
+        delete model.marketingBudget.hasImportedAmounts;
+        model.marketingBudget.amountMode = true;
+        model.marketingBudget.annualItems = payload.marketingBudget.annualItems || model.marketingBudget.annualItems || [];
+        model.marketingBudget.openingYearItems = payload.marketingBudget.openingYearItems || model.marketingBudget.openingYearItems || [];
+      }
     }
     if (payload.maintenanceBudget && Object.keys(payload.maintenanceBudget).length) model.maintenanceBudget = { ...(model.maintenanceBudget || {}), ...payload.maintenanceBudget };
     if (payload.operations && Object.keys(payload.operations).length) model.operations = { ...(model.operations || {}), ...payload.operations };
@@ -2404,7 +2608,7 @@ function operatingReferenceCategoryText(reference, category) {
     staff: `${fmt(reference.headcount)} 人 · 参考人均月薪 ${fmt(values.salaries.length ? values.salaries.reduce((sum, item) => sum + item.avgMonthlySalary, 0) / values.salaries.length : 0)} 元`,
     office: `${fmt(sum(values.officeBudget), 1)} 万元/年`,
     leasing: `${fmt(sum(values.leasingBudget), 1)} 万元/年`,
-    marketing: `营业收入的 ${fmtPct(values.marketingRate, 1)}`,
+    marketing: `金额录入 · 初始参考约营业收入的 ${fmtPct(values.marketingRate, 1)}`,
     maintenance: `${fmt(sum(values.maintenanceBudget), 1)} 万元/年 + 资产原值 ${fmtPct(values.repairRate, 1)}`,
     insurance: `资产原值的 ${fmtPct(values.insuranceRate, 2)}`,
     other: `营业收入的 ${fmtPct(values.otherOpexRate, 1)}`,
@@ -2487,14 +2691,13 @@ function renderOperationsStep() {
         ${textField('多经收入占租金比例', 'revenues.otherIncomeRatio', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('停车位数量', 'revenues.parkingSpaces', { type: 'number', unit: '个', optional: true })}
         ${textField('停车月租', 'revenues.parkingMonthly', { type: 'number', unit: '元/位/月', optional: true })}
-        ${textField('物业运营成本', 'operations.propertyOpsCost', { type: 'number', unit: '元/㎡/月' })}
-        ${textField('公共能耗', 'operations.energyCost', { type: 'number', unit: '元/㎡/月' })}
+        ${textField('物业运营参考单价', 'operations.propertyOpsCost', { type: 'number', unit: '元/㎡/月', help: '仅在物业基础运营直接金额未填写时用于自动核算' })}
+        ${textField('公共能耗参考单价', 'operations.energyCost', { type: 'number', unit: '元/㎡/月', help: '仅在公共能耗直接金额未填写时用于自动核算' })}
         ${selectField('人员成本来源', 'operations.staffCostMode', [{ value: 'organization', label: '按组织架构薪资倒推' }, { value: 'area', label: '按面积快速估算' }], { help: '推荐使用组织架构薪资倒推；面积估算仅用于前期快速判断' })}
         ${staffCostMode === 'area' ? textField('商管团队成本', 'operations.staffCostPerSqm', { type: 'number', unit: '元/㎡/月' }) : `<div class="staff-cost-derived"><span>当前由人力资源倒推</span><strong>${fmt(organizationAnnual, 1)} 万元/年</strong><small>编制、月薪、年度薪资月数及社保变动后自动更新</small></div>`}
-        ${textField('行政办公成本', 'operations.adminCostPerSqm', { type: 'number', unit: '元/㎡/月' })}
-        ${textField('营销费用率', 'operations.marketingRate', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('维修改造费率', 'operations.repairRate', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('保险费用率', 'operations.insuranceRate', { type: 'number', unit: '%', scale: 0.01 })}
+        ${textField('行政办公参考单价', 'operations.adminCostPerSqm', { type: 'number', unit: '元/㎡/月', help: '办公预算金额合计为0时才使用该参考单价' })}
+        ${textField('日常维修参考费率', 'operations.repairRate', { type: 'number', unit: '%', scale: 0.01, help: '仅在未填写日常维修直接金额时使用' })}
+        ${textField('保险参考费率', 'operations.insuranceRate', { type: 'number', unit: '%', scale: 0.01, help: '仅在未填写保险直接金额时使用' })}
         ${textField('资本化改造率', 'operations.capexRate', { type: 'number', unit: '%', scale: 0.01 })}
       </div>
     </div>
@@ -2504,7 +2707,7 @@ function renderOperationsStep() {
     ${renderOfficeBudgetSection(state.current.model)}
     ${renderLeasingBudgetSection(state.current.model)}
     ${renderMarketingBudgetSection(state.current.model, state.preview)}
-    ${renderMaintenanceBudgetSection(state.current.model)}
+    ${renderMaintenanceBudgetSection(state.current.model, state.preview)}
     ${renderAnnualCostAdjustmentSection(state.current.model)}
     ${renderOperatingCostSummary(state.preview)}
     <details class="advanced">
@@ -2796,6 +2999,7 @@ function renderOperatingResultCards() {
   const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
   const organization = result.organizationBreakdown || [];
   const marketing = result.marketingAllocation || [];
+  const openingMarketing = result.openingMarketingAllocation || [];
   return `<div class="dashboard-grid operating-result-grid">
     <div class="card operating-cost-card">
       <h3>年度运营成本构成</h3>
@@ -2817,7 +3021,9 @@ function renderOperatingResultCards() {
   </div>
   <div class="card marketing-allocation-card">
     <h3>年度营销推广费用分解</h3>
-    <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>渠道</th><th class="num">权重</th><th class="num">实际占比</th><th class="num">年度预算</th><th>费用内容</th></tr></thead><tbody>${marketing.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${item.weight ? fmtPct(item.weight) : '—'}</td><td class="num">${fmtPct(item.share)}</td><td class="num">${fmt(item.amount, 1)}万</td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>
+    <div class="section-note">稳定年常规营销预算 ${fmt(s.annualMarketingBudget || s.stableMarketingCost, 1)} 万元/年；开业首年另加专项 ${fmt(s.openingMarketingItemsCost || 0, 1)} 万元，首年合计 ${fmt(s.firstYearMarketingCost || 0, 1)} 万元。权重由金额自动反算。</div>
+    <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>常规营销类别</th><th class="num">年度金额</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>${marketing.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${fmt(item.amount, 1)}万</td><td class="num"><span class="auto-weight">${fmtPct(item.share)}</span></td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>
+    ${openingMarketing.length ? `<div class="subsection-heading opening-marketing-heading"><div><strong>开业首年专项</strong><span>仅运营第1年发生</span></div></div><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>开业专项</th><th class="num">首年金额</th><th class="num">占首年营销预算</th><th>费用内容</th></tr></thead><tbody>${openingMarketing.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${fmt(item.amount, 1)}万</td><td class="num"><span class="auto-weight">${fmtPct(item.share)}</span></td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
   </div>`;
 }
 
@@ -3285,6 +3491,7 @@ async function runLivePreview() {
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
     state.preview = result;
     updateLiveStats();
+    updateOperatingPreviewDom(result);
     return result;
   } catch (error) {
     console.warn('实时测算失败', error);

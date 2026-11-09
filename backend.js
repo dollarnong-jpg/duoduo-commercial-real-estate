@@ -926,11 +926,12 @@ const BUDGET_BASIC_DEFS = [
   { label: '公共能耗单价', path: 'operations.energyCost', unit: '元/㎡/月', scale: 1, value: 4.5 },
   { label: '日常维修费率', path: 'operations.repairRate', unit: '%', scale: 0.01, value: 1 },
   { label: '保险费用率', path: 'operations.insuranceRate', unit: '%', scale: 0.01, value: 0.15 },
-  { label: '年度营销费用率', path: 'operations.marketingRate', unit: '%', scale: 0.01, value: 2 },
-  { label: '营销预算方式', path: 'marketingBudget.useFixedAnnual', unit: '', scale: 1, value: '按营业收入比例' },
-  { label: '固定年度营销预算', path: 'marketingBudget.fixedAnnual', unit: '万元/年', scale: 1, value: 0 },
-  { label: '营销机动预备比例', path: 'marketingBudget.contingencyRate', unit: '%', scale: 0.01, value: 5 },
   { label: '其他运营费用率', path: 'operations.otherOpexRate', unit: '%', scale: 0.01, value: 0.5 },
+  { label: '物业基础运营直接金额', path: 'operations.annualCostOverrides.propertyOps', unit: '万元/年', scale: 1, value: 0 },
+  { label: '公共能耗直接金额', path: 'operations.annualCostOverrides.energy', unit: '万元/年', scale: 1, value: 0 },
+  { label: '日常维修直接金额', path: 'operations.annualCostOverrides.baseMaintenance', unit: '万元/年', scale: 1, value: 0 },
+  { label: '保险费用直接金额', path: 'operations.annualCostOverrides.insurance', unit: '万元/年', scale: 1, value: 0 },
+  { label: '其他运营费用直接金额', path: 'operations.annualCostOverrides.otherOpex', unit: '万元/年', scale: 1, value: 0 },
 ];
 const OFFICE_BUDGET_DEFS = [
   ['办公室租金', 'officeRentAnnual'], ['水电及通讯费', 'utilitiesAnnual'], ['IT及软件服务', 'itSoftwareAnnual'],
@@ -944,6 +945,12 @@ const MAINTENANCE_BUDGET_DEFS = [
   ['电梯维保', 'elevatorAnnual'], ['暖通空调维保', 'hvacAnnual'], ['消防维保', 'fireAnnual'],
   ['景观绿化养护', 'landscapeAnnual'], ['其他专项维保', 'otherAnnual'],
 ];
+const MARKETING_ANNUAL_DEFS = [
+  ['营销推广', 'promotion'], ['商业美陈', 'visual'], ['媒体宣传', 'media'], ['会员营销', 'member'],
+];
+const MARKETING_OPENING_DEFS = [
+  ['导视导览', 'wayfinding'], ['开业美陈', 'opening_visual'],
+];
 
 function operatingBudgetTemplate() {
   const wb = XLSX.utils.book_new();
@@ -951,7 +958,7 @@ function operatingBudgetTemplate() {
     ['多多 · 商业地产运营成本预算导入模板'],
     ['请在黄色或空白单元格中填写，不要修改工作表名称和表头。'],
     ['导入后会覆盖当前项目的组织架构、办公、招商、营销和维保预算；不填写的工作表保持原值。'],
-    ['比例类参数按百分数填写，例如28%填写28，2%填写2。金额单位均为万元/年，工资单位为元/月。'],
+    ['费用优先按金额填写，权重和占比由系统自动计算，无需手工凑100%。金额单位均为万元/年，工资单位为元/月。'],
   ], [20, 100]);
   addSheet(wb, '基础参数', [
     ['参数', '填写值', '单位', '说明'],
@@ -970,13 +977,17 @@ function operatingBudgetTemplate() {
   ], [20, 14, 22, 52]);
   addSheet(wb, '办公预算', [['费用项目', '年度金额（万元）', '说明'], ...OFFICE_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
   addSheet(wb, '招商预算', [['费用项目', '年度金额（万元）', '说明'], ...LEASING_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
-  addSheet(wb, '营销预算', [
-    ['营销渠道', '权重（%）', '费用内容'],
-    ['品牌公关', 15, '品牌发布、媒体关系、公关传播'],
-    ['媒体投放', 30, '线上信息流、户外、本地生活平台'],
-    ['主题活动', 25, '开业、节庆、周末活动、PR活动'],
-    ['会员与数字营销', 20, '会员、小程序、私域、直播'],
-    ['物料与美陈', 10, '导视、美陈、印刷、临时物料'],
+  addSheet(wb, '营销常规预算', [
+    ['营销类别', '年度金额（万元）', '费用内容'],
+    ['营销推广', 80, '节庆活动、主题推广、异业合作及日常营销执行'],
+    ['商业美陈', 50, '公共区域美陈、季节装饰、陈列更新'],
+    ['媒体宣传', 40, '线上信息流、户外媒体、本地生活平台及公关传播'],
+    ['会员营销', 30, '会员权益、积分、小程序、私域运营及会员活动'],
+  ], [24, 16, 60]);
+  addSheet(wb, '开业首年营销', [
+    ['开业专项', '首年金额（万元）', '费用内容'],
+    ['导视导览', 20, '开业导视、导览标识及临时指引'],
+    ['开业美陈', 40, '开业主题美陈、氛围布置及公共空间装饰'],
   ], [24, 16, 60]);
   addSheet(wb, '维保预算', [['维保项目', '年度金额（万元）', '说明'], ...MAINTENANCE_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
   return wb;
@@ -994,7 +1005,7 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   const organization = { departments: [] };
   const officeBudget = {};
   const leasingBudget = {};
-  const marketingBudget = { channels: [] };
+  const marketingBudget = { amountMode: true, annualItems: [], openingYearItems: [] };
   const maintenanceBudget = {};
   const operations = {};
 
@@ -1012,18 +1023,18 @@ function parseOperatingBudgetWorkbook(base64, filename) {
       const raw = rowValue(row, indexes, 'value');
       const def = defsByLabel[normalizeHeader(label)];
       if (!def) continue;
-      if (def.path === 'marketingBudget.useFixedAnnual') {
-        const value = String(raw || '').trim();
-        marketingBudget.useFixedAnnual = value.includes('固定') || value === '1' || value === 'true' || value === '是';
-      } else if (def.path === 'operations.staffCostMode') {
+      if (def.path === 'operations.staffCostMode') {
         operations.staffCostMode = String(raw || '').includes('面积') ? 'area' : 'organization';
       } else {
         let number = safeNumber(raw) * def.scale;
         if (def.path === 'organization.annualSalaryMonths' && normalizeHeader(label) === normalizeHeader('年终奖月数')) number += 12;
-        const [group, key] = def.path.split('.');
+        const [group, key, nestedKey] = def.path.split('.');
         if (group === 'organization') organization[key] = number;
         else if (group === 'marketingBudget') marketingBudget[key] = number;
-        else if (group === 'operations') operations[key] = number;
+        else if (group === 'operations' && key === 'annualCostOverrides' && nestedKey) {
+          operations.annualCostOverrides ||= {};
+          operations.annualCostOverrides[nestedKey] = number;
+        } else if (group === 'operations') operations[key] = number;
       }
     }
   } else {
@@ -1049,9 +1060,9 @@ function parseOperatingBudgetWorkbook(base64, filename) {
 
   function parseAmountSheet(sheetName, defs, target) {
     const rows = getTemplateRows(wb, sheetName);
-    const header = findHeaderRow(rows, { name: ['费用项目', '维保项目'], amount: ['年度金额'] }, ['name', 'amount']);
+    const header = findHeaderRow(rows, { name: ['费用项目', '维保项目', '营销类别', '开业专项'], amount: ['年度金额', '首年金额'] }, ['name', 'amount']);
     if (header < 0) return;
-    const indexes = headerIndexes(rows[header], { name: ['费用项目', '维保项目'], amount: ['年度金额'], note: ['说明'] });
+    const indexes = headerIndexes(rows[header], { name: ['费用项目', '维保项目', '营销类别', '开业专项'], amount: ['年度金额', '首年金额'], note: ['说明', '费用内容'] });
     const keyByLabel = Object.fromEntries(defs.map(([label, key]) => [normalizeHeader(label), key]));
     for (const row of rows.slice(header + 1)) {
       const label = String(rowValue(row, indexes, 'name') || '').trim();
@@ -1063,22 +1074,25 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   parseAmountSheet('办公预算', OFFICE_BUDGET_DEFS, officeBudget);
   parseAmountSheet('招商预算', LEASING_BUDGET_DEFS, leasingBudget);
   parseAmountSheet('维保预算', MAINTENANCE_BUDGET_DEFS, maintenanceBudget);
-
-  const marketingRows = getTemplateRows(wb, '营销预算');
-  const marketingHeader = findHeaderRow(marketingRows, { name: ['营销渠道', '渠道'], weight: ['权重'] }, ['name', 'weight']);
-  if (marketingHeader >= 0) {
-    const indexes = headerIndexes(marketingRows[marketingHeader], { name: ['营销渠道', '渠道'], weight: ['权重'], note: ['费用内容', '说明'] });
-    for (const row of marketingRows.slice(marketingHeader + 1)) {
-      const name = String(rowValue(row, indexes, 'name') || '').trim();
-      if (!name) continue;
-      let weight = safeNumber(rowValue(row, indexes, 'weight'));
-      if (weight > 1) weight /= 100;
-      marketingBudget.channels.push({ name, weight, note: String(rowValue(row, indexes, 'note') || '').trim() });
-    }
-  }
-  if (!marketingBudget.channels.length) warnings.push('营销预算工作表没有有效渠道记录');
-  const weightTotal = marketingBudget.channels.reduce((sum, item) => sum + Number(item.weight || 0), 0);
-  if (weightTotal <= 0) warnings.push('营销渠道权重合计为0，导入后请填写权重');
+  const annualMarketingAmounts = {};
+  const openingMarketingAmounts = {};
+  parseAmountSheet('营销常规预算', MARKETING_ANNUAL_DEFS, annualMarketingAmounts);
+  parseAmountSheet('开业首年营销', MARKETING_OPENING_DEFS, openingMarketingAmounts);
+  marketingBudget.annualItems = MARKETING_ANNUAL_DEFS.map(([name, key]) => ({
+    key,
+    name,
+    amount: safeNumber(annualMarketingAmounts[key]),
+    note: '',
+  }));
+  marketingBudget.openingYearItems = MARKETING_OPENING_DEFS.map(([name, key]) => ({
+    key,
+    name,
+    amount: safeNumber(openingMarketingAmounts[key]),
+    note: '',
+  }));
+  if (!Object.keys(annualMarketingAmounts).length) warnings.push('营销常规预算工作表没有有效金额记录');
+  if (!Object.keys(openingMarketingAmounts).length) warnings.push('开业首年营销工作表没有有效金额记录');
+  marketingBudget.hasImportedAmounts = Boolean(Object.keys(annualMarketingAmounts).length || Object.keys(openingMarketingAmounts).length);
 
   return { organization, officeBudget, leasingBudget, marketingBudget, maintenanceBudget, operations, warnings };
 }
@@ -1126,21 +1140,30 @@ function exportExcel(result) {
     ['公式', '退出估值方法', formulas.exitValueMethod], ['公式', '退出收入倍数', formulas.exitRevenueMultiple],
     ['人员', '社保公积金比例', model.organization?.socialInsuranceRate], ['人员', '年度薪资月数', model.organization?.annualSalaryMonths || 12],
     ['人员', '人员成本来源', model.operations?.staffCostMode === 'area' ? '按面积快速估算' : '按组织架构薪资倒推'],
-    ['人员', '招聘培训费率', model.organization?.recruitmentTrainingRate], ['营销', '年度预算方式', model.marketingBudget?.useFixedAnnual ? '固定预算' : '营业收入比例'],
+    ['人员', '招聘培训费率', model.organization?.recruitmentTrainingRate], ['营销', '核算方式', model.marketingBudget?.amountMode === false ? '旧版权重（建议转换）' : '按金额录入，自动计算权重'],
   ], [18, 28, 20]);
   addSheet(wb, '组织架构与人员成本', [
     ['部门','编制人数','平均月薪（元/月）','社保公积金比例','年度薪资月数','年度人员成本（万元）','岗位/职责说明'],
     ...(result.organizationBreakdown || []).map(x => [x.name, x.headcount, x.avgMonthlySalary, model.organization?.socialInsuranceRate, x.annualSalaryMonths || model.organization?.annualSalaryMonths || 12, x.annualCost, x.note])
   ], [20, 12, 20, 18, 14, 22, 48]);
+  const officeBudgetTotal = (result.officeBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const leasingBudgetTotal = (result.leasingBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
   addSheet(wb, '办公与招商预算', [
-    ['类别','费用项目','年度金额（万元）'],
-    ...(result.officeBreakdown || []).map(x => ['办公行政', x.name, x.value]),
-    ...(result.leasingBreakdown || []).map(x => ['招商费用', x.name, x.value])
-  ], [16, 30, 20]);
+    ['类别','费用项目','年度金额（万元）','自动权重'],
+    ...(result.officeBreakdown || []).map(x => ['办公行政', x.name, x.value, officeBudgetTotal ? Number(x.value || 0) / officeBudgetTotal : 0]),
+    ...(result.leasingBreakdown || []).map(x => ['招商费用', x.name, x.value, leasingBudgetTotal ? Number(x.value || 0) / leasingBudgetTotal : 0])
+  ], [16, 30, 20, 16]);
   addSheet(wb, '年度营销预算分解', [
-    ['渠道','权重','实际占比','年度预算（万元）','费用内容'],
-    ...(result.marketingAllocation || []).map(x => [x.name, x.weight, x.share, x.amount, x.note])
-  ], [22, 12, 14, 20, 60]);
+    ['常规年度营销预算'],
+    ['营销类别','年度金额（万元）','自动权重','费用内容'],
+    ...(result.marketingAllocation || []).map(x => [x.name, x.amount, x.share, x.note]),
+    ['常规年度合计', result.summary.annualMarketingBudget || 0, 1, '每年持续发生'],
+    [''],
+    ['开业首年专项营销'],
+    ['开业专项','首年金额（万元）','占首年营销总预算','费用内容'],
+    ...(result.openingMarketingAllocation || []).map(x => [x.name, x.amount, x.share, x.note]),
+    ['开业首年营销合计', result.summary.firstYearMarketingCost || 0, 1, `常规年度 + 开业专项`],
+  ], [24, 20, 20, 60]);
   const operatingCostTotalForExport = (result.operatingCostBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
   addSheet(wb, '运营成本构成', [
     ['成本项目','年度金额（万元）','占运营成本及税费比例'],
@@ -1176,7 +1199,7 @@ function exportExcel(result) {
     ['人员', '人员成本来源', '按组织架构=Σ部门人数×月薪×薪资月数×社保；按面积=总建筑面积×人员成本单价×12', ['IF','SUM'], '选择组织架构模式后，管理团队及物业人员成本由HR薪资明细倒推。', '前期可用面积快速估算，招商运营阶段应使用组织架构薪资成本。', 'operations.staffCostMode', model.operations?.staffCostMode || 'organization', '决定管理团队人员成本采用薪资倒推还是面积估算。'],
     ['办公', '年度办公行政成本', '租金+水电通讯+IT软件+办公用品+差旅招待+其他', ['SUM'], '逐项汇总年度办公行政预算。', '按行政预算和已签合同调整；办公室租金、IT服务和差旅标准应与团队规模匹配。', 'officeBudget.officeRentAnnual', model.officeBudget?.officeRentAnnual, '办公成本直接扣减NOI。'],
     ['招商', '年度招商费用', '渠道代理+活动+物料+差旅+平台+其他；续租佣金按周期另计', ['SUM','MOD','IF'], '年度固定招商预算与续租佣金分开计算，避免重复。', '按招商策略和渠道政策填写；首开佣金、年度招商费用和续租佣金分别管理。', 'leasingBudget.channelFeeAnnual', model.leasingBudget?.channelFeeAnnual, '招商费用直接扣减运营现金流。'],
-    ['营销', '年度营销预算分解', 'IF(固定预算,固定额,营业收入×营销率)；渠道预算=(总额-机动预备)×权重÷权重合计', ['IF','SUM','ROUND'], '先确定年度营销总额，再预留机动费，按渠道权重归一化分配。', '按年度推广计划和渠道KPI调整权重；开业期提高媒体和活动，稳定期提高会员数字和品牌公关。', 'marketingBudget.contingencyRate', model.marketingBudget?.contingencyRate, '营销预算进入年度运营成本。'],
+    ['营销', '年度营销金额与自动权重', '常规年度=营销推广+商业美陈+媒体宣传+会员营销；首年=常规年度+导视导览+开业美陈；自动权重=单项金额÷对应合计', ['SUM','IF'], '营销费用全部由用户按金额录入，系统不再按权重倒推预算。常规四项每年发生，开业两项只在运营第1年计入。', '直接按年度推广计划、合同和报价填写金额。权重用于检查结构，不需要手工调整；某项金额变化后，合计、占比、NOI和现金流会自动重算。', 'marketingBudget.annualItems', '按金额录入', '营销费用直接扣减NOI；开业专项只影响首年现金流。'],
     ['维保', '年度维保费用', '资产原值×维修费率+电梯+暖通+消防+景观+其他专项维保', ['SUM'], '日常维修按费率计提，专项维保按年度合同金额单列，两者相加。', '维修费率通常按资产原值0.5%–2%；专项维保按合同和年检要求填写。', 'maintenanceBudget.elevatorAnnual', model.maintenanceBudget?.elevatorAnnual, '维保成本直接扣减NOI。'],
     ['敏感性', 'NPV敏感性矩阵', 'NPV=f(租金系数,投资系数)，按MIN~MAX和STEP生成', ['SEQUENCE','NPV'], '分别改变租金和投资系数，逐个重新计算项目NPV，形成矩阵。', '上下限覆盖悲观和乐观情景，通常从±10%开始，步长5%；重点观察NPV由负转正的临界点。', 'formulas.sensitivityRentMin', formulas.sensitivityRentMin, '用于识别项目最敏感的假设。'],
   ];
@@ -1314,9 +1337,13 @@ async function exportPPT(result) {
   addSlideTitle(slide, '年度运营成本与营销预算', '稳定运营年｜金额单位：万元/年');
   const costRows = [['成本项目','金额'], ...(result.operatingCostBreakdown || []).map(x => [x.name, x.value.toFixed(1)])];
   slide.addTable(costRows, { x: 0.65, y: 1.4, w: 5.9, colW: [4.4, 1.5], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.5, margin: 0.035, rowH: 0.29, autoFit: false });
-  const marketingRows = [['营销渠道','年度预算'], ...(result.marketingAllocation || []).map(x => [x.name, x.amount.toFixed(1)])];
-  slide.addTable(marketingRows, { x: 6.8, y: 1.4, w: 5.8, colW: [4.1, 1.7], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 8, margin: 0.04, rowH: 0.36, autoFit: false });
-  slide.addText(`年度营销预算 ${(result.summary.stableMarketingCost || 0).toFixed(1)} 万元｜办公 ${(result.summary.stableOfficeCost || 0).toFixed(1)} 万元｜招商 ${(result.summary.stableLeasingCost || 0).toFixed(1)} 万元｜维保 ${(result.summary.stableMaintenanceCost || 0).toFixed(1)} 万元`, { x: 6.8, y: 5.85, w: 5.8, h: 0.55, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.08 });
+  const marketingRows = [
+    ['营销类别','年度金额','自动权重'],
+    ...(result.marketingAllocation || []).map(x => [x.name, x.amount.toFixed(1), `${(Number(x.share || 0) * 100).toFixed(1)}%`]),
+    ...(result.openingMarketingAllocation || []).map(x => [`开业·${x.name}`, x.amount.toFixed(1), `首年${(Number(x.share || 0) * 100).toFixed(1)}%`]),
+  ];
+  slide.addTable(marketingRows, { x: 6.8, y: 1.4, w: 5.8, colW: [3.0, 1.4, 1.4], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.2, margin: 0.035, rowH: 0.34, autoFit: false });
+  slide.addText(`年度营销 ${(result.summary.stableMarketingCost || 0).toFixed(1)} 万元｜开业首年 ${(result.summary.firstYearMarketingCost || 0).toFixed(1)} 万元｜办公 ${(result.summary.stableOfficeCost || 0).toFixed(1)} 万元｜招商 ${(result.summary.stableLeasingCost || 0).toFixed(1)} 万元｜维保 ${(result.summary.stableMaintenanceCost || 0).toFixed(1)} 万元`, { x: 6.8, y: 5.85, w: 5.8, h: 0.55, fontFace: 'Microsoft YaHei', fontSize: 7.2, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.08 });
 
   slide = pptx.addSlide();
   const detection = result.model.market?.lastAnalysis || {};

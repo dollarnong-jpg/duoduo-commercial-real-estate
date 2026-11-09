@@ -129,6 +129,13 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "rampY1": 0.80,
             "rampY2": 0.90,
             "annualCostAdjustments": {},
+            "annualCostOverrides": {
+                "propertyOps": 0.0,
+                "energy": 0.0,
+                "baseMaintenance": 0.0,
+                "insurance": 0.0,
+                "otherOpex": 0.0,
+            },
             "opexPreset": {
                 "standard": "standard",
                 "managementMode": "mixed",
@@ -172,15 +179,16 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "otherAnnual": 5.0,
         },
         "marketingBudget": {
-            "useFixedAnnual": False,
-            "fixedAnnual": 0.0,
-            "contingencyRate": 0.05,
-            "channels": [
-                {"name": "品牌公关", "weight": 0.15, "note": "品牌发布、媒体关系、公关传播"},
-                {"name": "媒体投放", "weight": 0.30, "note": "线上信息流、户外、本地生活平台"},
-                {"name": "主题活动", "weight": 0.25, "note": "开业、节庆、周末活动、PR活动"},
-                {"name": "会员与数字营销", "weight": 0.20, "note": "会员、小程序、私域、直播"},
-                {"name": "物料与美陈", "weight": 0.10, "note": "导视、美陈、印刷、临时物料"},
+            "amountMode": True,
+            "annualItems": [
+                {"key": "promotion", "name": "营销推广", "amount": 80.0, "note": "节庆活动、主题推广、异业合作及日常营销执行"},
+                {"key": "visual", "name": "商业美陈", "amount": 50.0, "note": "公共区域美陈、季节装饰、陈列更新"},
+                {"key": "media", "name": "媒体宣传", "amount": 40.0, "note": "线上信息流、户外媒体、本地生活平台及公关传播"},
+                {"key": "member", "name": "会员营销", "amount": 30.0, "note": "会员权益、积分、小程序、私域运营及会员活动"},
+            ],
+            "openingYearItems": [
+                {"key": "wayfinding", "name": "导视导览", "amount": 20.0, "note": "开业导视、导览标识及临时指引"},
+                {"key": "opening_visual", "name": "开业美陈", "amount": 40.0, "note": "开业主题美陈、氛围布置及公共空间装饰"},
             ],
         },
         "maintenanceBudget": {
@@ -252,6 +260,7 @@ def deep_merge(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]
 
 def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
     model = default_model()
+    default_marketing_budget = copy.deepcopy(model["marketingBudget"])
     explicit_mode = (raw or {}).get("calculationMode")
     if raw:
         deep_merge(model, raw)
@@ -267,6 +276,43 @@ def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
             model["ownerRent"]["propertyMonthlyRent"] = as_float(raw_owner_rent.get("monthlyRent"))
         if "leaseType" not in raw_owner_rent:
             model["ownerRent"]["leaseType"] = "property"
+    raw_marketing = (raw or {}).get("marketingBudget") if isinstance((raw or {}).get("marketingBudget"), dict) else None
+    if raw_marketing is not None and "amountMode" not in raw_marketing and raw_marketing.get("channels") and not raw_marketing.get("annualItems"):
+        # Preserve projects created before amount-based marketing budgets. The UI offers
+        # a one-click migration, while the engine keeps calculating the legacy weights.
+        model["marketingBudget"]["amountMode"] = False
+    marketing_budget = model.get("marketingBudget") if isinstance(model.get("marketingBudget"), dict) else {}
+    def normalize_marketing_items(defaults: list[dict[str, Any]], incoming_items: Any) -> list[dict[str, Any]]:
+        incoming = [item for item in incoming_items if isinstance(item, dict)] if isinstance(incoming_items, list) else []
+        by_key = {str(item.get("key") or ""): item for item in incoming}
+        by_name = {str(item.get("name") or "").strip(): item for item in incoming}
+        normalized: list[dict[str, Any]] = []
+        used_keys: set[str] = set()
+        for default in defaults:
+            key = str(default.get("key") or "")
+            incoming_item = by_key.get(key) or by_name.get(str(default.get("name") or ""), {})
+            used_keys.add(key)
+            normalized.append({
+                "key": key,
+                "name": str(incoming_item.get("name") or default.get("name") or "未命名营销项目"),
+                "amount": max(0.0, as_float(incoming_item.get("amount", default.get("amount")))),
+                "note": str(incoming_item.get("note") or default.get("note") or ""),
+            })
+        for index, item in enumerate(incoming):
+            key = str(item.get("key") or f"custom_{index}")
+            if key in used_keys:
+                continue
+            normalized.append({
+                "key": key,
+                "name": str(item.get("name") or "自定义营销项目"),
+                "amount": max(0.0, as_float(item.get("amount"))),
+                "note": str(item.get("note") or ""),
+            })
+        return normalized
+
+    marketing_budget["annualItems"] = normalize_marketing_items(default_marketing_budget["annualItems"], marketing_budget.get("annualItems"))
+    marketing_budget["openingYearItems"] = normalize_marketing_items(default_marketing_budget["openingYearItems"], marketing_budget.get("openingYearItems"))
+    model["marketingBudget"] = marketing_budget
     if not explicit_mode:
         model["calculationMode"] = "detailed" if (raw or {}).get("shops") else "preliminary"
     default_categories = {c["name"]: c for c in CATEGORY_PRESETS}
@@ -430,6 +476,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "note": str(department.get("note") or ""),
         })
     structured_recruitment_training = structured_personnel_cost * recruitment_training_rate
+    for item in organization_breakdown:
+        item["share"] = safe_div(item["annualCost"], structured_personnel_cost)
     security_personnel_cost = sum(item["annualCost"] for item in organization_breakdown if "保安" in item["name"])
     cleaning_personnel_cost = sum(item["annualCost"] for item in organization_breakdown if "保洁" in item["name"])
     property_personnel_cost = sum(item["annualCost"] for item in organization_breakdown if ("物业" in item["name"] or "工程" in item["name"]))
@@ -444,6 +492,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     ]
     office_breakdown = [{"name": name, "value": max(0.0, as_float(office_budget.get(key)))} for name, key in office_items]
     structured_office_cost = sum(item["value"] for item in office_breakdown)
+    for item in office_breakdown:
+        item["share"] = safe_div(item["value"], structured_office_cost)
     leasing_items = [
         ("渠道及代理费", "channelFeeAnnual"),
         ("招商活动", "eventsAnnual"),
@@ -454,6 +504,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     ]
     leasing_breakdown = [{"name": name, "value": max(0.0, as_float(leasing_budget.get(key)))} for name, key in leasing_items]
     structured_leasing_cost = sum(item["value"] for item in leasing_breakdown)
+    for item in leasing_breakdown:
+        item["share"] = safe_div(item["value"], structured_leasing_cost)
     maintenance_items = [
         ("电梯维保", "elevatorAnnual"),
         ("暖通空调维保", "hvacAnnual"),
@@ -463,7 +515,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     ]
     maintenance_breakdown = [{"name": name, "value": max(0.0, as_float(maintenance_budget.get(key)))} for name, key in maintenance_items]
     structured_maintenance_cost = sum(item["value"] for item in maintenance_breakdown)
+    for item in maintenance_breakdown:
+        item["share"] = safe_div(item["value"], structured_maintenance_cost)
     marketing_channels = [item for item in marketing_budget.get("channels", []) if isinstance(item, dict)]
+    annual_marketing_items = [item for item in marketing_budget.get("annualItems", []) if isinstance(item, dict)]
+    opening_marketing_items = [item for item in marketing_budget.get("openingYearItems", []) if isinstance(item, dict)]
+    annual_marketing_total = sum(max(0.0, as_float(item.get("amount"))) for item in annual_marketing_items)
+    opening_marketing_total = sum(max(0.0, as_float(item.get("amount"))) for item in opening_marketing_items)
+    annual_cost_overrides = operations.get("annualCostOverrides") if isinstance(operations.get("annualCostOverrides"), dict) else {}
     shops = model["shops"]
     floors = model.get("floors", [])
     calculation_mode = str(model.get("calculationMode") or "preliminary")
@@ -615,11 +674,16 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         staff_cost_mode = "organization" if structured_headcount > 0 else "area"
     personnel_proxy = (structured_personnel_cost + structured_recruitment_training) if staff_cost_mode == "organization" and structured_headcount > 0 else gba * as_float(operations.get("staffCostPerSqm")) * 12 / 10000
     office_proxy = structured_office_cost if structured_office_cost > 0 else gba * as_float(operations.get("adminCostPerSqm")) * 12 / 10000
-    marketing_proxy = total_monthly_revenue * 12 * 0.95 / 10000 * as_float(operations.get("marketingRate"))
+    marketing_proxy = annual_marketing_total if bool(marketing_budget.get("amountMode", True)) else total_monthly_revenue * 12 * 0.95 / 10000 * as_float(operations.get("marketingRate"))
+    property_proxy = max(0.0, as_float(annual_cost_overrides.get("propertyOps"))) or gba * as_float(operations.get("propertyOpsCost")) * 12 / 10000
+    energy_proxy = max(0.0, as_float(annual_cost_overrides.get("energy"))) or gba * as_float(operations.get("energyCost")) * 12 / 10000
+    base_maintenance_proxy = max(0.0, as_float(annual_cost_overrides.get("baseMaintenance"))) or (construction + fitout + equipment + other_engineering + contingency) * as_float(operations.get("repairRate"))
+    insurance_proxy = max(0.0, as_float(annual_cost_overrides.get("insurance"))) or (construction + fitout + equipment + other_engineering) * as_float(operations.get("insuranceRate"))
+    other_opex_proxy = max(0.0, as_float(annual_cost_overrides.get("otherOpex"))) or total_monthly_revenue * 12 * 0.95 / 10000 * as_float(operations.get("otherOpexRate"))
     stable_opex_proxy = (
-        gba * (as_float(operations.get("propertyOpsCost")) + as_float(operations.get("energyCost"))) * 12 / 10000
-        + personnel_proxy + office_proxy + structured_leasing_cost + structured_maintenance_cost + marketing_proxy
-        + (construction + fitout + equipment + other_engineering + contingency) * as_float(operations.get("repairRate"))
+        property_proxy + energy_proxy + personnel_proxy + office_proxy + structured_leasing_cost
+        + structured_maintenance_cost + base_maintenance_proxy + marketing_proxy
+        + insurance_proxy + other_opex_proxy
     )
     working_capital = stable_opex_proxy * as_float(costs.get("workingCapitalRate"))
     total_investment = investment_without_wc + working_capital
@@ -809,8 +873,13 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         )
         revenue_net = revenue_gross - output_vat
         ramp = as_float(operations.get("rampY1")) if op_year == 1 else as_float(operations.get("rampY2")) if op_year == 2 else 1.0
-        property_ops = gba * as_float(operations.get("propertyOpsCost")) * 12 / 10000 * ramp
-        energy = gba * as_float(operations.get("energyCost")) * 12 / 10000 * occupancy
+        property_ops_override = max(0.0, as_float(annual_cost_overrides.get("propertyOps")))
+        energy_override = max(0.0, as_float(annual_cost_overrides.get("energy")))
+        base_maintenance_override = max(0.0, as_float(annual_cost_overrides.get("baseMaintenance")))
+        insurance_override = max(0.0, as_float(annual_cost_overrides.get("insurance")))
+        other_opex_override = max(0.0, as_float(annual_cost_overrides.get("otherOpex")))
+        property_ops = property_ops_override * ramp if property_ops_override > 0 else gba * as_float(operations.get("propertyOpsCost")) * 12 / 10000 * ramp
+        energy = energy_override * occupancy if energy_override > 0 else gba * as_float(operations.get("energyCost")) * 12 / 10000 * occupancy
         if staff_cost_mode == "organization" and structured_headcount > 0:
             operations_team = operations_team_cost * ramp
             property_team = property_personnel_cost * ramp
@@ -831,16 +900,18 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         if op_year > 1 and renewal_cycle > 0 and op_year % renewal_cycle == 0:
             renewal_commission = total_monthly_revenue * as_float(operations.get("renewalCommissionMonths")) * occupancy * rent_growth_factor / 10000
         leasing = structured_leasing_cost * ramp + renewal_commission
-        if bool(marketing_budget.get("useFixedAnnual")):
+        if bool(marketing_budget.get("amountMode", True)):
+            marketing = annual_marketing_total + (opening_marketing_total if op_year == 1 else 0.0)
+        elif bool(marketing_budget.get("useFixedAnnual")):
             marketing = max(0.0, as_float(marketing_budget.get("fixedAnnual")))
         else:
             marketing = revenue_net * as_float(operations.get("marketingRate"))
-        rate_based_maintenance = (construction + fitout + equipment + other_engineering + contingency) * as_float(operations.get("repairRate")) * ramp
+        rate_based_maintenance = base_maintenance_override * ramp if base_maintenance_override > 0 else (construction + fitout + equipment + other_engineering + contingency) * as_float(operations.get("repairRate")) * ramp
         fixed_maintenance = structured_maintenance_cost * ramp
         repair = rate_based_maintenance + fixed_maintenance
-        insurance = (construction + fitout + equipment + other_engineering) * as_float(operations.get("insuranceRate"))
+        insurance = insurance_override if insurance_override > 0 else (construction + fitout + equipment + other_engineering) * as_float(operations.get("insuranceRate"))
         bad_debt = revenue_net * (1 - as_float(operations.get("collectionRate")))
-        other_opex = revenue_net * as_float(operations.get("otherOpexRate"))
+        other_opex = other_opex_override if other_opex_override > 0 else revenue_net * as_float(operations.get("otherOpexRate"))
         owner_land_rent, owner_property_rent = owner_rent_components_for_year(op_year)
         owner_rent = owner_land_rent + owner_property_rent
         leasing_adjustment_factor, operations_adjustment_factor, extra_operating_cost = cost_adjustment_for_year(op_year)
@@ -991,29 +1062,58 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_extra_operating_cost = as_float(stable_row.get("extraOperatingCost"))
     stable_operating_cost = as_float(stable_row.get("operatingCost"))
     stable_taxes = as_float(stable_row.get("taxes"))
-    marketing_contingency_rate = max(0.0, as_float(marketing_budget.get("contingencyRate")))
-    marketing_contingency = stable_marketing_cost * marketing_contingency_rate
-    marketing_channel_pool = max(0.0, stable_marketing_cost - marketing_contingency)
-    marketing_weight_total = sum(max(0.0, as_float(item.get("weight"))) for item in marketing_channels)
     marketing_allocation = []
-    for item in marketing_channels:
-        weight = max(0.0, as_float(item.get("weight")))
-        share = safe_div(weight, marketing_weight_total)
-        marketing_allocation.append({
-            "name": str(item.get("name") or "未命名渠道"),
-            "weight": weight,
-            "share": share,
-            "amount": marketing_channel_pool * share,
-            "note": str(item.get("note") or ""),
-        })
-    if marketing_contingency > 0:
-        marketing_allocation.append({
-            "name": "营销机动预备",
-            "weight": 0.0,
-            "share": safe_div(marketing_contingency, stable_marketing_cost),
-            "amount": marketing_contingency,
-            "note": "用于临时活动、媒体补位和不可预见营销支出",
-        })
+    opening_marketing_allocation = []
+    if bool(marketing_budget.get("amountMode", True)):
+        stable_scale = safe_div(stable_marketing_cost, annual_marketing_total) if annual_marketing_total > 0 else 0.0
+        for item in annual_marketing_items:
+            amount = max(0.0, as_float(item.get("amount")))
+            share = safe_div(amount, annual_marketing_total)
+            marketing_allocation.append({
+                "key": str(item.get("key") or ""),
+                "name": str(item.get("name") or "未命名营销项目"),
+                "amount": amount * stable_scale,
+                "weight": share,
+                "share": share,
+                "note": str(item.get("note") or ""),
+            })
+        first_year_marketing_total = annual_marketing_total + opening_marketing_total
+        for item in opening_marketing_items:
+            amount = max(0.0, as_float(item.get("amount")))
+            share = safe_div(amount, first_year_marketing_total)
+            opening_marketing_allocation.append({
+                "key": str(item.get("key") or ""),
+                "name": str(item.get("name") or "未命名开业营销项目"),
+                "amount": amount,
+                "weight": share,
+                "share": share,
+                "note": str(item.get("note") or ""),
+            })
+    else:
+        marketing_contingency_rate = max(0.0, as_float(marketing_budget.get("contingencyRate")))
+        marketing_contingency = stable_marketing_cost * marketing_contingency_rate
+        marketing_channel_pool = max(0.0, stable_marketing_cost - marketing_contingency)
+        marketing_weight_total = sum(max(0.0, as_float(item.get("weight"))) for item in marketing_channels)
+        for item in marketing_channels:
+            weight = max(0.0, as_float(item.get("weight")))
+            share = safe_div(weight, marketing_weight_total)
+            marketing_allocation.append({
+                "key": "",
+                "name": str(item.get("name") or "未命名渠道"),
+                "amount": marketing_channel_pool * share,
+                "weight": share,
+                "share": share,
+                "note": str(item.get("note") or ""),
+            })
+        if marketing_contingency > 0:
+            marketing_allocation.append({
+                "key": "contingency",
+                "name": "营销机动预备",
+                "amount": marketing_contingency,
+                "weight": safe_div(marketing_contingency, stable_marketing_cost),
+                "share": safe_div(marketing_contingency, stable_marketing_cost),
+                "note": "用于临时活动、媒体补位和不可预见营销支出",
+            })
     operating_cost_breakdown = [
         {"name": "物业基础运营", "value": as_float(stable_row.get("propertyOpsCost"))},
         {"name": "公共能耗", "value": as_float(stable_row.get("energyCost"))},
@@ -1034,6 +1134,13 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "年度成本调整额", "value": stable_extra_operating_cost},
         {"name": "税费", "value": stable_taxes},
     ]
+    operating_cost_share_total = sum(max(0.0, as_float(item.get("value"))) for item in operating_cost_breakdown)
+    for item in operating_cost_breakdown:
+        share = safe_div(max(0.0, as_float(item.get("value"))), operating_cost_share_total)
+        item["share"] = share
+        item["weight"] = share
+    first_year_row = next((row for row in annual_rows if row.get("opYear") == 1), {})
+    first_year_marketing_cost = as_float(first_year_row.get("marketingCost"))
     average_rent = safe_div(total_monthly_revenue, total_rent_area)
     average_rent_leasable = safe_div(total_monthly_revenue, gla)
     shops_count = len(shops)
@@ -1088,6 +1195,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableOfficeCost": stable_office_cost,
             "stableLeasingCost": stable_leasing_cost,
             "stableMarketingCost": stable_marketing_cost,
+            "annualMarketingBudget": annual_marketing_total,
+            "openingMarketingItemsCost": opening_marketing_total,
+            "firstYearMarketingCost": first_year_marketing_cost,
+            "marketingAmountMode": bool(marketing_budget.get("amountMode", True)),
             "stableMaintenanceCost": stable_maintenance_cost,
             "stableOwnerRentCost": stable_owner_rent_cost,
             "ownerRentBaseAnnual": owner_rent_base_annual,
@@ -1112,6 +1223,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         "officeBreakdown": office_breakdown,
         "leasingBreakdown": leasing_breakdown,
         "marketingAllocation": marketing_allocation,
+        "openingMarketingAllocation": opening_marketing_allocation,
         "maintenanceBreakdown": maintenance_breakdown,
         "operatingCostBreakdown": operating_cost_breakdown,
         "annual": [row for row in annual_rows if row.get("opYear", 0) > 0],
