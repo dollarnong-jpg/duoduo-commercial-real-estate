@@ -1,7 +1,7 @@
-import './backend.js?v=20261109-rentfix3';
+import './backend.js?v=20261109-rentfix4';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.10.2';
+const APP_VERSION = '1.10.3';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1981,6 +1981,7 @@ function renderShopsStep() {
   }, 0);
   return `
     <div class="callout">${ICONS.info}<div>初期没有铺位明细时，可按楼层填写可租赁面积和平均月租金快速测算；招商方案明确后，再切换为一铺一价测算。</div></div>
+    ${shops.length && mode === 'preliminary' ? `<div class="callout soft shop-detail-notice">${ICONS.info}<div>系统检测到 <strong>${shops.length}</strong> 个铺位明细，但当前仍在“初步测算”。点击“查看一铺一价明细”可查看全部铺位、租金单价和收入统计。</div><button class="btn btn-secondary btn-sm" type="button" id="view-detailed-shops">查看一铺一价明细</button></div>` : ''}
     <div class="mode-switch">
       <button type="button" class="mode-card ${mode === 'preliminary' ? 'active' : ''}" data-shop-mode="preliminary"><strong>初步测算</strong><span>按楼层均价快速判断项目量级</span></button>
       <button type="button" class="mode-card ${mode === 'detailed' ? 'active' : ''}" data-shop-mode="detailed"><strong>一铺一价</strong><span>按铺位、业态和位置条件精细定价</span></button>
@@ -3633,6 +3634,15 @@ function bindShopsStep() {
     renderWorkspace();
     scheduleLivePreview();
   }));
+  document.getElementById('view-detailed-shops')?.addEventListener('click', () => {
+    state.current.model.calculationMode = 'detailed';
+    ensureFloorsFromShops(state.current.model, { replace: true });
+    state.preview = null;
+    state.result = null;
+    state.dirty = true;
+    renderWorkspace();
+    scheduleLivePreview();
+  });
   document.getElementById('add-floor')?.addEventListener('click', () => {
     const floors = state.current.model.floors || (state.current.model.floors = []);
     const names = new Set(floors.map(item => buildingFloorKey(item)));

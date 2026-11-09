@@ -498,6 +498,7 @@ a { color: inherit; }
 .condition-picker input { accent-color: var(--green); }
 .condition-picker em { font-style: normal; color: var(--gold); font-weight: 700; }
 .shop-rent-recognition { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 18px; }
+.shop-detail-notice { justify-content:space-between; }
 .shop-rent-recognition > div { padding:13px 14px; border:1px solid #e3e9e5; border-radius:12px; background:#fffefa; }
 .shop-rent-recognition span { display:block; color:var(--muted); font-size:var(--fs-9); }
 .shop-rent-recognition strong { display:block; margin-top:5px; color:var(--navy); font-size:var(--fs-19); }
