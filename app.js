@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-preopen1';
+import './backend.js?v=20261110-taxstats4';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.20.0';
+const APP_VERSION = '1.21.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -233,7 +233,7 @@ for (const service of PROPERTY_SERVICE_DEFINITIONS) {
 }
 FIELD_FORMULAS['leasingBudget.channelCalculationMode'] = { title: '渠道及代理费核算方式', formula: '按金额：渠道费=直接录入金额；按面积：渠道费=总建筑面积×渠道面积比例×首年月租金单价×月租金倍数÷10000', functions: ['IF','SUM'], role: '用于区分固定代理费和按招商面积及租金计算的渠道佣金。' };
 FIELD_FORMULAS['leasingBudget.channelAreaRatio'] = { title: '渠道招商面积比例', formula: '渠道招商面积 = 项目总建筑面积 × 渠道招商面积比例', functions: ['SUM'], role: '例如项目总建筑面积2,000㎡、渠道比例50%，则渠道招商面积为1,000㎡。' };
-FIELD_FORMULAS['leasingBudget.channelRentPerSqmMonth'] = { title: '渠道首年月租金单价', formula: '首年月租金总额 = 渠道招商面积 × 首年月租金单价 × 月租金倍数', functions: ['SUM'], role: '填0时系统自动采用项目当前平均月租金；也可填写合同约定的渠道租金单价。' };
+FIELD_FORMULAS['leasingBudget.channelRentPerSqmMonth'] = { title: '渠道首年月租金单价', formula: '首年月租金总额 = 渠道招商面积 × 渠道测算租金单价 × 月租金倍数', functions: ['SUM'], role: '默认自动带出项目平均月租金；可直接改为合同约定的渠道租金单价，留空或点击“恢复项目均价”后重新自动取数。' };
 FIELD_FORMULAS['leasingBudget.channelCommissionMonths'] = { title: '渠道月租金倍数', formula: '渠道佣金 = 渠道招商面积 × 首年月租金单价 × 月租金倍数 ÷ 10000', functions: ['SUM'], role: '1倍表示1个月租金，1.5倍表示1.5个月租金。' };
 const FUNCTION_DEFINITIONS = {
   'IF': { syntax: 'IF(条件, 条件成立时的值, 条件不成立时的值)', meaning: '条件判断函数。系统先判断条件，再选择对应的计算结果。', example: 'IF(运营年=1, 首年出租率, 稳定期出租率)', note: '调整出租率、稳定年或计租方式时，首先会检查 IF 的条件和边界。' },
@@ -303,7 +303,7 @@ const FORMULA_GUIDES = {
   },
   leasing: {
     how: '招商费用支持按年或按月录入。渠道及代理费可直接填金额，也可按“项目总建筑面积×渠道面积比例×首年月租金单价×月租金倍数”计算；其他招商项目按年化金额汇总，权重自动反算。',
-    adjust: '渠道面积比例按项目总建筑面积设置；首年月租金单价填0时自动采用项目当前平均租金。首开招商佣金已在投资中单列，如本表为同一笔渠道合同，应避免重复计入。'
+    adjust: '渠道面积比例按项目总建筑面积设置；租金单价默认取项目当前平均租金，并允许人工改写。首开招商佣金已在投资中单列，如本表为同一笔渠道合同，应避免重复计入。'
   },
   marketing: {
     how: '常规年度直接按金额录入营销推广、商业美陈、媒体宣传、会员营销四项，系统汇总年度营销总额；每项自动权重=单项金额÷四项合计。开业第1年再额外加入导视导览和开业美陈两项专项金额。',
@@ -2885,7 +2885,7 @@ function renderOperatingBudgetImport() {
     <div class="section-note">可下载标准模板，填写基础参数、组织架构、物业服务模式、办公预算、招商预算、营销金额和维保预算后一次性导入。权重由系统自动计算。</div>
     <div class="import-zone" id="budget-import-zone">
       <div class="import-icon">${ICONS.excel}</div>
-      <div><h3>运营成本预算模板</h3><p>支持 .xlsx、.xlsm。金额单位为万元/年，工资单位为元/月，比例按百分数填写。</p></div>
+      <div><h3>运营成本预算模板</h3><p>支持 .xlsx、.xlsm。办公预算按“元/期”，招商、营销和维保按“万元”，工资按“元/月”，比例按百分数填写。</p></div>
       <div class="import-actions"><button class="btn btn-secondary" id="download-budget-template">${ICONS.download}<span>下载模板</span></button><button class="btn btn-primary" id="choose-budget-file">${ICONS.upload}<span>导入预算</span></button><input type="file" id="budget-file" accept=".xlsx,.xlsm" hidden></div>
     </div>
     ${state.budgetWarnings.length ? `<div class="warning-list">${state.budgetWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
@@ -3108,21 +3108,21 @@ function renderOfficeBudgetSection(model) {
     { label: '其他办公费用', key: 'otherAnnual', note: '培训、团建及其他行政支出' },
   ];
   const total = items.reduce((sum, item) => sum + Number(officeBudget[item.key] || 0), 0);
-  return `<div class="form-section budget-section">
+  return `<div class="form-section budget-section" data-budget-unit="yuan">
     <div class="section-title">办公及行政费用</div>
-    <div class="section-note">每项可选择“按年录入”或“按月录入”。系统统一换算为年度金额进入成本测算，同时展示月度金额；自动权重按年化金额计算。</div>
+    <div class="section-note">金额按“元”录入，不再要求填写万元。每项可选择按年或按月录入，系统自动换算为元/月和元/年，并在底层换算成万元参与成本测算。</div>
     ${formulaPanel('办公及行政费用月度/年度换算公式', '按年录入：月度金额 = 录入金额 ÷ 12；年度金额 = 录入金额\n按月录入：年度金额 = 录入金额 × 12；月度金额 = 录入金额\n办公行政成本 = 办公室租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他办公费用\n自动权重 = 单项年度金额 ÷ 办公行政成本合计', ['SUM','IF'], '同一项目可以混合使用年度和月度录入。切换周期只改变显示口径，不改变已存的年化总额；随后重新输入金额才会改年化值。')}
     <div class="data-table-wrap budget-table-wrap">
-      <table class="data-table budget-table budget-period-table" data-share-table><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（万元/期）</th><th class="num">月度金额（万元/月）</th><th class="num">年度金额（万元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+      <table class="data-table budget-table budget-period-table" data-share-table data-budget-unit="yuan"><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（元/期）</th><th class="num">月度金额（元/月）</th><th class="num">年度金额（元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
         ${items.map(item => {
           const annual = Number(officeBudget[item.key] || 0);
           const period = budgetInputPeriod(officeBudget, item.key);
           const entered = budgetPeriodAmount(annual, period);
-          return `<tr data-annualized-row data-annual-value="${annual}"><td><strong>${escapeHtml(item.label)}</strong><small class="cost-method-label">金额录入 · 年/月换算</small></td><td><select class="table-select period-select" data-path="officeBudget.inputPeriods.${item.key}" data-type="text" data-budget-period="true">${budgetPeriodOptions(period)}</select></td><td class="num"><input class="table-input" data-path="officeBudget.${item.key}" data-type="number" data-annualize="true" data-period-path="officeBudget.inputPeriods.${item.key}" type="number" step="0.01" value="${roundDisplayValue(entered, 2)}"></td><td class="num"><strong data-budget-monthly>${fmt(annual / 12, 2)}</strong></td><td class="num"><strong data-budget-annual>${fmt(annual, 2)}</strong></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? annual / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
+          return `<tr data-annualized-row data-annual-value="${annual}"><td><strong>${escapeHtml(item.label)}</strong><small class="cost-method-label">金额录入 · 年/月换算</small></td><td><select class="table-select period-select" data-path="officeBudget.inputPeriods.${item.key}" data-type="text" data-budget-period="true">${budgetPeriodOptions(period)}</select></td><td class="num"><input class="table-input" data-path="officeBudget.${item.key}" data-type="number" data-scale="0.0001" data-annualize="true" data-period-path="officeBudget.inputPeriods.${item.key}" type="number" step="1" value="${roundDisplayValue(entered * 10000, 2)}"></td><td class="num"><strong data-budget-monthly>${fmt(annual * 10000 / 12, 2)}</strong></td><td class="num"><strong data-budget-annual>${fmt(annual * 10000, 2)}</strong></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? annual / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
         }).join('')}
       </tbody></table>
     </div>
-    <div class="budget-toolbar"><span>办公及行政费用合计</span><span><strong data-share-total>${fmt(total, 2)}</strong> 万元/年｜月均 <strong data-budget-total-monthly>${fmt(total / 12, 2)}</strong> 万元/月</span></div>
+    <div class="budget-toolbar"><span>办公及行政费用合计</span><span><strong data-share-total>${fmt(total * 10000, 2)}</strong> 元/年｜月均 <strong data-budget-total-monthly>${fmt(total * 10000 / 12, 2)}</strong> 元/月</span></div>
   </div>`;
 }
 
@@ -3144,12 +3144,12 @@ function renderLeasingBudgetSection(model, preview) {
   return `<div class="form-section budget-section">
     <div class="section-title">年度招商费用预算</div>
     <div class="section-note">招商费用可按年或按月录入。渠道及代理费还支持按“渠道招商面积 × 首年月租金 × 月租金倍数”核算；首开招商佣金已在项目投资中单列，如本表为同一笔合同，请勿重复计入。</div>
-    ${formulaPanel('招商费用、月度/年度换算与渠道面积佣金公式', '按年录入：月度金额 = 录入金额 ÷ 12；年度金额 = 录入金额\n按月录入：年度金额 = 录入金额 × 12；月度金额 = 录入金额\n渠道招商面积 = 项目总建筑面积 × 渠道招商面积比例\n渠道及代理费 = 渠道招商面积 × 首年月租金单价 × 月租金倍数 ÷ 10000\n招商费用 = 渠道代理费 + 招商活动 + 招商物料 + 招商差旅 + 招商平台系统 + 其他\n自动权重 = 单项年度金额 ÷ 年度招商预算合计', ['SUM','IF','MOD'], '渠道面积比例按项目总建筑面积设置；首年月租金单价填0时自动采用项目当前平均月租金。月租金倍数示例：1倍=1个月租金，1.5倍=1.5个月租金。')}
+    ${formulaPanel('招商费用、月度/年度换算与渠道面积佣金公式', '按年录入：月度金额 = 录入金额 ÷ 12；年度金额 = 录入金额\n按月录入：年度金额 = 录入金额 × 12；月度金额 = 录入金额\n渠道招商面积 = 项目总建筑面积 × 渠道招商面积比例\n渠道及代理费 = 渠道招商面积 × 渠道测算租金单价 × 月租金倍数 ÷ 10000\n招商费用 = 渠道代理费 + 招商活动 + 招商物料 + 招商差旅 + 招商平台系统 + 其他\n自动权重 = 单项年度金额 ÷ 年度招商预算合计', ['SUM','IF','MOD'], '渠道测算租金单价默认取项目平均月租金，可直接人工调整；点击“恢复项目均价”即可回到自动取数。月租金倍数示例：1倍=1个月租金，1.5倍=1.5个月租金。')}
     <div class="channel-calculation-card">
       <div class="channel-calculation-head"><div><strong>渠道及代理费核算方式</strong><span>按金额直接录入，或按渠道面积和首年月租金自动计算</span></div><select class="select" data-path="leasingBudget.channelCalculationMode" data-type="text" data-channel-mode="true"><option value="amount" ${channel.channelMode === 'amount' ? 'selected' : ''}>直接按金额录入</option><option value="area_rent" ${channel.channelMode === 'area_rent' ? 'selected' : ''}>按渠道面积×首年月租金×倍数</option></select></div>
       ${channel.channelMode === 'area_rent' ? `<div class="channel-calculation-grid">
         <label class="service-control"><span>渠道招商面积比例</span><div class="input-affix compact"><input class="table-input" data-path="leasingBudget.channelAreaRatio" data-type="number" data-scale="0.01" type="number" step="1" value="${roundDisplayValue(channel.areaRatio * 100, 2)}"><span>%</span></div></label>
-        <label class="service-control"><span>首年月租金单价（0=自动）</span><div class="input-affix compact"><input class="table-input" data-path="leasingBudget.channelRentPerSqmMonth" data-type="number" type="number" step="0.01" value="${roundDisplayValue(Number(leasingBudget.channelRentPerSqmMonth || 0), 2)}"><span>元/㎡/月</span></div></label>
+        <label class="service-control"><span>渠道测算租金单价</span><div class="input-affix compact"><input class="table-input" data-path="leasingBudget.channelRentPerSqmMonth" data-type="number" type="number" step="0.01" value="${roundDisplayValue(channel.referenceRent, 2)}" placeholder="默认取项目均价"><span>元/㎡/月</span></div><small class="inline-reset-note">默认取项目均价 <b data-channel-auto-rent>${fmt(channel.averageRent, 2)}</b> 元/㎡/月 <button type="button" class="text-reset" data-reset-channel-rent>恢复项目均价</button></small></label>
         <label class="service-control"><span>首年月租金倍数</span><div class="input-affix compact"><input class="table-input" data-path="leasingBudget.channelCommissionMonths" data-type="number" type="number" step="0.1" value="${roundDisplayValue(Number(leasingBudget.channelCommissionMonths ?? 1), 2)}"><span>个月</span></div></label>
       </div>
       <div class="channel-calculation-results">
@@ -3160,7 +3160,7 @@ function renderLeasingBudgetSection(model, preview) {
       </div>` : `<div class="channel-amount-mode-note">当前按直接金额核算。可在下方渠道及代理费行选择年度或月度录入，系统自动换算月度和年度金额。</div>`}
     </div>
     <div class="data-table-wrap budget-table-wrap">
-      <table class="data-table budget-table budget-period-table" data-share-table><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（万元/期）</th><th class="num">月度金额（万元/月）</th><th class="num">年度金额（万元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+      <table class="data-table budget-table budget-period-table" data-share-table data-budget-unit="yuan"><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（元/期）</th><th class="num">月度金额（元/月）</th><th class="num">年度金额（元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
         ${items.map(item => {
           if (item.key === 'channelFeeAnnual') {
             const enteredCell = channel.channelMode === 'area_rent'
@@ -3302,6 +3302,7 @@ function renderOperatingCostSummary(preview) {
 function refreshShareTables() {
   document.querySelectorAll('[data-share-table]').forEach(table => {
     const rows = [...table.querySelectorAll('tbody tr')];
+    const unitMultiplier = table.dataset.budgetUnit === 'yuan' ? 10000 : 1;
     const values = rows.map(row => {
       if (row.dataset.annualValue != null && row.dataset.annualValue !== '') return Number(row.dataset.annualValue || 0);
       return Number(row.querySelector('input[type="number"]')?.value || 0);
@@ -3313,13 +3314,13 @@ function refreshShareTables() {
       if (row.dataset.annualizedRow != null) row.dataset.annualValue = String(values[index]);
       const monthlyEl = row.querySelector('[data-budget-monthly]');
       const annualEl = row.querySelector('[data-budget-annual]');
-      if (monthlyEl) monthlyEl.textContent = fmt(values[index] / 12, 2);
-      if (annualEl) annualEl.textContent = fmt(values[index], 2);
+      if (monthlyEl) monthlyEl.textContent = fmt(values[index] * unitMultiplier / 12, 2);
+      if (annualEl) annualEl.textContent = fmt(values[index] * unitMultiplier, 2);
     });
     const totalEl = table.closest('.budget-section')?.querySelector('[data-share-total]');
-    if (totalEl) totalEl.textContent = fmt(total, 2);
+    if (totalEl) totalEl.textContent = fmt(total * unitMultiplier, 2);
     const monthlyTotalEl = table.closest('.budget-section')?.querySelector('[data-budget-total-monthly]');
-    if (monthlyTotalEl) monthlyTotalEl.textContent = fmt(total / 12, 2);
+    if (monthlyTotalEl) monthlyTotalEl.textContent = fmt(total * unitMultiplier / 12, 2);
   });
 }
 
@@ -3395,6 +3396,14 @@ function updateChannelPreviewDom(result) {
     const value = values[el.dataset.channelField];
     if (value != null) el.textContent = el.dataset.channelField === 'gba' || el.dataset.channelField === 'channelArea' ? fmtArea(value) : fmt(value, 2);
   });
+  const rentInput = document.querySelector('[data-path="leasingBudget.channelRentPerSqmMonth"]');
+  if (rentInput && rentInput !== document.activeElement) {
+    const override = Number(state.current.model?.leasingBudget?.channelRentPerSqmMonth || 0);
+    const displayedRent = override > 0 ? override : Number(summary.channelRentPerSqmMonth || 0);
+    rentInput.value = roundDisplayValue(displayedRent, 2);
+  }
+  const autoRent = document.querySelector('[data-channel-auto-rent]');
+  if (autoRent) autoRent.textContent = fmt(summary.averageRent || 0, 2);
   const channelRow = document.querySelector('[data-channel-row]');
   if (channelRow) {
     channelRow.dataset.annualValue = String(values.channelFeeAnnual);
@@ -3597,6 +3606,16 @@ function bindOperationsBudgets() {
   });
   document.getElementById('opex-standard-select')?.addEventListener('change', updateOperatingReferenceValues);
   document.getElementById('opex-management-select')?.addEventListener('change', updateOperatingReferenceValues);
+  document.querySelector('[data-reset-channel-rent]')?.addEventListener('click', event => {
+    event.preventDefault();
+    model.leasingBudget ||= {};
+    model.leasingBudget.channelRentPerSqmMonth = 0;
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast('渠道租金单价已恢复为项目均价', 'success');
+  });
   document.querySelectorAll('[data-opex-category]').forEach(input => input.addEventListener('change', updateOperatingReferenceValues));
   document.getElementById('apply-opex-reference')?.addEventListener('click', () => {
     const selections = currentOperatingReferenceSelections();
@@ -4203,9 +4222,100 @@ function renderOperationCostsStep() {
   `;
 }
 
+function taxStatisticsData(result) {
+  const summary = result?.summary || {};
+  const model = result?.model || state.current?.model || {};
+  const stableYear = Number(model.operations?.stableYear || 3);
+  const annual = result?.annual || [];
+  const stableRow = annual.find(row => Number(row.opYear) === stableYear) || [...annual].reverse().find(row => Number(row.opYear) > 0) || {};
+  const stableTaxes = Number(summary.stableTaxes || stableRow.taxes || 0);
+  const stableVatPayable = Number(summary.stableVatPayable || stableRow.vatPayable || 0);
+  const stableIncomeTax = Number(summary.stableIncomeTax || stableRow.incomeTax || 0);
+  const stableCash = Number(summary.stableTaxCashOutflow || (stableVatPayable + stableTaxes + stableIncomeTax));
+  const rows = [
+    { key: 'vatPayable', label: '应纳增值税', basis: '租金、物业费、联营扣点及其他收入；租金类收入已乘出租率', stable: stableVatPayable, cumulative: Number(summary.operationPeriodVatPayable || 0), occupancy: '是' },
+    { key: 'vatSurcharge', label: '城建税及教育附加', basis: '应纳增值税 × 城建税及教育附加合计费率', stable: Number(summary.stableVatSurcharge || stableRow.vatSurcharge || 0), cumulative: Number(summary.operationPeriodVatSurcharge || 0), occupancy: '随增值税' },
+    { key: 'propertyTax', label: '房产税', basis: model.taxes?.propertyTaxMethod === 'value' ? '房产原值 ×（1-扣除比例）× 从价税率' : '不含税租金 × 从租税率；租金已乘出租率', stable: Number(summary.stablePropertyTax || stableRow.propertyTax || 0), cumulative: Number(summary.operationPeriodPropertyTax || 0), occupancy: model.taxes?.propertyTaxMethod === 'value' ? '否' : '是' },
+    { key: 'landUseTax', label: '城镇土地使用税', basis: '占地面积 × 单位土地税额，按年全额计缴', stable: Number(summary.stableLandUseTax || stableRow.landUseTax || 0), cumulative: Number(summary.operationPeriodLandUseTax || 0), occupancy: '否' },
+    { key: 'stampDuty', label: '印花税', basis: '不含税租金收入 × 印花税率；租金已乘出租率', stable: Number(summary.stableStampDuty || stableRow.stampDuty || 0), cumulative: Number(summary.operationPeriodStampDuty || 0), occupancy: '是' },
+    { key: 'localFund', label: '地方基金及附加', basis: '不含税营业收入 × 地方基金/附加以外费率', stable: Number(summary.stableLocalFund || stableRow.localFund || 0), cumulative: Number(summary.operationPeriodLocalFund || 0), occupancy: '是' },
+    { key: 'operatingTaxes', label: '计入NOI的经营税费合计', basis: '房产税 + 土地使用税 + 印花税 + 附加 + 地方基金', stable: stableTaxes, cumulative: Number(summary.operationPeriodTaxes || 0), occupancy: '部分联动' },
+    { key: 'incomeTax', label: '企业所得税', basis: '应纳税所得额 × 所得税率；扣除可结转亏损后计算', stable: stableIncomeTax, cumulative: Number(summary.operationPeriodIncomeTax || 0), occupancy: '间接联动' },
+    { key: 'cashTotal', label: '税费现金支出合计', basis: '应纳增值税 + 计入NOI经营税费 + 企业所得税', stable: stableCash, cumulative: Number(summary.operationPeriodTaxCashOutflow || 0), occupancy: '—' },
+  ];
+  return {
+    summary,
+    model,
+    stableYear,
+    stableOccupancy: Number(summary.stableTaxOccupancy || stableRow.occupancy || model.operations?.stableOccupancy || 0),
+    outputVat: Number(summary.stableOutputVat || stableRow.outputVat || 0),
+    inputVat: Number(summary.stableInputVat || stableRow.inputVat || 0),
+    stableTaxes,
+    stableMonthlyTaxes: Number(summary.stableMonthlyTaxes || stableTaxes / 12),
+    cumulativeOperatingTaxes: Number(summary.operationPeriodTaxes || 0),
+    cumulativeIncomeTax: Number(summary.operationPeriodIncomeTax || 0),
+    cumulativeCash: Number(summary.operationPeriodTaxCashOutflow || 0),
+    rows,
+  };
+}
+
+function updateTaxStatisticsDom(result) {
+  if (!result) return;
+  const data = taxStatisticsData(result);
+  document.querySelectorAll('[data-tax-stat]').forEach(el => {
+    const key = el.dataset.taxStat;
+    const value = {
+      vatPayable: data.rows[0].stable,
+      operatingTaxes: data.stableTaxes,
+      monthlyTaxes: data.stableMonthlyTaxes,
+      cashTotal: data.rows.at(-1).stable,
+      cumulativeTaxes: data.cumulativeOperatingTaxes,
+      cumulativeIncomeTax: data.cumulativeIncomeTax,
+      cumulativeCash: data.cumulativeCash,
+    }[key];
+    if (value != null) el.textContent = fmt(value, 2);
+  });
+  document.querySelectorAll('[data-tax-row]').forEach(el => {
+    const row = data.rows.find(item => item.key === el.dataset.taxRow);
+    if (row) el.textContent = fmt(Number(row[el.dataset.taxField] || 0), 2);
+  });
+  document.querySelectorAll('[data-tax-occupancy]').forEach(el => { el.textContent = fmtPct(data.stableOccupancy); });
+  document.querySelectorAll('[data-tax-vat-output]').forEach(el => { el.textContent = fmt(data.outputVat, 2); });
+  document.querySelectorAll('[data-tax-vat-input]').forEach(el => { el.textContent = fmt(data.inputVat, 2); });
+}
+
+function renderTaxExpenseSummary(preview) {
+  if (!preview?.summary) {
+    return `<div class="form-section"><div class="section-title">税费及规费支出统计</div><div class="admin-empty">完成项目参数并保存计算后，系统将显示稳定年、月均和运营期累计税费。</div></div>`;
+  }
+  const data = taxStatisticsData(preview);
+  return `<div class="form-section tax-expense-section">
+    <div class="section-title">税费及规费支出统计</div>
+    <div class="section-note">下列金额由当前税率、计税方式和出租率自动计算。租金、物业费、联营扣点等收入类税费基数已按稳定期出租率 <strong data-tax-occupancy>${fmtPct(data.stableOccupancy)}</strong> 计算；土地使用税按占地面积全额计缴，不乘出租率。</div>
+    <div class="phase-cost-kpis tax-kpis">
+      <div><span>稳定年应纳增值税</span><strong data-tax-stat="vatPayable">${fmt(data.rows[0].stable, 2)}</strong><em>万元</em></div>
+      <div><span>计入NOI经营税费</span><strong data-tax-stat="operatingTaxes">${fmt(data.stableTaxes, 2)}</strong><em>万元/年</em></div>
+      <div><span>月均经营税费</span><strong data-tax-stat="monthlyTaxes">${fmt(data.stableMonthlyTaxes, 2)}</strong><em>万元/月</em></div>
+      <div class="highlight"><span>稳定年税费现金支出</span><strong data-tax-stat="cashTotal">${fmt(data.rows.at(-1).stable, 2)}</strong><em>万元/年</em></div>
+    </div>
+    <div class="field-help">稳定年销项税 <strong data-tax-vat-output>${fmt(data.outputVat, 2)}</strong> 万元，可抵扣进项税 <strong data-tax-vat-input>${fmt(data.inputVat, 2)}</strong> 万元。应纳增值税属于代收代缴现金流；是否计入利润表应按企业会计和税务口径确认。</div>
+    <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>税种 / 规费</th><th>计征基数与口径</th><th class="num">稳定年（万元）</th><th class="num">月均（万元）</th><th class="num">运营期累计（万元）</th><th>出租率联动</th></tr></thead><tbody>
+      ${data.rows.map(row => `<tr class="${row.key === 'cashTotal' ? 'total-row' : ''}"><td><strong>${escapeHtml(row.label)}</strong></td><td>${escapeHtml(row.basis)}</td><td class="num" data-tax-row="${row.key}" data-tax-field="stable">${fmt(row.stable, 2)}</td><td class="num">${fmt(Number(row.stable || 0) / 12, 2)}</td><td class="num" data-tax-row="${row.key}" data-tax-field="cumulative">${fmt(row.cumulative, 2)}</td><td><span class="tag">${escapeHtml(row.occupancy)}</span></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="phase-cost-kpis" style="margin-top:14px">
+      <div><span>运营期经营税费累计</span><strong data-tax-stat="cumulativeTaxes">${fmt(data.cumulativeOperatingTaxes, 2)}</strong><em>万元</em></div>
+      <div><span>运营期企业所得税累计</span><strong data-tax-stat="cumulativeIncomeTax">${fmt(data.cumulativeIncomeTax, 2)}</strong><em>万元</em></div>
+      <div class="highlight"><span>运营期税费现金支出累计</span><strong data-tax-stat="cumulativeCash">${fmt(data.cumulativeCash, 2)}</strong><em>万元</em></div>
+    </div>
+    <div class="field-help">开发建设阶段的契税、市政基础设施配套费、人防易地建设费等属于建设投资规费，已在“建设投资”页计入资本投入；本表统计运营期实际发生和累计税费。</div>
+  </div>`;
+}
+
 function renderTaxProfitStep() {
+  const preview = state.preview || state.result;
   return `
-    <div class="callout">${ICONS.info}<div>本页只处理税费、融资、折旧和退出假设。项目利润、所得税和现金流会在保存后进入“资本金与回报”页统一展示。</div></div>
+    <div class="callout">${ICONS.info}<div>本页同时展示税费支出统计、税率参数、融资和退出假设。租金类收入税费按项目设定的出租率计算，固定土地税费不随出租率变化。</div></div>
+    ${renderTaxExpenseSummary(preview)}
     <details class="advanced">
       <summary>税费与属地公共费用（高级）</summary>
       <div class="advanced-body">
@@ -5165,6 +5275,7 @@ async function runLivePreview() {
     state.preview = result;
     updateLiveStats();
     updateOperatingPreviewDom(result);
+    updateTaxStatisticsDom(result);
     return result;
   } catch (error) {
     console.warn('实时测算失败', error);

@@ -1183,10 +1183,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     include_land_rent = owner_rent_enabled and owner_rent_lease_type in {"land", "land_and_property"}
     include_property_rent = owner_rent_enabled and owner_rent_lease_type in {"property", "land_and_property"}
     land_pricing_mode = str(owner_rent_config.get("landPricingMode") or "total")
-    land_area = max(0.0, as_float(owner_rent_config.get("landArea")))
+    owner_land_area = max(0.0, as_float(owner_rent_config.get("landArea")))
     land_unit_rent = max(0.0, as_float(owner_rent_config.get("landUnitRent")))
     land_monthly_rent = (
-        land_area * land_unit_rent / 10000 if land_pricing_mode == "unit" else max(0.0, as_float(owner_rent_config.get("landMonthlyRent")))
+        owner_land_area * land_unit_rent / 10000 if land_pricing_mode == "unit" else max(0.0, as_float(owner_rent_config.get("landMonthlyRent")))
     ) if include_land_rent else 0.0
     land_payment_months = max(0.0, as_float(owner_rent_config.get("landPaymentMonths"), 12.0)) if include_land_rent else 0.0
     property_pricing_mode = str(owner_rent_config.get("propertyPricingMode") or "total")
@@ -1520,6 +1520,19 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "extraOperatingCost": extra_operating_cost,
                 "headcount": structured_headcount,
                 "taxes": total_taxes,
+                "outputVat": output_vat,
+                "inputVat": input_vat,
+                "vatPayable": max(0.0, output_vat - input_vat),
+                "propertyTax": property_tax,
+                "propertyTaxBase": property_tax_base,
+                "landUseTax": land_use_tax,
+                "stampDuty": stamp_duty,
+                "vatSurcharge": vat_surcharge,
+                "localFund": local_fund,
+                "incomeTax": income_tax,
+                "totalTaxAndIncomeTax": total_taxes + income_tax,
+                "taxCashOutflow": max(0.0, output_vat - input_vat) + total_taxes + income_tax,
+                "taxOccupancy": occupancy,
                 "noi": noi,
                 "depreciation": annual_depreciation,
                 "interest": interest,
@@ -1563,9 +1576,31 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_extra_operating_cost = as_float(stable_row.get("extraOperatingCost"))
     stable_operating_cost = as_float(stable_row.get("operatingCost"))
     stable_taxes = as_float(stable_row.get("taxes"))
+    stable_output_vat = as_float(stable_row.get("outputVat"))
+    stable_input_vat = as_float(stable_row.get("inputVat"))
+    stable_vat_payable = as_float(stable_row.get("vatPayable"))
+    stable_property_tax = as_float(stable_row.get("propertyTax"))
+    stable_property_tax_base = as_float(stable_row.get("propertyTaxBase"))
+    stable_land_use_tax = as_float(stable_row.get("landUseTax"))
+    stable_stamp_duty = as_float(stable_row.get("stampDuty"))
+    stable_vat_surcharge = as_float(stable_row.get("vatSurcharge"))
+    stable_local_fund = as_float(stable_row.get("localFund"))
+    stable_income_tax = as_float(stable_row.get("incomeTax"))
+    stable_total_tax_and_income_tax = as_float(stable_row.get("totalTaxAndIncomeTax"))
+    stable_tax_occupancy = as_float(stable_row.get("taxOccupancy"))
     operation_rows = [row for row in annual_rows if row.get("opYear", 0) > 0]
     operation_period_operating_cost = sum(as_float(row.get("operatingCost")) for row in operation_rows)
     operation_period_taxes = sum(as_float(row.get("taxes")) for row in operation_rows)
+    operation_period_output_vat = sum(as_float(row.get("outputVat")) for row in operation_rows)
+    operation_period_input_vat = sum(as_float(row.get("inputVat")) for row in operation_rows)
+    operation_period_vat_payable = sum(as_float(row.get("vatPayable")) for row in operation_rows)
+    operation_period_property_tax = sum(as_float(row.get("propertyTax")) for row in operation_rows)
+    operation_period_land_use_tax = sum(as_float(row.get("landUseTax")) for row in operation_rows)
+    operation_period_stamp_duty = sum(as_float(row.get("stampDuty")) for row in operation_rows)
+    operation_period_vat_surcharge = sum(as_float(row.get("vatSurcharge")) for row in operation_rows)
+    operation_period_local_fund = sum(as_float(row.get("localFund")) for row in operation_rows)
+    operation_period_income_tax = sum(as_float(row.get("incomeTax")) for row in operation_rows)
+    operation_period_total_tax_and_income_tax = sum(as_float(row.get("totalTaxAndIncomeTax")) for row in operation_rows)
     operation_period_interest = sum(as_float(row.get("interest")) for row in operation_rows)
     preopening_investment = total_investment
     full_cycle_cost_excluding_financing = preopening_investment + operation_period_operating_cost + operation_period_taxes
@@ -1830,6 +1865,17 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "preOpeningCommission": commission,
             "operationPeriodOperatingCost": operation_period_operating_cost,
             "operationPeriodTaxes": operation_period_taxes,
+            "operationPeriodOutputVat": operation_period_output_vat,
+            "operationPeriodInputVat": operation_period_input_vat,
+            "operationPeriodVatPayable": operation_period_vat_payable,
+            "operationPeriodPropertyTax": operation_period_property_tax,
+            "operationPeriodLandUseTax": operation_period_land_use_tax,
+            "operationPeriodStampDuty": operation_period_stamp_duty,
+            "operationPeriodVatSurcharge": operation_period_vat_surcharge,
+            "operationPeriodLocalFund": operation_period_local_fund,
+            "operationPeriodIncomeTax": operation_period_income_tax,
+            "operationPeriodTotalTaxAndIncomeTax": operation_period_total_tax_and_income_tax,
+            "operationPeriodTaxCashOutflow": operation_period_vat_payable + operation_period_taxes + operation_period_income_tax,
             "operationPeriodInterest": operation_period_interest,
             "fullCycleCostExcludingFinancing": full_cycle_cost_excluding_financing,
             "fullCycleCashCostIncludingFinancing": full_cycle_cash_cost_including_financing,
@@ -1900,6 +1946,21 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableExtraOperatingCost": stable_extra_operating_cost,
             "stableOperatingCost": stable_operating_cost,
             "stableTaxes": stable_taxes,
+            "stableOutputVat": stable_output_vat,
+            "stableInputVat": stable_input_vat,
+            "stableVatPayable": stable_vat_payable,
+            "stablePropertyTax": stable_property_tax,
+            "stablePropertyTaxBase": stable_property_tax_base,
+            "stableLandUseTax": stable_land_use_tax,
+            "stableStampDuty": stable_stamp_duty,
+            "stableVatSurcharge": stable_vat_surcharge,
+            "stableLocalFund": stable_local_fund,
+            "stableIncomeTax": stable_income_tax,
+            "stableTotalTaxAndIncomeTax": stable_total_tax_and_income_tax,
+            "stableTaxCashOutflow": stable_vat_payable + stable_taxes + stable_income_tax,
+            "stableTaxOccupancy": stable_tax_occupancy,
+            "stableMonthlyTaxes": stable_taxes / 12,
+            "stableMonthlyTaxAndIncomeTax": stable_total_tax_and_income_tax / 12,
             "noiYield": safe_div(stable_noi, total_investment),
             "projectIrr": irr_project,
             "equityIrr": irr_equity,

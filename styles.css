@@ -506,6 +506,9 @@ a { color: inherit; }
 .benchmark-source summary { cursor: pointer; color: var(--green); font-weight: 700; }
 .benchmark-source p { margin: 8px 0 0; line-height: 1.6; }
 .range-hint { display: block; margin-top: 4px; color: var(--muted); font-size: var(--fs-8); line-height: 1.35; white-space: nowrap; }
+.tax-expense-section .data-table td { vertical-align: top; }
+.tax-expense-section .data-table .total-row td { background: #eef5f1; border-top: 2px solid #b9d0c5; font-weight: 700; }
+.tax-kpis { margin: 12px 0; }
 .benchmark-row-source { display: block; margin-top: 3px; color: var(--muted); font-size: var(--fs-8); font-weight: 400; }
 .category-rules-table .table-select { border: 1px solid #e1dcd3; border-radius: 6px; background: #fffdf8; color: var(--input); padding: 6px 7px; font-size: var(--fs-9); }
 .category-rules-table .table-input { min-width: 84px; }
@@ -561,6 +564,10 @@ a { color: inherit; }
 .service-control > span, .service-metric > span { display:block; margin-bottom:5px; color:var(--muted); font-size:var(--fs-8); }
 .service-control .table-select, .service-control .table-input { width:100%; min-width:0; }
 .service-control .input-affix.compact span { right:9px; }
+.inline-reset-note { display:block; margin-top:5px; color:var(--muted); font-size:var(--fs-8); line-height:1.35; }
+.inline-reset-note b { color:var(--ink); font-weight:700; }
+.text-reset { padding:0; margin-left:4px; border:0; background:transparent; color:var(--accent); font:inherit; font-weight:700; cursor:pointer; }
+.text-reset:hover { text-decoration:underline; }
 .service-metric strong { color:var(--navy); font-size:var(--fs-13); }
 .service-metric em { margin-left:3px; color:var(--muted); font-size:var(--fs-8); font-style:normal; }
 .service-metric small { display:block; margin-top:4px; color:var(--muted); font-size:var(--fs-8); }
