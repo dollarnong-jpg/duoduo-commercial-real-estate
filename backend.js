@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-structure1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-sharing1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2196,6 +2196,100 @@ async function handleApi(path, init) {
     return fileResponse(workbookBlob(operatingBudgetTemplate()), '商业地产运营成本预算导入模板.xlsx', XLSX_MIME);
   }
 
+  if (pathname.endsWith('/api/share/users') && method === 'GET') {
+    if (user.isCloud) {
+      try {
+        const token = await cloudAccessToken();
+        const rows = await cloudJSON('/rest/v1/profiles?status=eq.approved&select=id,username,display_name,status&order=display_name.asc', { token });
+        return jsonResponse({ users: (Array.isArray(rows) ? rows : []).filter(item => item.id !== user.id).map(item => ({ id: item.id, username: item.username, displayName: item.display_name || item.username })) });
+      } catch (error) {
+        return jsonResponse({ users: [], warning: '当前云端权限不支持直接读取用户目录，可使用项目分享码发送。' });
+      }
+    }
+    const users = await ensureUsers();
+    return jsonResponse({ users: Object.entries(users).filter(([username, item]) => username !== user.username && (!item.status || item.status === 'approved')).map(([username, item]) => ({ id: username, username, displayName: item.displayName || username })) });
+  }
+
+  const shareMatch = pathname.match(/\/api\/projects\/([0-9a-f-]{8,64})\/share$/i);
+  if (shareMatch && method === 'POST') {
+    const body = await requestJSON(init);
+    const sourceId = shareMatch[1];
+    const recipientUsername = String(body.recipientUsername || '').trim();
+    const recipientId = String(body.recipientId || recipientUsername).trim();
+    const note = String(body.note || '').trim();
+    if (!recipientId || recipientId === user.id || recipientUsername === user.username) return jsonResponse({ error: '请选择其他已审核用户作为接收方' }, 400);
+    let source = null;
+    if (user.isCloud) {
+      const token = await cloudAccessToken();
+      const rows = await cloudJSON(`/rest/v1/projects?id=eq.${encodeURIComponent(sourceId)}&user_id=eq.${encodeURIComponent(user.id)}&select=id,user_id,name,model,created_at,updated_at`, { token });
+      source = Array.isArray(rows) && rows[0] ? cloudProject(rows[0]) : null;
+    } else {
+      source = getProjects(user.username).find(item => item.id === sourceId) || null;
+    }
+    if (!source) return jsonResponse({ error: '项目不存在或无权分享' }, 404);
+    const sourceName = source.model?.project?.name || source.name || '未命名商业项目';
+    const sharedModel = await normalizeModel(JSON.parse(JSON.stringify(source.model || {})));
+    sharedModel.shareMeta = { sourceProjectId: sourceId, sourceUsername: user.username, sourceDisplayName: user.displayName || user.username, sharedAt: new Date().toISOString(), note };
+    sharedModel.project.name = `${sourceName} · ${user.displayName || user.username}分享`;
+    if (user.isCloud) {
+      try {
+        const token = await cloudAccessToken();
+        const rows = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at', {
+          method: 'POST', token,
+          body: { user_id: recipientId, name: sharedModel.project.name, model: sharedModel },
+          headers: { Prefer: 'return=representation' },
+        });
+        if (!Array.isArray(rows) || !rows[0]) throw new Error('直接投递失败');
+        return jsonResponse({ direct: true, project: cloudProject(rows[0]) });
+      } catch (error) {
+        return jsonResponse({ error: '云端项目权限未开放直接投递到对方账户，请使用项目分享码发送。', code: 'SHARE_REQUIRES_CODE' }, 403);
+      }
+    }
+    const targetUsers = await ensureUsers();
+    const target = targetUsers[recipientUsername];
+    if (!target || (target.status && target.status !== 'approved')) return jsonResponse({ error: '接收用户不存在或尚未通过审核' }, 404);
+    const now = isoNow();
+    const sharedProject = { id: crypto.randomUUID(), model: sharedModel, createdAt: now, updatedAt: now };
+    const targetProjects = getProjects(recipientUsername);
+    targetProjects.unshift(sharedProject);
+    saveProjects(recipientUsername, targetProjects);
+    return jsonResponse({ direct: true, project: sharedProject });
+  }
+
+  const duplicateMatch = pathname.match(/\/api\/projects\/([0-9a-f-]{8,64})\/duplicate$/i);
+  if (duplicateMatch && method === 'POST') {
+    const sourceId = duplicateMatch[1];
+    let source = null;
+    if (user.isCloud) {
+      const token = await cloudAccessToken();
+      const rows = await cloudJSON(`/rest/v1/projects?id=eq.${encodeURIComponent(sourceId)}&user_id=eq.${encodeURIComponent(user.id)}&select=id,user_id,name,model,created_at,updated_at`, { token });
+      source = Array.isArray(rows) && rows[0] ? cloudProject(rows[0]) : null;
+    } else {
+      source = getProjects(user.username).find(item => item.id === sourceId) || null;
+    }
+    if (!source) return jsonResponse({ error: '项目不存在或无权复制' }, 404);
+    const duplicateModel = await normalizeModel(JSON.parse(JSON.stringify(source.model || {})));
+    duplicateModel.project.name = `${source.model?.project?.name || source.name || '未命名商业项目'} · 方案副本`;
+    let project;
+    if (user.isCloud) {
+      const token = await cloudAccessToken();
+      const rows = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at', {
+        method: 'POST', token,
+        body: { user_id: user.id, name: duplicateModel.project.name, model: duplicateModel },
+        headers: { Prefer: 'return=representation' },
+      });
+      if (!Array.isArray(rows) || !rows[0]) throw new Error('项目副本创建失败');
+      project = cloudProject(rows[0]);
+    } else {
+      const now = isoNow();
+      project = { id: crypto.randomUUID(), model: duplicateModel, createdAt: now, updatedAt: now };
+      const rows = getProjects(user.username);
+      rows.unshift(project);
+      saveProjects(user.username, rows);
+    }
+    return jsonResponse({ project, result: await calculate(duplicateModel, false) });
+  }
+
   if (pathname.endsWith('/api/projects') && method === 'GET') {
     const projects = [];
     if (user.isCloud) {
@@ -2315,7 +2409,7 @@ window.fetch = async function duoduoFetch(input, init = {}) {
     const fastEndpoints = [
       '/api/login', '/api/register', '/api/logout', '/api/me', '/api/health',
       '/api/geocode', '/api/reverse-geocode', '/api/market-analysis',
-      '/api/admin/users', '/api/admin/audit',
+      '/api/admin/users', '/api/admin/audit', '/api/share/users',
     ];
     const fastRequest = fastEndpoints.some(path => url.pathname.endsWith(path)) || /\/api\/admin\/users\/[0-9a-f-]+\/status$/i.test(url.pathname);
     const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|market-comps)$/.test(url.pathname) || /\/export\/xlsx$/.test(url.pathname);

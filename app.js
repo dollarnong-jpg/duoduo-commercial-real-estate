@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-structure1';
+import './backend.js?v=20261110-sharing1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -457,6 +457,9 @@ const ICONS = {
   locate: '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   users: '<svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 20c.4-4 2.2-6 5.5-6s5.1 2 5.5 6M16 5.5a3 3 0 0 1 0 5.8M16.5 14.2c2.4.3 3.7 2.2 4 5.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  share: '<svg viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="2.5" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="12" r="2.5" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="19" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5" stroke="currentColor" stroke-width="1.6"/></svg>',
+  compare: '<svg viewBox="0 0 24 24" fill="none"><path d="M4 6h7v12H4zM13 6h7v12h-7zM7.5 3v18M16.5 3v18" stroke="currentColor" stroke-width="1.5"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="11" height="12" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M16 8V4H5v12h3" stroke="currentColor" stroke-width="1.6"/></svg>',
 };
 
 const state = {
@@ -1275,16 +1278,32 @@ function renderProjectList() {
         <h1>项目工作台</h1>
         <p>从项目基础信息开始，按步骤完成成本、铺位和运营测算。${storageCopy}</p>
       </div>
-      <button class="btn btn-primary" id="new-project-btn">${ICONS.plus}<span>新建测算项目</span></button>
+      <div class="project-intro-actions"><button class="btn btn-secondary" id="compare-projects-btn">${ICONS.compare}<span>方案对比</span></button><button class="btn btn-secondary" id="import-share-btn">${ICONS.download}<span>接收项目</span></button><button class="btn btn-primary" id="new-project-btn">${ICONS.plus}<span>新建测算项目</span></button></div>
     </div>
     ${state.projects.length ? `<div class="project-grid">${cards}${newProjectCard()}</div>` : emptyProjectState()}`;
   shell(content, 'projects', false);
   document.getElementById('new-project-btn')?.addEventListener('click', openNewProjectModal);
+  document.getElementById('compare-projects-btn')?.addEventListener('click', openCompareProjectsModal);
+  document.getElementById('import-share-btn')?.addEventListener('click', openImportShareModal);
   document.getElementById('new-project-card')?.addEventListener('click', openNewProjectModal);
   document.getElementById('empty-new-project')?.addEventListener('click', openNewProjectModal);
   document.querySelectorAll('[data-project-id]').forEach(card => card.addEventListener('click', event => {
-    if (event.target.closest('[data-delete-project]')) return;
+    if (event.target.closest('[data-delete-project], [data-share-project], [data-duplicate-project]')) return;
     openProject(card.dataset.projectId);
+  }));
+  document.querySelectorAll('[data-share-project]').forEach(btn => btn.addEventListener('click', event => {
+    event.stopPropagation();
+    openShareProjectModal(btn.dataset.shareProject);
+  }));
+  document.querySelectorAll('[data-duplicate-project]').forEach(btn => btn.addEventListener('click', async event => {
+    event.stopPropagation();
+    setBusy(true);
+    try {
+      const payload = await api(`/api/projects/${btn.dataset.duplicateProject}/duplicate`, { method: 'POST' });
+      await loadProjects();
+      renderProjectList();
+      toast(`已创建${payload.project?.model?.project?.name || '方案副本'}`, 'success');
+    } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
   }));
   document.querySelectorAll('[data-delete-project]').forEach(btn => btn.addEventListener('click', async event => {
     event.stopPropagation();
@@ -1296,6 +1315,256 @@ function renderProjectList() {
       await loadProjects(); renderProjectList(); toast('项目已删除', 'success');
     } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
   }));
+}
+
+function encodeProjectShareCode(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = '';
+  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+  return `DDPROJECT1.${btoa(binary)}`;
+}
+
+function decodeProjectShareCode(code) {
+  const clean = String(code || '').trim();
+  if (!clean.startsWith('DDPROJECT1.')) throw new Error('分享码格式不正确');
+  const binary = atob(clean.slice('DDPROJECT1.'.length));
+  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+  const payload = JSON.parse(new TextDecoder().decode(bytes));
+  if (!payload?.project?.model?.project) throw new Error('分享码中没有有效项目数据');
+  return payload;
+}
+
+async function copyTextValue(text) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
+}
+
+async function openShareProjectModal(projectId) {
+  setBusy(true);
+  try {
+    const [payload, userPayload] = await Promise.all([
+      api(`/api/projects/${projectId}`),
+      api('/api/share/users').catch(error => ({ users: [], warning: error.message })),
+    ]);
+    const project = payload.project;
+    const model = payload.result?.model || project.model;
+    const projectName = model?.project?.name || project.name || '未命名项目';
+    const shareCode = encodeProjectShareCode({
+      version: 1,
+      sourceUsername: state.user?.username || '',
+      sourceDisplayName: state.user?.displayName || state.user?.username || '',
+      sharedAt: new Date().toISOString(),
+      project: { name: projectName, model },
+    });
+    const users = userPayload.users || [];
+    modalRegion.innerHTML = `
+      <div class="modal-backdrop" id="share-project-backdrop">
+        <div class="modal share-project-modal">
+          <div class="modal-head"><div><span class="eyebrow">Project transfer</span><h2>发送项目</h2><p>${escapeHtml(projectName)} · 完整发送测算参数和铺位数据</p></div><button class="modal-close" id="share-project-close">×</button></div>
+          <div class="modal-body share-project-body">
+            <div class="share-option-card">
+              <div class="share-option-head"><strong>发送给系统内已审核用户</strong><span>对方收到的是独立副本，不会修改您的原项目。</span></div>
+              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>发送项目</span></button></div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前没有其他已审核用户。请先让对方注册并通过审核，或使用下方项目分享码。')}</div>`}
+              <div id="share-direct-status" class="share-direct-status"></div>
+            </div>
+            <div class="share-divider"><span>或使用跨账号项目分享码</span></div>
+            <div class="share-option-card share-code-card">
+              <div class="share-option-head"><strong>复制项目分享码发送给B用户</strong><span>B在“接收项目”中粘贴后，系统会生成完整项目副本。分享码包含测算参数，不包含账号密码。</span></div>
+              <textarea class="share-code-text" id="share-code-text" readonly>${escapeHtml(shareCode)}</textarea>
+              <div class="share-code-actions"><button class="btn btn-secondary" id="copy-share-code">${ICONS.copy}<span>复制分享码</span></button><span id="copy-share-status"></span></div>
+            </div>
+          </div>
+          <div class="modal-foot"><span class="admin-readonly-note">建议发送后由接收方另存为独立方案，再基于同一项目进行对比。</span><button class="btn btn-secondary" id="share-project-done">关闭</button></div>
+        </div>
+      </div>`;
+    const close = () => { modalRegion.innerHTML = ''; };
+    document.getElementById('share-project-close').addEventListener('click', close);
+    document.getElementById('share-project-done').addEventListener('click', close);
+    document.getElementById('share-project-backdrop').addEventListener('click', event => { if (event.target.id === 'share-project-backdrop') close(); });
+    document.getElementById('copy-share-code').addEventListener('click', async () => {
+      await copyTextValue(shareCode);
+      document.getElementById('copy-share-status').textContent = '已复制';
+    });
+    document.getElementById('send-project-direct')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const select = document.getElementById('share-recipient');
+      const option = select.selectedOptions[0];
+      const status = document.getElementById('share-direct-status');
+      button.disabled = true;
+      status.className = 'share-direct-status';
+      status.textContent = '正在发送项目副本…';
+      try {
+        await api(`/api/projects/${projectId}/share`, {
+          method: 'POST',
+          body: {
+            recipientId: select.value,
+            recipientUsername: option?.dataset.username || '',
+            note: document.getElementById('share-note').value.trim(),
+          },
+        });
+        status.classList.add('success');
+        status.textContent = `已发送给 ${option?.textContent || '接收用户'}，对方登录后可在项目工作台查看副本。`;
+      } catch (error) {
+        status.classList.add('warning');
+        status.textContent = `${error.message} 可直接复制下方项目分享码发送。`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+function openImportShareModal() {
+  modalRegion.innerHTML = `
+    <div class="modal-backdrop" id="import-share-backdrop">
+      <div class="modal import-share-modal">
+        <div class="modal-head"><div><span class="eyebrow">Import shared project</span><h2>接收项目</h2><p>粘贴其他用户发送的项目分享码，系统将生成独立副本。</p></div><button class="modal-close" id="import-share-close">×</button></div>
+        <form id="import-share-form">
+          <div class="modal-body">
+            <div class="field"><label>项目分享码</label><textarea class="share-code-text" name="shareCode" required placeholder="粘贴 DDPROJECT1. 开头的分享码"></textarea></div>
+            <div id="import-share-status" class="share-direct-status"></div>
+          </div>
+          <div class="modal-foot"><button class="btn btn-secondary" type="button" id="import-share-cancel">取消</button><button class="btn btn-primary" type="submit">${ICONS.download}<span>生成项目副本</span></button></div>
+        </form>
+      </div>
+    </div>`;
+  const close = () => { modalRegion.innerHTML = ''; };
+  document.getElementById('import-share-close').addEventListener('click', close);
+  document.getElementById('import-share-cancel').addEventListener('click', close);
+  document.getElementById('import-share-backdrop').addEventListener('click', event => { if (event.target.id === 'import-share-backdrop') close(); });
+  document.getElementById('import-share-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const status = document.getElementById('import-share-status');
+    try {
+      const payload = decodeProjectShareCode(new FormData(event.currentTarget).get('shareCode'));
+      status.className = 'share-direct-status';
+      status.textContent = '正在生成项目副本…';
+      const model = payload.project.model;
+      model.shareMeta = { importedFrom: payload.sourceUsername || '', importedFromName: payload.sourceDisplayName || '', importedAt: new Date().toISOString() };
+      model.project.name = `${payload.project.name || model.project.name || '未命名项目'} · ${payload.sourceDisplayName || payload.sourceUsername || '用户'}分享`;
+      const result = await api('/api/projects', { method: 'POST', body: { name: model.project.name, model } });
+      await loadProjects();
+      close();
+      renderProjectList();
+      toast(`已接收项目：${result.project?.model?.project?.name || model.project.name}`, 'success');
+    } catch (error) {
+      status.className = 'share-direct-status warning';
+      status.textContent = error.message;
+    }
+  });
+}
+
+function compareMetricDefinitions() {
+  return [
+    { key: 'totalInvestment', label: '项目总投资', unit: '万元', better: 'lower' },
+    { key: 'stableRevenue', label: '稳定期营业收入', unit: '万元/年', better: 'higher' },
+    { key: 'stableNoi', label: '稳定期NOI', unit: '万元/年', better: 'higher' },
+    { key: 'noiYield', label: 'NOI回报率', percent: true, better: 'higher' },
+    { key: 'projectIrr', label: '项目IRR', percent: true, better: 'higher' },
+    { key: 'projectNpv', label: '项目NPV', unit: '万元', better: 'higher' },
+    { key: 'staticPayback', label: '静态回收期', unit: '年', better: 'lower' },
+    { key: 'averageRent', label: '平均月租金', unit: '元/㎡/月', better: 'higher' },
+    { key: 'investmentPerGba', label: '单位建筑面积投资', unit: '元/㎡', better: 'lower' },
+    { key: 'stableStaffCost', label: '人员及服务成本', unit: '万元/年', better: 'lower' },
+    { key: 'stableLeasingCost', label: '招商及租赁费用', unit: '万元/年', better: 'lower' },
+    { key: 'stableMarketingCost', label: '营销费用', unit: '万元/年', better: 'lower' },
+    { key: 'annualOutsourcedManagementFee', label: '第三方物业综合管理费', unit: '万元/年', better: 'lower' },
+  ];
+}
+
+function comparisonValue(summary, metric) {
+  const value = Number(summary?.[metric.key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function compareProjectSummaries(projectA, projectB) {
+  const a = projectA.summary || {};
+  const b = projectB.summary || {};
+  const metrics = compareMetricDefinitions().map(metric => {
+    const va = comparisonValue(a, metric);
+    const vb = comparisonValue(b, metric);
+    const delta = va == null || vb == null ? null : vb - va;
+    const pct = va == null || vb == null || Math.abs(va) < 0.0001 ? null : delta / Math.abs(va);
+    let winner = 'tie';
+    if (delta != null && Math.abs(delta) > 0.0001) winner = metric.better === 'higher' ? (vb > va ? 'B' : 'A') : (vb < va ? 'B' : 'A');
+    return { ...metric, a: va, b: vb, delta, pct, winner };
+  });
+  const winsA = metrics.filter(item => item.winner === 'A').length;
+  const winsB = metrics.filter(item => item.winner === 'B').length;
+  const strengthsA = metrics.filter(item => item.winner === 'A').slice(0, 4).map(item => item.label);
+  const strengthsB = metrics.filter(item => item.winner === 'B').slice(0, 4).map(item => item.label);
+  const weaknessesA = metrics.filter(item => item.winner === 'B').slice(0, 4).map(item => item.label);
+  const weaknessesB = metrics.filter(item => item.winner === 'A').slice(0, 4).map(item => item.label);
+  const conclusions = [];
+  if (winsA === 0 && winsB === 0) conclusions.push('两个方案的核心指标完全一致，可能尚未形成实质方案差异。建议修改租金、成本、面积、服务模式或融资假设后再比较。');
+  else if (winsA === winsB) conclusions.push('两个方案在不同指标上各有优势，不能仅凭单项指标判断优劣，应结合企业投资门槛和经营策略。');
+  else conclusions.push(`${winsA > winsB ? '方案A' : '方案B'}在 ${Math.max(winsA, winsB)} 项核心指标上占优，综合表现相对更好。`);
+  if (metrics.find(item => item.key === 'totalInvestment')?.winner === 'A') conclusions.push('方案A投资更省，但需同时检查其NOI、IRR和NPV是否因压缩投入而下降。');
+  if (metrics.find(item => item.key === 'totalInvestment')?.winner === 'B') conclusions.push('方案B投资更高，应重点判断新增投入是否带来足够的NOI、NPV和IRR提升。');
+  const rentWinner = metrics.find(item => item.key === 'averageRent')?.winner;
+  if (rentWinner && rentWinner !== 'tie') conclusions.push(`租金较高的是${rentWinner}方案，需核对其租金假设是否有市场样本和招商落地计划支撑。`);
+  if (Math.abs(Number(a.grossFloorArea || 0) - Number(b.grossFloorArea || 0)) > 1) conclusions.push('两个方案面积规模不同，绝对金额不宜直接比较，建议优先看单位投资、NOI回报率、IRR和回收期。');
+  return { a, b, metrics, winsA, winsB, strengthsA, strengthsB, weaknessesA, weaknessesB, conclusions };
+}
+
+function formatComparisonValue(metric, value) {
+  if (value == null) return '—';
+  return metric.percent ? fmtPct(value) : `${fmt(value, 2)}${metric.unit ? ` ${metric.unit}` : ''}`;
+}
+
+function openCompareProjectsModal() {
+  if (state.projects.length < 2) {
+    toast('至少需要两个项目或方案才能对比。可以先复制一个方案，或接收其他用户分享的项目。', 'error');
+    return;
+  }
+  const options = state.projects.map(project => {
+    const name = project.summary?.projectName || project.model?.project?.name || project.name || '未命名项目';
+    return `<option value="${project.id}">${escapeHtml(name)}</option>`;
+  }).join('');
+  modalRegion.innerHTML = `
+    <div class="modal-backdrop" id="compare-projects-backdrop">
+      <div class="modal compare-projects-modal">
+        <div class="modal-head"><div><span class="eyebrow">Scenario comparison</span><h2>方案对比与优劣分析</h2><p>选择两个项目或同一项目的不同方案，系统自动比较投资、租金、成本、NOI、IRR和NPV。</p></div><button class="modal-close" id="compare-projects-close">×</button></div>
+        <div class="modal-body">
+          <div class="compare-select-grid"><label>方案A<select class="select" id="compare-project-a">${options}</select></label><label>方案B<select class="select" id="compare-project-b">${options}</select></label><button class="btn btn-primary" id="run-project-compare">${ICONS.compare}<span>开始对比</span></button></div>
+          <div id="compare-results"></div>
+        </div>
+        <div class="modal-foot"><button class="btn btn-secondary" id="compare-projects-done">关闭</button></div>
+      </div>
+    </div>`;
+  const close = () => { modalRegion.innerHTML = ''; };
+  const selectA = document.getElementById('compare-project-a');
+  const selectB = document.getElementById('compare-project-b');
+  selectB.selectedIndex = Math.min(1, state.projects.length - 1);
+  document.getElementById('compare-projects-close').addEventListener('click', close);
+  document.getElementById('compare-projects-done').addEventListener('click', close);
+  document.getElementById('compare-projects-backdrop').addEventListener('click', event => { if (event.target.id === 'compare-projects-backdrop') close(); });
+  document.getElementById('run-project-compare').addEventListener('click', () => {
+    if (selectA.value === selectB.value) {
+      toast('请选择两个不同的项目或方案', 'error');
+      return;
+    }
+    const projectA = state.projects.find(item => item.id === selectA.value);
+    const projectB = state.projects.find(item => item.id === selectB.value);
+    const comparison = compareProjectSummaries(projectA, projectB);
+    const nameA = projectA.summary?.projectName || projectA.model?.project?.name || '方案A';
+    const nameB = projectB.summary?.projectName || projectB.model?.project?.name || '方案B';
+    document.getElementById('compare-results').innerHTML = `
+      <div class="compare-summary-head"><div><span>A</span><strong>${escapeHtml(nameA)}</strong></div><div class="compare-vs">VS</div><div><span>B</span><strong>${escapeHtml(nameB)}</strong></div></div>
+      <div class="compare-table-wrap"><table class="data-table compare-table"><thead><tr><th>指标</th><th class="num">方案A</th><th class="num">方案B</th><th class="num">B−A</th><th>优势</th></tr></thead><tbody>${comparison.metrics.map(metric => `<tr><td>${escapeHtml(metric.label)}</td><td class="num">${formatComparisonValue(metric, metric.a)}</td><td class="num">${formatComparisonValue(metric, metric.b)}</td><td class="num ${metric.delta == null ? '' : metric.delta >= 0 ? 'pos' : 'neg'}">${metric.delta == null ? '—' : metric.percent ? fmtPct(metric.delta) : `${fmt(metric.delta, 2)}${metric.unit ? ` ${metric.unit}` : ''}`}</td><td>${metric.winner === 'tie' ? '接近' : `<span class="compare-winner ${metric.winner === 'A' ? 'a' : 'b'}">${metric.winner}</span>`}</td></tr>`).join('')}</tbody></table></div>
+      <div class="compare-insight-grid"><div class="compare-insight-card"><h3>方案A · ${comparison.winsA}项占优</h3><p><strong>优势：</strong>${comparison.strengthsA.join('、') || '暂无'}</p><p><strong>需关注：</strong>${comparison.weaknessesA.join('、') || '暂无'}</p></div><div class="compare-insight-card"><h3>方案B · ${comparison.winsB}项占优</h3><p><strong>优势：</strong>${comparison.strengthsB.join('、') || '暂无'}</p><p><strong>需关注：</strong>${comparison.weaknessesB.join('、') || '暂无'}</p></div></div>
+      <div class="compare-conclusion"><h3>系统分析结论</h3>${comparison.conclusions.map(text => `<p>• ${escapeHtml(text)}</p>`).join('')}</div>`;
+  });
+  document.getElementById('run-project-compare').click();
 }
 
 function newProjectCard() {
@@ -1310,16 +1579,19 @@ function projectCard(project) {
   const s = project.summary || {};
   const status = s.status || '待完善';
   const developmentLabel = DEVELOPMENT_TYPE_LABELS[s.developmentType] || '';
+  const shareMeta = project.model?.shareMeta || {};
+  const sharedFrom = shareMeta.sourceDisplayName || shareMeta.importedFromName || shareMeta.sourceUsername || shareMeta.importedFrom;
   return `<article class="project-card" data-project-id="${project.id}">
     <div class="project-card-status"><span>●</span>${escapeHtml(status)}</div>
     <h3>${escapeHtml(s.projectName || project.model?.project?.name || '未命名项目')}</h3>
     <div class="project-location">${escapeHtml(s.location || project.model?.project?.location || '')}${developmentLabel ? ` · ${escapeHtml(developmentLabel)}` : ''}</div>
+    ${sharedFrom ? `<div class="project-share-meta">${ICONS.share}<span>来自 ${escapeHtml(sharedFrom)} 分享的参考项目</span></div>` : ''}
     <div class="project-metrics">
       <div class="project-metric"><strong>${fmt(s.totalInvestment)}</strong><span>投资总额/万元</span></div>
       <div class="project-metric"><strong>${s.projectIrr == null ? '—' : fmtPct(s.projectIrr)}</strong><span>项目IRR</span></div>
       <div class="project-metric"><strong>${s.calculationMode === 'preliminary' ? (s.floorCount || 0) : (s.shopsCount || 0)}</strong><span>${s.calculationMode === 'preliminary' ? '测算楼层' : '铺位数量'}</span></div>
     </div>
-    <div class="project-card-foot"><span>更新于 ${fmtDate(project.updatedAt)}</span><button class="btn btn-ghost btn-sm" data-delete-project="${project.id}" title="删除项目">${ICONS.trash}</button></div>
+    <div class="project-card-foot"><span>更新于 ${fmtDate(project.updatedAt)}</span><div class="project-card-actions"><button class="btn btn-ghost btn-sm" data-share-project="${project.id}" title="发送或生成分享码">${ICONS.share}<span>发送</span></button><button class="btn btn-ghost btn-sm" data-duplicate-project="${project.id}" title="复制为对比方案">${ICONS.copy}<span>复制</span></button><button class="btn btn-ghost btn-sm" data-delete-project="${project.id}" title="删除项目">${ICONS.trash}</button></div></div>
   </article>`;
 }
 
