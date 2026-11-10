@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-fees1';
+import './backend.js?v=20261110-bench1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.19.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -362,8 +362,8 @@ const TERM_DEFINITIONS = {
   '交通配套': { category: '市场侦测', definition: '项目周边的公交、轨道、停车和加油充电等交通设施。', why: '交通可达性直接影响目的性客流和停留时间。', how: '除POI数量外，还要实地核对地铁口步行距离、公交线路、停车位和高峰拥堵。' },
   '居住社区': { category: '市场侦测', definition: '公开地图识别到的住宅小区或居住片区。', why: '用于判断周边是否有稳定的社区消费基础。', how: '这只是数量代理指标，正式分析还需人口规模、家庭结构、收入和入住率数据。' },
   '保底与扣点取高': { category: '招商租赁', definition: '租户按保底租金和联营扣点分别计算，项目取两者中的较高金额。', why: '既保障业主最低租金，又能分享租户销售增长。', how: '需要明确保底、扣点率、销售口径、结算周期和取高条款，避免重复计算。' },
-  '扣点率': { category: '招商租赁', definition: '联营扣点收入占租户销售额的比例。', why: '扣点率决定销售增长能在多大程度上转化为项目收入。', how: '不同业态差异很大，应以品牌谈判、同类商场数据和租户承受能力为依据。' },
-  '销售基数': { category: '招商租赁', definition: '用于测算联营扣点收入的单位面积月销售额参考值。', why: '销售基数越高，在相同扣点率下项目收入越高。', how: '应来自同类项目、品牌方经营数据或授权市场数据，不确定时做保守情景。' },
+  '扣点率': { category: '招商租赁', definition: '联营扣点收入占租户销售额的比例。', why: '扣点率决定销售增长能在多大程度上转化为项目收入。', how: '先在联营基准面板选择购物中心、百货或奥莱行业常规，再结合本地品牌谈判、同类商场扣点和租户承受能力调整。系统给出的是行业区间与地区修正，不是品牌实测流水。' },
+  '销售基数': { category: '招商租赁', definition: '用于测算联营扣点收入的单位面积月销售额参考值。', why: '销售基数越高，在相同扣点率下项目收入越高。', how: '系统按业态行业常规、项目城市能级及3–5公里商业侦测做初步修正；正式决策应再以同类项目、品牌方流水或授权市场数据校准。' },
   '出租率': { category: '招商租赁', definition: '已出租面积或已营业面积占可租赁面积的比例。', why: '出租率同时影响租金、物业费、停车和运营成本。', how: '首年、爬坡期和稳定期应分别设置，结合招商计划和同类项目开业爬坡情况。' },
   '免租期': { category: '招商租赁', definition: '租户在合同开始阶段无需支付租金的月数。', why: '免租期会减少首年现金流，但不一定降低合同租金单价。', how: '按装修期和招商谈判填写，并关注免租期后的现金流恢复。' },
   '招商佣金': { category: '招商租赁', definition: '支付给招商团队、渠道或代理机构的租赁成交佣金。', why: '属于招商成本，影响项目总投资和运营期现金流。', how: '区分首开佣金、续租佣金和渠道年度预算，避免重复计算。' },
@@ -427,31 +427,151 @@ function openTermGlossary() {
 }
 
 const SETTLEMENT_PRESETS = {
-  department: {
-    label: '百货行业参考',
+  shopping: {
+    label: '购物中心行业常规',
+    shortLabel: '购物中心',
+    version: '2026.11',
+    source: '公开行业租售比、购物中心联营惯例及项目测算经验区间',
     categories: {
-      '零售': { salesPerSqmMonth: 1200, concessionRate: 0.22, rent: 100 },
-      '餐饮': { salesPerSqmMonth: 900, concessionRate: 0.12, rent: 80 },
-      '娱乐': { salesPerSqmMonth: 600, concessionRate: 0.10, rent: 50 },
-      '教培': { salesPerSqmMonth: 700, concessionRate: 0.10, rent: 60 },
-      '服务': { salesPerSqmMonth: 700, concessionRate: 0.10, rent: 60 },
-      '超市/主力店': { salesPerSqmMonth: 500, concessionRate: 0.08, rent: 35 },
-      '其他': { salesPerSqmMonth: 700, concessionRate: 0.10, rent: 60 },
+      '零售': { rent: 120, rentRange: [80, 180], salesPerSqmMonth: 1200, salesRange: [800, 1600], concessionRate: 0.18, concessionRange: [0.15, 0.25] },
+      '餐饮': { rent: 110, rentRange: [70, 160], salesPerSqmMonth: 900, salesRange: [600, 1200], concessionRate: 0.12, concessionRange: [0.08, 0.15] },
+      '娱乐': { rent: 70, rentRange: [35, 90], salesPerSqmMonth: 550, salesRange: [300, 800], concessionRate: 0.08, concessionRange: [0.05, 0.12] },
+      '教培': { rent: 80, rentRange: [45, 110], salesPerSqmMonth: 750, salesRange: [500, 1100], concessionRate: 0.10, concessionRange: [0.08, 0.15] },
+      '服务': { rent: 90, rentRange: [50, 130], salesPerSqmMonth: 700, salesRange: [500, 1000], concessionRate: 0.10, concessionRange: [0.08, 0.15] },
+      '超市/主力店': { rent: 50, rentRange: [25, 70], salesPerSqmMonth: 450, salesRange: [250, 700], concessionRate: 0.05, concessionRange: [0.03, 0.08] },
+      '其他': { rent: 80, rentRange: [45, 110], salesPerSqmMonth: 700, salesRange: [500, 1000], concessionRate: 0.10, concessionRange: [0.08, 0.15] },
+    },
+  },
+  department: {
+    label: '百货商场行业常规',
+    shortLabel: '百货商场',
+    version: '2026.11',
+    source: '公开百货联营扣点惯例、品牌承受力及项目测算经验区间',
+    categories: {
+      '零售': { rent: 100, rentRange: [60, 150], salesPerSqmMonth: 1500, salesRange: [1000, 2200], concessionRate: 0.20, concessionRange: [0.18, 0.25] },
+      '餐饮': { rent: 80, rentRange: [50, 120], salesPerSqmMonth: 1000, salesRange: [650, 1300], concessionRate: 0.12, concessionRange: [0.09, 0.15] },
+      '娱乐': { rent: 50, rentRange: [30, 75], salesPerSqmMonth: 650, salesRange: [350, 900], concessionRate: 0.09, concessionRange: [0.06, 0.12] },
+      '教培': { rent: 60, rentRange: [35, 90], salesPerSqmMonth: 800, salesRange: [500, 1200], concessionRate: 0.10, concessionRange: [0.08, 0.15] },
+      '服务': { rent: 60, rentRange: [35, 90], salesPerSqmMonth: 750, salesRange: [500, 1100], concessionRate: 0.10, concessionRange: [0.08, 0.15] },
+      '超市/主力店': { rent: 35, rentRange: [20, 55], salesPerSqmMonth: 500, salesRange: [300, 800], concessionRate: 0.06, concessionRange: [0.04, 0.09] },
+      '其他': { rent: 60, rentRange: [35, 90], salesPerSqmMonth: 750, salesRange: [500, 1100], concessionRate: 0.10, concessionRange: [0.08, 0.15] },
     },
   },
   outlet: {
-    label: '奥特莱斯行业参考',
+    label: '奥特莱斯行业常规',
+    shortLabel: '奥特莱斯',
+    version: '2026.11',
+    source: '公开奥莱联营扣点惯例、折扣零售租售比及项目测算经验区间',
     categories: {
-      '零售': { salesPerSqmMonth: 900, concessionRate: 0.12, rent: 60 },
-      '餐饮': { salesPerSqmMonth: 800, concessionRate: 0.10, rent: 55 },
-      '娱乐': { salesPerSqmMonth: 500, concessionRate: 0.08, rent: 35 },
-      '教培': { salesPerSqmMonth: 600, concessionRate: 0.08, rent: 40 },
-      '服务': { salesPerSqmMonth: 600, concessionRate: 0.08, rent: 40 },
-      '超市/主力店': { salesPerSqmMonth: 500, concessionRate: 0.06, rent: 25 },
-      '其他': { salesPerSqmMonth: 600, concessionRate: 0.08, rent: 40 },
+      '零售': { rent: 60, rentRange: [35, 90], salesPerSqmMonth: 900, salesRange: [600, 1400], concessionRate: 0.12, concessionRange: [0.10, 0.16] },
+      '餐饮': { rent: 55, rentRange: [30, 80], salesPerSqmMonth: 800, salesRange: [500, 1100], concessionRate: 0.10, concessionRange: [0.07, 0.13] },
+      '娱乐': { rent: 35, rentRange: [20, 55], salesPerSqmMonth: 500, salesRange: [300, 750], concessionRate: 0.08, concessionRange: [0.05, 0.11] },
+      '教培': { rent: 40, rentRange: [22, 60], salesPerSqmMonth: 600, salesRange: [350, 900], concessionRate: 0.08, concessionRange: [0.06, 0.12] },
+      '服务': { rent: 40, rentRange: [22, 60], salesPerSqmMonth: 600, salesRange: [350, 900], concessionRate: 0.08, concessionRange: [0.06, 0.12] },
+      '超市/主力店': { rent: 25, rentRange: [15, 40], salesPerSqmMonth: 450, salesRange: [250, 700], concessionRate: 0.06, concessionRange: [0.03, 0.08] },
+      '其他': { rent: 40, rentRange: [22, 60], salesPerSqmMonth: 600, salesRange: [350, 900], concessionRate: 0.08, concessionRange: [0.06, 0.12] },
     },
   },
 };
+
+function settlementPresetKeyFor(model) {
+  const type = String(model?.project?.projectType || '');
+  if (/百货/.test(type)) return 'department';
+  if (/奥莱/i.test(type)) return 'outlet';
+  return model?.settlementBenchmark?.preset && SETTLEMENT_PRESETS[model.settlementBenchmark.preset] ? model.settlementBenchmark.preset : 'shopping';
+}
+
+function settlementLocationAdjustment(model) {
+  const location = String(model?.project?.location || '');
+  if (/南宁|广州|深圳|北京|上海|重庆|成都|杭州|武汉|南京|西安|苏州|天津|厦门|青岛|长沙|郑州|昆明|海口|三亚/.test(location)) {
+    return { label: '省会/重点城市', factor: 1.00 };
+  }
+  if (/柳州|桂林|北海|梧州|玉林|贵港|钦州|防城港|百色|贺州|河池|来宾|崇左/.test(location)) {
+    return { label: '广西地级市', factor: 0.93 };
+  }
+  if (/县|县域|镇/.test(location)) return { label: '县域市场', factor: 0.82 };
+  return { label: '未识别城市能级', factor: 0.90 };
+}
+
+function settlementMarketAdjustment(model) {
+  const detection = model?.market?.lastAnalysis || {};
+  const grade = String(detection.marketGrade || '');
+  let factor = /A/.test(grade) ? 1.05 : /B/.test(grade) ? 1.02 : /C/.test(grade) ? 0.98 : /D/.test(grade) ? 0.93 : 1.00;
+  const competition = String(detection.competitionLevel || '');
+  if (/高|激烈/.test(competition)) factor *= 0.96;
+  else if (/低|较弱/.test(competition)) factor *= 1.03;
+  return {
+    label: grade ? `${grade || '待评估'} · 竞争${competition || '未评估'}` : '尚未商业侦测',
+    factor: Math.min(1.12, Math.max(0.82, factor)),
+  };
+}
+
+function settlementBenchmarkContext(model) {
+  const presetKey = settlementPresetKeyFor(model);
+  const preset = SETTLEMENT_PRESETS[presetKey];
+  const location = settlementLocationAdjustment(model);
+  const market = settlementMarketAdjustment(model);
+  const combinedFactor = Math.min(1.20, Math.max(0.72, location.factor * market.factor));
+  return { presetKey, preset, location, market, combinedFactor };
+}
+
+function benchmarkForCategory(model, categoryName) {
+  const context = settlementBenchmarkContext(model);
+  const rule = context.preset.categories[categoryName] || context.preset.categories['其他'];
+  const sales = Math.round(Number(rule.salesPerSqmMonth || 0) * context.combinedFactor);
+  const salesMin = Math.round(Number(rule.salesRange?.[0] || rule.salesPerSqmMonth || 0) * context.combinedFactor);
+  const salesMax = Math.round(Number(rule.salesRange?.[1] || rule.salesPerSqmMonth || 0) * context.combinedFactor);
+  return { ...rule, salesPerSqmMonth: sales, salesRange: [salesMin, salesMax], context };
+}
+
+function applySettlementBenchmark(model, presetKey, options = {}) {
+  const safePresetKey = SETTLEMENT_PRESETS[presetKey] ? presetKey : settlementPresetKeyFor(model);
+  model.settlementBenchmark = {
+    ...(model.settlementBenchmark || {}),
+    preset: safePresetKey,
+    version: SETTLEMENT_PRESETS[safePresetKey].version,
+    appliedAt: new Date().toISOString(),
+  };
+  model.categories ||= [];
+  let changed = 0;
+  for (const category of model.categories) {
+    const rule = benchmarkForCategory({ ...model, settlementBenchmark: model.settlementBenchmark }, category.name);
+    const fillSales = options.overwrite || !(Number(category.salesPerSqmMonth) > 0);
+    const fillRate = options.overwrite || !(Number(category.concessionRate) > 0);
+    const fillRent = options.overwriteRent || !(Number(category.rent) > 0);
+    if (fillSales) category.salesPerSqmMonth = rule.salesPerSqmMonth;
+    if (fillRate) category.concessionRate = rule.concessionRate;
+    if (fillRent) category.rent = rule.rent;
+    category.benchmarkPreset = safePresetKey;
+    category.benchmarkVersion = rule.context.preset.version;
+    category.benchmarkSource = rule.context.preset.source;
+    category.benchmarkSalesMin = rule.salesRange[0];
+    category.benchmarkSalesMax = rule.salesRange[1];
+    category.benchmarkConcessionMin = rule.concessionRange[0];
+    category.benchmarkConcessionMax = rule.concessionRange[1];
+    category.benchmarkRentMin = rule.rentRange[0];
+    category.benchmarkRentMax = rule.rentRange[1];
+    category.benchmarkLocationFactor = rule.context.location.factor;
+    category.benchmarkMarketFactor = rule.context.market.factor;
+    category.benchmarkSalesFactor = rule.context.combinedFactor;
+    if (fillSales || fillRate || fillRent) changed += 1;
+  }
+  model.settlementBenchmark.locationLabel = settlementLocationAdjustment(model).label;
+  model.settlementBenchmark.locationFactor = settlementLocationAdjustment(model).factor;
+  model.settlementBenchmark.marketLabel = settlementMarketAdjustment(model).label;
+  model.settlementBenchmark.marketFactor = settlementMarketAdjustment(model).factor;
+  model.settlementBenchmark.salesFactor = settlementBenchmarkContext(model).combinedFactor;
+  model.settlementBenchmark.source = SETTLEMENT_PRESETS[safePresetKey].source;
+  return changed;
+}
+
+function ensureSettlementBenchmarks(model) {
+  const categories = Array.isArray(model?.categories) ? model.categories : [];
+  if (!categories.length) return false;
+  const allBlank = categories.every(category => !(Number(category.salesPerSqmMonth) > 0) && !(Number(category.concessionRate) > 0));
+  if (!allBlank) return false;
+  return applySettlementBenchmark(model, settlementPresetKeyFor(model), { overwrite: false }) > 0;
+}
 
 const ICONS = {
   logo: '<svg viewBox="0 0 24 24" fill="none"><path d="M4 19V8l8-4 8 4v11" stroke="currentColor" stroke-width="1.6"/><path d="M8 19v-6h8v6M3 19h18" stroke="currentColor" stroke-width="1.6"/></svg>',
@@ -1938,17 +2058,22 @@ async function openProject(projectId) {
   try {
     const payload = await api(`/api/projects/${projectId}`);
     state.current = { ...payload.project, model: payload.result?.model || payload.project.model };
+    const benchmarkInitialized = ensureSettlementBenchmarks(state.current.model);
     state.result = payload.result;
-    state.preview = payload.result;
+    state.preview = benchmarkInitialized ? null : payload.result;
     state.marketAnalysis = null;
     state.marketError = null;
     state.step = 0;
-    state.dirty = false;
+    state.dirty = benchmarkInitialized;
     state.importWarnings = [];
     state.rentImportStats = null;
     state.shopPage = 1;
     state.shopSearch = '';
     renderWorkspace();
+    if (benchmarkInitialized) {
+      scheduleLivePreview();
+      setTimeout(() => toast('已按行业常规和项目地区补充联营销售/扣点基准，请核对后保存', 'success'), 250);
+    }
   } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
 }
 
@@ -2421,8 +2546,7 @@ function renderSettlementControls(m) {
       <select class="select" data-path="project.revenueModel" data-type="text">
         ${Object.entries(labels).map(([value, label]) => `<option value="${value}" ${current === value ? 'selected' : ''}>${label}</option>`).join('')}
       </select>
-      <button type="button" class="preset" data-settlement-preset="department">应用百货参考</button>
-      <button type="button" class="preset" data-settlement-preset="outlet">应用奥莱参考</button>
+      <button type="button" class="preset" data-settlement-current-benchmark>补全当前行业基准</button>
     </div>
   </div>`;
 }
@@ -2518,6 +2642,27 @@ function renderFloorRentSummary(preview) {
   </div>`;
 }
 
+function renderSettlementBenchmarkPanel(model) {
+  const context = settlementBenchmarkContext(model);
+  const detection = model.market?.lastAnalysis || {};
+  const active = context.presetKey;
+  const button = (key, label) => `<button type="button" class="preset benchmark-preset ${active === key ? 'active' : ''}" data-settlement-preset="${key}">${label}</button>`;
+  return `<div class="benchmark-card">
+    <div class="benchmark-head">
+      <div><span class="eyebrow">INDUSTRY BENCHMARK · ${escapeHtml(context.preset.version)}</span><strong>${escapeHtml(context.preset.label)}</strong><small>点击基准只补全销售基数、扣点率和空保底租金，不自动改变项目当前结算方式。</small></div>
+      <div class="benchmark-presets">${button('shopping', '购物中心')}${button('department', '百货')}${button('outlet', '奥莱')}</div>
+    </div>
+    <div class="benchmark-factor-row">
+      <span><b>销售修正</b> ×${Number(context.combinedFactor).toFixed(2)}</span>
+      <span><b>地区</b> ${escapeHtml(context.location.label)} ×${Number(context.location.factor).toFixed(2)}</span>
+      <span><b>商业侦测</b> ${escapeHtml(detection.marketGrade || '未评估')} ×${Number(context.market.factor).toFixed(2)}</span>
+      <span><b>竞争</b> ${escapeHtml(detection.competitionLevel || '未评估')}</span>
+      <span><b>置信度</b> ${detection.marketGrade ? '中低 · 需本地复核' : '待商业侦测'}</span>
+    </div>
+    <details class="benchmark-source"><summary>数据来源、算法与使用边界</summary><div><p><strong>当前口径：</strong>${escapeHtml(context.preset.source)}。销售基数按项目地址城市能级和3–5公里商业侦测评分、竞争强度做初步修正；扣点率按业态行业常规区间给参考值。</p><p><strong>重要边界：</strong>当前系统没有接入赢商网、边界猎手等授权租户销售流水数据库，因此这些数值是“行业常规基准＋地区初步修正”，不是当地品牌实测销售大数据。正式招商定价应再用本地竞品、品牌流水、合同扣点和实地访谈校准。</p></div></details>
+  </div>`;
+}
+
 function renderDetailedPricing(m, shops, preview) {
   const categoryRent = Object.fromEntries((m.categories || []).map(c => [c.name, Number(c.rent || 0)]));
   const filtered = shops.filter(s => !state.shopSearch || `${s.id} ${s.building || ''} ${s.floor} ${s.category} ${s.status} ${(s.conditions || []).join(' ')}`.toLowerCase().includes(state.shopSearch.toLowerCase()));
@@ -2550,10 +2695,15 @@ function renderDetailedPricing(m, shops, preview) {
     </div>
     <div class="form-section compact-top">
       <div class="section-title">业态租金 / 联营扣点规则</div>
-      <div class="section-note">每个业态可单独选择计租方式：继承项目、纯租金、纯联营扣点或保底与扣点取高。销售基数和扣点率为行业参考起点，应与本地竞品核对。</div>
+      <div class="section-note">每个业态可单独选择计租方式。基准面板会给出销售基数、扣点率和保底租金的行业常见区间；当前结算方式为纯租金时，联营条件仅作参考，不进入收入。</div>
+      ${renderSettlementBenchmarkPanel(m)}
       ${formulaPanel('一铺一价与联营扣点公式', '保底月收入 = 租赁面积 × 楼层均价 × 业态系数 ×（1 + 位置条件溢价）\n联营扣点月收入 = 租赁面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '条件溢价合计最高40%；铺位填写租金覆盖值时，以覆盖值优先。')}
-      <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金（元/㎡/月）</th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th><th class="num">业态系数</th></tr></thead><tbody>
-        ${(m.categories || []).map((cat, i) => `<tr><td><strong>${escapeHtml(cat.name)}</strong></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td></tr>`).join('')}
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金<br><small>元/㎡/月</small></th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}<br><small>当前 / 常规区间</small></th><th class="num">${termLabel('扣点率')}<br><small>当前 / 常规区间</small></th><th class="num">扣点收益<br><small>元/㎡/月</small></th><th class="num">业态系数</th></tr></thead><tbody>
+        ${(m.categories || []).map((cat, i) => {
+          const benchmark = benchmarkForCategory(m, cat.name);
+          const commissionPerSqm = Number(cat.salesPerSqmMonth || 0) * Number(cat.concessionRate || 0);
+          return `<tr><td><strong>${escapeHtml(cat.name)}</strong><small class="benchmark-row-source">${escapeHtml(benchmark.context.preset.shortLabel)}基准</small></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.rentRange[0], 0)}–${fmt(benchmark.rentRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.salesRange[0], 0)}–${fmt(benchmark.salesRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"><small class="range-hint">常规 ${fmtPct(benchmark.concessionRange[0], 0)}–${fmtPct(benchmark.concessionRange[1], 0)}</small></td><td class="num"><strong>${fmt(commissionPerSqm, 1)}</strong><small class="range-hint">${cat.revenueMode === 'rent' ? '纯租金不参与' : '测算参考'}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td></tr>`;
+        }).join('')}
       </tbody></table></div>
     </div>
     <div class="form-section">
@@ -4806,30 +4956,32 @@ function ensureFloorsFromShops(model, options = {}) {
 }
 
 function bindShopsStep() {
-  document.querySelectorAll('[data-settlement-preset]').forEach(btn => btn.addEventListener('click', () => {
-    const preset = SETTLEMENT_PRESETS[btn.dataset.settlementPreset];
+  const applyBenchmark = (presetKey, overwrite = false) => {
+    const preset = SETTLEMENT_PRESETS[presetKey];
     if (!preset) return;
-    state.current.model.project.revenueModel = 'guarantee_or_concession';
-    state.current.model.project.projectType = btn.dataset.settlementPreset === 'department' ? '百货商场' : '奥特莱斯';
-    applyCostReference(state.current.model);
-    state.current.model.categories.forEach(cat => {
-      const rule = preset.categories[cat.name];
-      if (rule) Object.assign(cat, rule, { revenueMode: 'inherit' });
-    });
-    const rules = Object.values(preset.categories);
-    const avgRent = rules.reduce((sum, rule) => sum + rule.rent, 0) / rules.length;
-    const avgSales = rules.reduce((sum, rule) => sum + rule.salesPerSqmMonth, 0) / rules.length;
-    const avgRate = rules.reduce((sum, rule) => sum + rule.concessionRate, 0) / rules.length;
-    (state.current.model.floors || []).forEach(floor => {
-      if (!Number(floor.avgRent)) floor.avgRent = Number(avgRent.toFixed(1));
-      if (!Number(floor.salesPerSqmMonth)) floor.salesPerSqmMonth = Number(avgSales.toFixed(0));
-      if (!Number(floor.concessionRate)) floor.concessionRate = Number(avgRate.toFixed(4));
+    const model = state.current.model;
+    model.project.projectType = preset.shortLabel;
+    applySettlementBenchmark(model, presetKey, { overwrite });
+    applyCostReference(model);
+    const benchmarkRows = model.categories.map(cat => benchmarkForCategory(model, cat.name));
+    const avgSales = benchmarkRows.reduce((sum, rule) => sum + Number(rule.salesPerSqmMonth || 0), 0) / Math.max(benchmarkRows.length, 1);
+    const avgRate = benchmarkRows.reduce((sum, rule) => sum + Number(rule.concessionRate || 0), 0) / Math.max(benchmarkRows.length, 1);
+    (model.floors || []).forEach(floor => {
+      if (overwrite || !Number(floor.salesPerSqmMonth)) floor.salesPerSqmMonth = Number(avgSales.toFixed(0));
+      if (overwrite || !Number(floor.concessionRate)) floor.concessionRate = Number(avgRate.toFixed(4));
     });
     state.dirty = true;
     state.preview = null;
     renderWorkspace();
     scheduleLivePreview();
-    toast(`已应用${preset.label}，请结合本地品牌和竞品调整`, 'success');
+    toast(`已应用${preset.label}，销售与扣点按地区/商业侦测修正；结算方式保持不变`, 'success');
+  };
+  document.querySelectorAll('[data-settlement-preset]').forEach(btn => btn.addEventListener('click', () => {
+    applyBenchmark(btn.dataset.settlementPreset, true);
+  }));
+  document.querySelectorAll('[data-settlement-current-benchmark]').forEach(btn => btn.addEventListener('click', () => {
+    const model = state.current.model;
+    applyBenchmark(settlementPresetKeyFor(model), false);
   }));
   document.querySelectorAll('[data-shop-mode]').forEach(btn => btn.addEventListener('click', () => {
     state.current.model.calculationMode = btn.dataset.shopMode;

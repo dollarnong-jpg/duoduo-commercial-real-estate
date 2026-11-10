@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-fees1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-bench1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1404,6 +1404,7 @@ function exportExcel(result) {
   const formulas = model.formulas || {};
   const developmentLabels = { new_build: '新建项目', renovation: '旧改 / 存量改造项目', operating: '运营中项目', light_asset: '轻资产运营项目' };
   const growthModeLabels = { none: '不递增', compound: '每年复利递增', simple: '每年单利递增', step: '每N年阶梯递增' };
+  const settlementPresetLabels = { shopping: '购物中心行业常规', department: '百货商场行业常规', outlet: '奥特莱斯行业常规' };
   const ownerRentGrowthLabels = { none: '不复递增', compound: '按比例复利递增', simple: '按比例单利递增', fixed_amount: '每年固定金额递增', step: '每N年阶梯递增' };
   const ownerRentLeaseLabels = { land: '仅土地租赁', property: '仅物业租赁', land_and_property: '土地+物业租赁' };
   const propertyRightsLabels = { owned: '自有产权', leased: '租赁物业', equity: '股权持有', government: '政府划拨/合作持有', other: '其他产权安排' };
@@ -1653,7 +1654,24 @@ function exportExcel(result) {
   const exportShopWs = addSheet(wb, '商铺明细', [['楼栋', '铺位号', '楼层', '计租口径', '业态', '状态', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '租金单价（元/㎡/月）', '物业管理费（元/㎡/月）', '商业管理费（元/㎡/月）', '中央空调费（元/㎡/月）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '条件', '满租月租金收益（万元）'], ...(result.shops || []).map(x => [x.building || '1号楼', x.id, x.floor, x.rentAreaBasis === 'building' ? '建筑面积' : '实用面积', x.category, x.status || '', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.rent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), Number(x.monthlyPropertyFee || 0), Number(x.monthlyCommercialManagementFee || 0), Number(x.monthlyCentralAcFee || 0), Number(x.monthlyServiceFee || 0), Number(x.monthlyServiceFee || 0) * 12 / 10000, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [12, 16, 10, 14, 16, 12, 18, 18, 18, 22, 24, 24, 24, 22, 22, 22, 26, 24, 24, 24]);
 
   setSheetColumnNumberFormat(exportShopWs, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], '0.00');
-  addSheet(wb, '租赁联营规则', [['业态', '基准月租金（元/㎡/月）', '业态系数', '销售基数（元/㎡/月）', '扣点率', '结算方式'], ...(model.categories || []).map(x => [x.name, x.rent, x.factor, x.salesPerSqmMonth, x.concessionRate, x.revenueMode])], [20, 24, 14, 22, 14, 20]);
+  addSheet(wb, '租赁联营规则', [
+    ['业态', '结算方式', '当前保底租金（元/㎡/月）', '保底租金常规区间', '当前销售基数（元/㎡/月）', '销售基数常规区间（元/㎡/月）', '当前扣点率', '扣点率常规区间', '扣点收益（元/㎡/月）', '业态系数', '行业基准方案', '基准版本', '销售修正系数', '数据来源'],
+    ...(model.categories || []).map(item => {
+      const salesMin = item.benchmarkSalesMin == null ? '' : Number(item.benchmarkSalesMin);
+      const salesMax = item.benchmarkSalesMax == null ? '' : Number(item.benchmarkSalesMax);
+      const rateMin = item.benchmarkConcessionMin == null ? '' : Number(item.benchmarkConcessionMin);
+      const rateMax = item.benchmarkConcessionMax == null ? '' : Number(item.benchmarkConcessionMax);
+      const rentMin = item.benchmarkRentMin == null ? '' : Number(item.benchmarkRentMin);
+      const rentMax = item.benchmarkRentMax == null ? '' : Number(item.benchmarkRentMax);
+      return [item.name, item.revenueMode || 'inherit', Number(item.rent || 0), rentMin === '' ? '' : `${rentMin}–${rentMax}`, Number(item.salesPerSqmMonth || 0), salesMin === '' ? '' : `${salesMin}–${salesMax}`, Number(item.concessionRate || 0), rateMin === '' ? '' : `${rateMin}–${rateMax}`, Number(item.salesPerSqmMonth || 0) * Number(item.concessionRate || 0), Number(item.factor || 1), settlementPresetLabels[item.benchmarkPreset] || '', item.benchmarkVersion || '', item.benchmarkSalesFactor == null ? '' : Number(item.benchmarkSalesFactor), item.benchmarkSource || ''];
+    }),
+    [''],
+    ['数据口径', model.settlementBenchmark?.source || '行业常规基准；正式招商前应以本地竞品、品牌流水、合同扣点和实地访谈校准。'],
+    ['重要边界', '行业基准和地区/商业侦测修正不等同于当地实测销售大数据；未接入授权租户流水数据库。'],
+  ], [18, 18, 26, 22, 28, 30, 16, 20, 24, 14, 28, 14, 16, 72]);
+  const settlementRuleWs = wb.Sheets['租赁联营规则'];
+  setSheetColumnNumberFormat(settlementRuleWs, [2, 4, 6, 8, 9, 12], '0.00');
+  setSheetColumnNumberFormat(settlementRuleWs, [7], '0.00%');
   addSheet(wb, '周边市场分析', [['指标', '结果'], ['项目平均租金（元/㎡/月）', result.marketSummary.projectAverageRent], ['市场加权均价（元/㎡/月）', result.marketSummary.weightedAverageRent], ['市场中位数（元/㎡/月）', result.marketSummary.medianRent], ['市场25分位（元/㎡/月）', result.marketSummary.p25Rent], ['市场75分位（元/㎡/月）', result.marketSummary.p75Rent], ['项目定价位置', result.marketSummary.position], ...(result.marketSummary.conclusions || []).map((x, i) => [`结论${i + 1}`, x])], [30, 80]);
   const detection = model.market?.lastAnalysis || {};
   addSheet(wb, '3-5公里商业侦测', [
@@ -1761,9 +1779,16 @@ async function exportPPT(result) {
   if ((result.floors || []).length > 12) slide.addText(`仅展示前12个楼层，完整数据见Excel。`, { x: 0.7, y: 6.65, w: 5, h: 0.25, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F' });
 
   slide = pptx.addSlide();
-  addSlideTitle(slide, '租赁与联营规则', '不同业态可采用纯租金、纯扣点或保底与扣点取高');
-  const catRows = [['业态', '基准租金', '业态系数', '销售基数', '扣点率', '结算方式'], ...(result.model.categories || []).map(x => [x.name, `${x.rent} 元/㎡/月`, x.factor, `${x.salesPerSqmMonth} 元/㎡/月`, `${(x.concessionRate * 100).toFixed(2)}%`, x.revenueMode])];
-  slide.addTable(catRows, { x: 0.7, y: 1.45, w: 12.0, colW: [1.5, 2.2, 1.4, 2.3, 1.4, 2.4], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.32, autoFit: false });
+  addSlideTitle(slide, '租赁与联营规则', `行业基准：${settlementPresetLabels[result.model.settlementBenchmark?.preset] || '购物中心行业常规'}｜销售修正 ×${Number(result.model.settlementBenchmark?.salesFactor || 1).toFixed(2)}`);
+  const catRows = [['业态', '保底租金', '销售基数 / 常规区间', '扣点率 / 常规区间', '扣点收益/㎡', '结算方式'], ...(result.model.categories || []).map(x => {
+    const salesRange = x.benchmarkSalesMin == null ? '' : `${x.benchmarkSalesMin}–${x.benchmarkSalesMax}`;
+    const rateRange = x.benchmarkConcessionMin == null ? '' : `${(Number(x.benchmarkConcessionMin) * 100).toFixed(1)}%–${(Number(x.benchmarkConcessionMax) * 100).toFixed(1)}%`;
+    return [x.name, `${Number(x.rent || 0).toFixed(1)}`, `${Number(x.salesPerSqmMonth || 0).toFixed(0)}
+${salesRange}`, `${(Number(x.concessionRate || 0) * 100).toFixed(1)}%
+${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), x.revenueMode];
+  })];
+  slide.addTable(catRows, { x: 0.55, y: 1.4, w: 12.2, colW: [1.25, 1.35, 2.5, 2.5, 1.5, 1.5], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.6, margin: 0.04, rowH: 0.55, autoFit: false });
+  slide.addText(`数据来源：${result.model.settlementBenchmark?.source || '公开行业常规区间与项目测算经验'}。已按项目地区能级和3–5公里商业侦测评分做初步销售修正；不代表当地租户实测流水，正式招商前应以竞品流水、品牌报价和合同扣点校准。`, { x: 0.55, y: 6.45, w: 12.2, h: 0.5, fontFace: 'Microsoft YaHei', fontSize: 7.2, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.08 });
 
   slide = pptx.addSlide();
   const serviceModeShort = { self: '自营', resident_outsourced: '第三方常驻', non_resident: '第三方非常驻' };

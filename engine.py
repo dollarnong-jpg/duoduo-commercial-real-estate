@@ -8,13 +8,13 @@ from typing import Any
 
 
 CATEGORY_PRESETS = [
-    {"name": "零售", "rent": 120.0, "factor": 1.00, "revenueMode": "inherit", "salesPerSqmMonth": 0.0, "concessionRate": 0.0},
-    {"name": "餐饮", "rent": 110.0, "factor": 1.08, "revenueMode": "inherit", "salesPerSqmMonth": 0.0, "concessionRate": 0.0},
-    {"name": "娱乐", "rent": 70.0, "factor": 0.78, "revenueMode": "inherit", "salesPerSqmMonth": 0.0, "concessionRate": 0.0},
-    {"name": "教培", "rent": 80.0, "factor": 0.85, "revenueMode": "inherit", "salesPerSqmMonth": 0.0, "concessionRate": 0.0},
-    {"name": "服务", "rent": 90.0, "factor": 0.92, "revenueMode": "inherit", "salesPerSqmMonth": 0.0, "concessionRate": 0.0},
-    {"name": "超市/主力店", "rent": 50.0, "factor": 0.65, "revenueMode": "inherit", "salesPerSqmMonth": 0.0, "concessionRate": 0.0},
-    {"name": "其他", "rent": 80.0, "factor": 0.90, "revenueMode": "inherit", "salesPerSqmMonth": 0.0, "concessionRate": 0.0},
+    {"name": "零售", "rent": 120.0, "factor": 1.00, "revenueMode": "inherit", "salesPerSqmMonth": 1200.0, "concessionRate": 0.18},
+    {"name": "餐饮", "rent": 110.0, "factor": 1.08, "revenueMode": "inherit", "salesPerSqmMonth": 900.0, "concessionRate": 0.12},
+    {"name": "娱乐", "rent": 70.0, "factor": 0.78, "revenueMode": "inherit", "salesPerSqmMonth": 550.0, "concessionRate": 0.08},
+    {"name": "教培", "rent": 80.0, "factor": 0.85, "revenueMode": "inherit", "salesPerSqmMonth": 750.0, "concessionRate": 0.10},
+    {"name": "服务", "rent": 90.0, "factor": 0.92, "revenueMode": "inherit", "salesPerSqmMonth": 700.0, "concessionRate": 0.10},
+    {"name": "超市/主力店", "rent": 50.0, "factor": 0.65, "revenueMode": "inherit", "salesPerSqmMonth": 450.0, "concessionRate": 0.05},
+    {"name": "其他", "rent": 80.0, "factor": 0.90, "revenueMode": "inherit", "salesPerSqmMonth": 700.0, "concessionRate": 0.10},
 ]
 
 CONDITION_PRESETS = [
