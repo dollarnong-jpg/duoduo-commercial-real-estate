@@ -73,6 +73,47 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "preOpeningPropertyCost": 0.0,
             "contingencyRate": 0.05,
         },
+        "preOpeningBudget": {
+            "mode": "summary",
+            "team": {
+                "socialInsuranceRate": 0.28,
+                "recruitmentTrainingRate": 0.02,
+                "positions": [
+                    {"department": "项目筹备组", "position": "筹备负责人", "headcount": 0.0, "monthlySalary": 18000.0, "months": 6.0, "note": ""},
+                    {"department": "招商部", "position": "招商经理", "headcount": 0.0, "monthlySalary": 12000.0, "months": 6.0, "note": ""},
+                    {"department": "运营部", "position": "运营经理", "headcount": 0.0, "monthlySalary": 12000.0, "months": 4.0, "note": ""},
+                    {"department": "市场推广部", "position": "市场推广经理", "headcount": 0.0, "monthlySalary": 10000.0, "months": 4.0, "note": ""},
+                    {"department": "财务行政部", "position": "财务行政专员", "headcount": 0.0, "monthlySalary": 9000.0, "months": 6.0, "note": ""},
+                    {"department": "物业工程部", "position": "工程机电主管", "headcount": 0.0, "monthlySalary": 9000.0, "months": 6.0, "note": ""},
+                ],
+            },
+            "property": {
+                "selfRecruitmentRate": 0.02,
+                "services": [
+                    {"key": "engineering", "name": "物业工程", "mode": "self", "headcount": 0.0, "monthlySalary": 8000.0, "months": 6.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+                    {"key": "security", "name": "保安服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 5500.0, "months": 6.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+                    {"key": "cleaning", "name": "保洁服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 4500.0, "months": 6.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+                ],
+                "oneOffItems": [
+                    {"key": "engineeringIntervention", "name": "工程介入", "amount": 0.0},
+                    {"key": "openingCleaning", "name": "开荒保洁", "amount": 0.0},
+                    {"key": "propertyConsultant", "name": "物业顾问", "amount": 0.0},
+                    {"key": "propertySetup", "name": "物业开办及物资", "amount": 0.0},
+                ],
+            },
+            "admin": {
+                "items": [
+                    {"key": "officeRent", "name": "办公室租金", "amount": 0.0, "period": "monthly", "months": 6.0},
+                    {"key": "utilities", "name": "水电及通讯费", "amount": 0.0, "period": "monthly", "months": 6.0},
+                    {"key": "itSoftware", "name": "IT及软件服务", "amount": 0.0, "period": "total", "months": 0.0},
+                    {"key": "officeSupplies", "name": "办公用品及家具", "amount": 0.0, "period": "total", "months": 0.0},
+                    {"key": "recruitment", "name": "招聘及培训费", "amount": 0.0, "period": "total", "months": 0.0},
+                    {"key": "travel", "name": "差旅及业务招待", "amount": 0.0, "period": "total", "months": 0.0},
+                    {"key": "licenses", "name": "证照及专业服务费", "amount": 0.0, "period": "total", "months": 0.0},
+                    {"key": "other", "name": "其他前期及开办费用", "amount": 0.0, "period": "total", "months": 0.0},
+                ],
+            },
+        },
         "ownerRent": {
             "enabled": False,
             "leaseType": "property",

@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-bench1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-preopen1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1231,6 +1231,175 @@ function operatingBudgetTemplate() {
   return wb;
 }
 
+function preopeningBudgetTemplate() {
+  const wb = XLSX.utils.book_new();
+  addSheet(wb, '使用说明', [
+    ['多多 · 商业地产筹备期成本明细导入模板'],
+    ['适用于开业前筹备团队、物业工程/保安/保洁、行政办公及开办费用明细。'],
+    ['请勿修改工作表名称和表头。黄色空白区域可填写，金额单位按各表表头执行。'],
+    ['筹备团队月薪为税前月薪；系统按筹备月数计算税前工资、单位社保和招聘培训。'],
+    ['物业工程、保安、保洁可分别选择自营、第三方常驻外包或第三方非常驻服务；第三方模式另计综合管理费。'],
+    ['行政开办费用可按“每月×月数”或“一次性总额”录入。'],
+    ['导入后会自动切换为“明细预算”，并将团队、物业和行政总表金额回写项目总投资。'],
+  ], [22, 110]);
+  addSheet(wb, '基础参数', [
+    ['参数', '填写值', '说明'],
+    ['单位社保公积金综合比例（%）', 28, '单位承担的社保和公积金综合比例，正式申报应按属地政策复核'],
+    ['招聘培训费率（%）', 2, '按筹备团队工资与单位社保合计计提'],
+    ['自营物业招聘培训费率（%）', 2, '用于自营物业工程、保安、保洁岗位'],
+    ['默认筹备月数', 6, '新增岗位或行政月度费用时可参考'],
+  ], [32, 18, 72]);
+  addSheet(wb, '筹备团队', [
+    ['部门', '岗位', '编制人数', '税前月薪（元/月）', '筹备月数', '岗位职责/说明'],
+    ['项目筹备组', '筹备负责人', 0, 18000, 6, '填写实际编制人数后计入；0表示不纳入'],
+    ['招商部', '招商经理', 0, 12000, 6, '负责首开招商、品牌储备和商务谈判'],
+    ['运营部', '运营经理', 0, 12000, 4, '负责筹备运营制度、动线和租户进场'],
+    ['市场推广部', '市场推广经理', 0, 10000, 4, '负责开业推广、媒体和美陈'],
+    ['财务行政部', '财务行政专员', 0, 9000, 6, '负责预算、合同、人事和行政'],
+    ['物业工程部', '工程机电主管', 0, 9000, 6, '负责工程介入、机电和物业筹备'],
+  ], [18, 20, 14, 24, 14, 56]);
+  addSheet(wb, '物业服务', [
+    ['服务类别', '服务模式', '编制人数', '参考月薪（元/月）', '服务月数', '非驻场折算比例（%）', '综合管理费率（%）', '说明'],
+    ['物业工程', '自营（自行招聘）', 0, 8000, 6, 70, 12, '工程介入、机电、消防、强弱电等'],
+    ['保安服务', '第三方常驻外包', 0, 5500, 6, 70, 12, '筹备期门岗、巡逻和现场秩序'],
+    ['保洁服务', '第三方常驻外包', 0, 4500, 6, 70, 12, '筹备期日常保洁和开业前开荒配合'],
+  ], [18, 26, 14, 24, 14, 24, 24, 56]);
+  addSheet(wb, '物业一次性费用', [
+    ['费用项目', '金额（万元）', '说明'],
+    ['工程介入', 0, '工程条件核查、设备接管、施工配合等'],
+    ['开荒保洁', 0, '开业前全面开荒、玻璃幕墙及公共区域清洁'],
+    ['物业顾问', 0, '物业体系、标准、培训和顾问服务'],
+    ['物业开办及物资', 0, '工具、耗材、制服、标识及物业开办物资'],
+  ], [24, 18, 72]);
+  addSheet(wb, '行政开办', [
+    ['费用科目', '金额（元）', '金额口径', '月数', '说明'],
+    ['办公室租金', 0, '每月', 6, '筹备办公室租金'],
+    ['水电及通讯费', 0, '每月', 6, '办公水电、网络和通讯'],
+    ['IT及软件服务', 0, '一次性总额', 0, '系统、软件和IT设备'],
+    ['办公用品及家具', 0, '一次性总额', 0, '办公家具、用品和低值易耗品'],
+    ['招聘及培训费', 0, '一次性总额', 0, '招聘渠道、培训及团队建设'],
+    ['差旅及业务招待', 0, '一次性总额', 0, '筹备差旅和业务招待'],
+    ['证照及专业服务费', 0, '一次性总额', 0, '证照、尽调、咨询、法务和审计'],
+    ['其他前期及开办费用', 0, '一次性总额', 0, '其他无法归类的筹备开办费用'],
+  ], [26, 18, 18, 14, 72]);
+  return wb;
+}
+
+function parseServiceMode(value) {
+  const text = String(value || '').trim();
+  if (/非常驻/.test(text)) return 'non_resident';
+  if (/常驻|第三方|外包/.test(text)) return 'resident_outsourced';
+  return 'self';
+}
+
+function parsePreopeningBudgetWorkbook(base64, filename) {
+  if (!/\.(xlsx|xlsm)$/i.test(filename)) throw new Error('筹备期成本明细仅支持 .xlsx 或 .xlsm 多工作表文件');
+  const wb = readWorkbook(base64, filename);
+  const warnings = [];
+  const budget = {
+    mode: 'detailed',
+    team: { socialInsuranceRate: 0.28, recruitmentTrainingRate: 0.02, positions: [] },
+    property: { selfRecruitmentRate: 0.02, services: [], oneOffItems: [] },
+    admin: { items: [] },
+  };
+  const findSheet = keyword => wb.SheetNames.find(name => name.includes(keyword));
+  const findHeader = (rows, required) => rows.findIndex(row => required.every(text => row.some(cell => String(cell || '').includes(text))));
+  const baseSheet = findSheet('基础参数');
+  if (baseSheet) {
+    const rows = getTemplateRows(wb, baseSheet);
+    for (const row of rows) {
+      const label = String(row?.[0] || '');
+      if (/单位社保公积金/.test(label)) budget.team.socialInsuranceRate = Math.max(0, safeNumber(row?.[1])) / 100;
+      else if (/自营物业招聘培训/.test(label)) budget.property.selfRecruitmentRate = Math.max(0, safeNumber(row?.[1])) / 100;
+      else if (/招聘培训费率/.test(label)) budget.team.recruitmentTrainingRate = Math.max(0, safeNumber(row?.[1])) / 100;
+    }
+  }
+  const teamSheet = findSheet('筹备团队');
+  if (teamSheet) {
+    const rows = getTemplateRows(wb, teamSheet);
+    const headerIdx = findHeader(rows, ['部门', '岗位']);
+    if (headerIdx >= 0) {
+      for (const row of rows.slice(headerIdx + 1)) {
+        const position = String(row?.[1] || '').trim();
+        const headcount = Math.max(0, safeNumber(row?.[2]));
+        if (!position && !headcount) continue;
+        budget.team.positions.push({
+          department: String(row?.[0] || '项目筹备组').trim(),
+          position: position || '未命名岗位',
+          headcount,
+          monthlySalary: Math.max(0, safeNumber(row?.[3])),
+          months: Math.max(0, safeNumber(row?.[4])),
+          note: String(row?.[5] || '').trim(),
+        });
+      }
+    }
+  }
+  const propertySheet = findSheet('物业服务');
+  if (propertySheet) {
+    const rows = getTemplateRows(wb, propertySheet);
+    const headerIdx = findHeader(rows, ['服务类别', '服务模式']);
+    if (headerIdx >= 0) {
+      for (const row of rows.slice(headerIdx + 1)) {
+        const name = String(row?.[0] || '').trim();
+        if (!name) continue;
+        budget.property.services.push({
+          key: /保安/.test(name) ? 'security' : /保洁/.test(name) ? 'cleaning' : 'engineering',
+          name,
+          mode: parseServiceMode(row?.[1]),
+          headcount: Math.max(0, safeNumber(row?.[2])),
+          monthlySalary: Math.max(0, safeNumber(row?.[3])),
+          months: Math.max(0, safeNumber(row?.[4])),
+          nonResidentFactor: Math.max(0, Math.min(100, safeNumber(row?.[5] || 70))) / 100,
+          managementFeeRate: Math.max(0, safeNumber(row?.[6] || 12)) / 100,
+        });
+      }
+    }
+  }
+  const oneOffSheet = findSheet('物业一次性');
+  if (oneOffSheet) {
+    const rows = getTemplateRows(wb, oneOffSheet);
+    const headerIdx = findHeader(rows, ['费用项目', '金额']);
+    if (headerIdx >= 0) {
+      for (const row of rows.slice(headerIdx + 1)) {
+        const name = String(row?.[0] || '').trim();
+        if (!name) continue;
+        budget.property.oneOffItems.push({ key: `property_${budget.property.oneOffItems.length}`, name, amount: Math.max(0, safeNumber(row?.[1])) });
+      }
+    }
+  }
+  const adminSheet = findSheet('行政开办');
+  if (adminSheet) {
+    const rows = getTemplateRows(wb, adminSheet);
+    const headerIdx = findHeader(rows, ['费用科目', '金额']);
+    if (headerIdx >= 0) {
+      for (const row of rows.slice(headerIdx + 1)) {
+        const name = String(row?.[0] || '').trim();
+        if (!name) continue;
+        const periodText = String(row?.[2] || '').trim();
+        budget.admin.items.push({
+          key: `admin_${budget.admin.items.length}`,
+          name,
+          amount: Math.max(0, safeNumber(row?.[1])),
+          period: /每月|月度/.test(periodText) ? 'monthly' : 'total',
+          months: Math.max(0, safeNumber(row?.[3])),
+          note: String(row?.[4] || '').trim(),
+        });
+      }
+    }
+  }
+  if (!budget.team.positions.length && !budget.property.services.length && !budget.admin.items.length) throw new Error('未在模板中识别到筹备团队、物业服务或行政开办数据，请使用最新模板');
+  if (!budget.team.positions.length) warnings.push('“筹备团队”工作表未识别到有效岗位');
+  if (!budget.property.services.length) warnings.push('“物业服务”工作表未识别到有效服务类别');
+  if (!budget.admin.items.length) warnings.push('“行政开办”工作表未识别到有效费用科目');
+  return {
+    preOpeningBudget: budget,
+    warnings,
+    teamCount: budget.team.positions.length,
+    serviceCount: budget.property.services.length,
+    adminCount: budget.admin.items.length,
+  };
+}
+
 function getTemplateRows(wb, sheetName) {
   const sheet = wb.Sheets[sheetName];
   return sheet ? XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) : [];
@@ -1575,6 +1744,71 @@ function exportExcel(result) {
     ['融资', '运营期融资利息（参考）', s.operationPeriodInterest || 0, ''],
     ['全周期', '含融资现金成本（参考）', s.fullCycleCashCostIncludingFinancing || 0, ''],
   ], [16, 36, 22, 24]);
+  const preBudget = model.preOpeningBudget || {};
+  if (preBudget.mode === 'detailed') {
+    const socialRate = Math.max(0, Number(preBudget.team?.socialInsuranceRate ?? 0.28));
+    const recruitmentRate = Math.max(0, Number(preBudget.team?.recruitmentTrainingRate ?? 0.02));
+    const preTeamRows = (preBudget.team?.positions || []).map(item => {
+      const headcount = Number(item.headcount || 0);
+      const salary = Number(item.monthlySalary || 0);
+      const months = Number(item.months || 0);
+      const gross = headcount * salary * months / 10000;
+      const social = headcount * salary * months * socialRate / 10000;
+      const training = (gross + social) * recruitmentRate;
+      return [item.department || '', item.position || '', headcount, salary, months, gross, social, training, gross + social + training, item.note || ''];
+    });
+    const prePropertyRows = (preBudget.property?.services || []).map(item => {
+      const headcount = Number(item.headcount || 0);
+      const salary = Number(item.monthlySalary || 0);
+      const months = Number(item.months || 0);
+      const factor = Number(item.nonResidentFactor ?? 0.7);
+      const feeRate = Number(item.managementFeeRate ?? 0.12);
+      const base = headcount * salary * months * (1 + socialRate) / 10000;
+      const positionCost = item.mode === 'non_resident' ? base * factor : base;
+      const managementFee = ['resident_outsourced', 'non_resident'].includes(item.mode) ? positionCost * feeRate : 0;
+      const selfTraining = item.mode === 'self' ? positionCost * Number(preBudget.property?.selfRecruitmentRate ?? 0.02) : 0;
+      return [item.name || '', PROPERTY_SERVICE_MODE_LABELS[item.mode] || item.mode || '', headcount, salary, months, factor, feeRate, positionCost + managementFee + selfTraining];
+    });
+    const preAdminRows = (preBudget.admin?.items || []).map(item => {
+      const amount = Number(item.amount || 0);
+      const months = Number(item.months || 0);
+      return [item.name || '', amount, item.period === 'monthly' ? '每月' : '一次性总额', months, item.period === 'monthly' ? amount * months / 10000 : amount / 10000, item.note || ''];
+    });
+    const preOneOffRows = (preBudget.property?.oneOffItems || []).map(item => [item.name || '', Number(item.amount || 0)]);
+    const preTeamTotal = preTeamRows.reduce((sum, row) => sum + Number(row[8] || 0), 0);
+    const prePropertyServiceTotal = prePropertyRows.reduce((sum, row) => sum + Number(row[7] || 0), 0);
+    const preOneOffTotal = preOneOffRows.reduce((sum, row) => sum + Number(row[1] || 0), 0);
+    const preAdminTotal = preAdminRows.reduce((sum, row) => sum + Number(row[4] || 0), 0);
+    const preWs = addSheet(wb, '筹备期成本明细', [
+      ['筹备期成本明细预算'],
+      ['单位社保公积金比例', socialRate, '招聘培训费率', recruitmentRate],
+      ['筹备团队合计（万元）', preTeamTotal, '筹备物业合计（万元）', prePropertyServiceTotal + preOneOffTotal, '行政开办合计（万元）', preAdminTotal],
+      [''],
+      ['一、筹备团队人力资源'],
+      ['部门', '岗位', '编制', '税前月薪（元/月）', '筹备月数', '税前工资（万元）', '单位社保（万元）', '招聘培训（万元）', '合计（万元）', '说明'],
+      ...preTeamRows,
+      ['团队合计', '', '', '', '', '', '', '', preTeamTotal, ''],
+      [''],
+      ['二、筹备期物业工程、保安、保洁'],
+      ['服务类别', '服务模式', '编制', '参考月薪（元/月）', '服务月数', '非驻场折算', '综合管理费率', '服务成本（万元）'],
+      ...prePropertyRows,
+      ['物业服务小计', '', '', '', '', '', '', prePropertyServiceTotal],
+      [''],
+      ['物业一次性费用', '金额（万元）'],
+      ...preOneOffRows,
+      ['一次性费用小计', preOneOffTotal],
+      ['物业合计', prePropertyServiceTotal + preOneOffTotal],
+      [''],
+      ['三、行政办公及开办费用'],
+      ['费用科目', '金额（元）', '金额口径', '月数', '核算金额（万元）', '说明'],
+      ...preAdminRows,
+      ['行政开办合计', '', '', '', preAdminTotal, ''],
+      [''],
+      ['重要说明', '本表为筹备期明细预算，应与合同、招聘计划、物业方案和行政开办清单交叉核对。'],
+    ], [24, 22, 14, 24, 14, 20, 20, 20, 20, 56]);
+    setSheetColumnNumberFormat(preWs, [3, 5, 6, 7, 8, 15, 20], '0.00');
+    setSheetColumnNumberFormat(preWs, [4, 6, 7], '0.00%');
+  }
   addSheet(wb, '资金计划', [
     ['资金需求与阶段现金流'],
     ['建议启动资金（万元）', s.recommendedStartupCapital || 0],
@@ -2365,6 +2599,13 @@ async function handleApi(path, init) {
     catch (error) { return jsonResponse({ error: error.message }, 400); }
   }
 
+  if (pathname.endsWith('/api/import-preopening-budget') && method === 'POST') {
+    const body = await requestJSON(init);
+    if (!body.contentBase64) return jsonResponse({ error: '请选择筹备期成本明细文件' }, 400);
+    try { return jsonResponse(parsePreopeningBudgetWorkbook(body.contentBase64, String(body.filename || ''))); }
+    catch (error) { return jsonResponse({ error: error.message }, 400); }
+  }
+
   if (pathname.endsWith('/api/import-market-comps') && method === 'POST') {
     const body = await requestJSON(init);
     if (!body.contentBase64) return jsonResponse({ error: '请选择竞品租金文件' }, 400);
@@ -2399,6 +2640,10 @@ async function handleApi(path, init) {
 
   if (pathname.endsWith('/api/templates/operating-budget') && method === 'GET') {
     return fileResponse(workbookBlob(operatingBudgetTemplate()), '商业地产运营成本预算导入模板.xlsx', XLSX_MIME);
+  }
+
+  if (pathname.endsWith('/api/templates/preopening-budget') && method === 'GET') {
+    return fileResponse(workbookBlob(preopeningBudgetTemplate()), '商业地产筹备期成本明细导入模板.xlsx', XLSX_MIME);
   }
 
   if (pathname.endsWith('/api/share/users') && method === 'GET') {
@@ -2617,7 +2862,7 @@ window.fetch = async function duoduoFetch(input, init = {}) {
       '/api/admin/users', '/api/admin/audit', '/api/share/users',
     ];
     const fastRequest = fastEndpoints.some(path => url.pathname.endsWith(path)) || /\/api\/admin\/users\/[0-9a-f-]+\/status$/i.test(url.pathname);
-    const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|market-comps)$/.test(url.pathname) || /\/export\/xlsx$/.test(url.pathname);
+    const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|preopening-budget|market-comps)$/.test(url.pathname) || /\/export\/xlsx$/.test(url.pathname);
     const needsPptx = /\/export\/pptx$/.test(url.pathname);
     if (needsXlsx) await ensureXlsxLibrary();
     if (needsPptx) await ensurePptxLibrary();
