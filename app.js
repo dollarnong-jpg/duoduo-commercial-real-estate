@@ -1,18 +1,19 @@
-import './backend.js?v=20261110-sharing1';
+import './backend.js?v=20261110-flowfunding1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.16.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
 
 const STEPS = [
-  { key: 'project', label: '项目信息', desc: '名称、面积与投资基础' },
-  { key: 'costs', label: '成本参数', desc: '工程、装修与公共费用' },
-  { key: 'shops', label: '铺位数据', desc: 'Excel 导入与一铺一价' },
-  { key: 'operations', label: '运营与税费', desc: '租金、成本、融资与退出' },
-  { key: 'market', label: '周边市场', desc: '3–5公里供需与竞品租金' },
-  { key: 'results', label: '分析结果', desc: '指标、图表与报告导出' },
+  { key: 'project', label: '项目基本条件', desc: '产权、位置、业态、面积与开发状态' },
+  { key: 'costs', label: '建设投资', desc: '土地、建安、装修、设备与公共规费' },
+  { key: 'shops', label: '商铺收益', desc: '楼层均价、一铺一价与市场依据' },
+  { key: 'preopening', label: '筹备期成本', desc: '筹备团队、物业、招商、营销与开办费' },
+  { key: 'operations', label: '运营期成本', desc: '组织、物业、招商、营销、办公与维保' },
+  { key: 'taxes', label: '税费与利润', desc: '税费、融资、折旧、所得税与退出' },
+  { key: 'results', label: '资本金与回报', desc: 'NPV、IRR、回收期、对比与汇报材料' },
 ];
 
 const DEFAULT_FORMULAS = {
@@ -55,6 +56,10 @@ const FIELD_FORMULAS = {
   'project.buildingStatus': { title: '建设与经营状态', formula: '在建/竣工未开业/运营中/待改造', functions: ['IF'], role: '决定建设投资、改造投入、筹备成本和运营接续成本的核算重点。' },
   'project.otherPreOpening': { title: '其他前期及开办费用', formula: '项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金', functions: ['SUM'], role: '该金额直接计入招商及开办投资。' },
   'project.preOpeningMarketing': { title: '筹备期营销费用', formula: '招商及开办 = 招商佣金 + 筹备期营销费用 + 其他前期费用', functions: ['SUM'], role: '该金额直接计入项目总投资。' },
+  'project.preOpeningTeamCost': { title: '筹备期团队成本', formula: '筹备期团队成本 = 开业前工资社保 + 招聘培训 + 筹备差旅及办公', functions: ['SUM'], role: '只计入筹备期投入，不重复计入运营期人员成本。' },
+  'project.preOpeningPropertyCost': { title: '筹备期物业成本', formula: '筹备期物业成本 = 工程介入 + 开荒保洁 + 临时保安 + 物业顾问', functions: ['SUM'], role: '用于开业前物业介入和开荒，不重复计入运营期物业服务成本。' },
+  'project.leasingPeriodMonths': { title: '筹备招商期', formula: '开业时间 = 建设期 + 筹备招商期；筹备费用在筹备招商期内形成现金流出', functions: ['SUM'], role: '让招商期和建设期、运营期在现金流时间轴上分开。' },
+  'project.startupReserveMonths': { title: '启动资金安全垫', formula: '建议启动资金 = 资本金累计资金缺口峰值 + 稳定期月均运营成本 × 安全垫月数', functions: ['MAX','SUM'], role: '用于覆盖招商爬坡和开业初期不确定性的额外资金准备。' },
   'project.contingencyRate': { title: '预备费', formula: '预备费 = 直接工程费 × 预备费费率', functions: ['SUM', 'ROUND'], role: '直接工程费包括前期、建安、公共配套、装修、设备和其他工程。' },
   'project.constructionYears': { title: '建设期与贷款提款', formula: '总测算期 = 建设期 + 运营期；建设期按0.55、0.45比例提款', functions: ['SUM', 'INDEX'], role: '建设期影响首笔经营年度、利息资本化与现金流时点。' },
   'project.operationYears': { title: '运营期与NPV', formula: '总测算期 = 建设期 + 运营期；NPV = Σ[CFt ÷（1+r）^t]', functions: ['SUM', 'POWER', 'NPV'], role: '延长运营期会改变累计现金流和退出价值时点。' },
@@ -1078,7 +1083,7 @@ function renderAuth(mode = 'login') {
           <p>导入铺位面积与业态，系统自动完成投资、租金、税费、可调年期现金流、IRR与NPV分析，并生成可汇报的表格和PPT。</p>
         </div>
         <div class="auth-points">
-          <div class="auth-point"><strong>6步</strong><span>完成项目基础测算</span></div>
+          <div class="auth-point"><strong>7步</strong><span>完成项目财务测算</span></div>
           <div class="auth-point"><strong>可调</strong><span>招商运营与现金流年限</span></div>
           <div class="auth-point"><strong>1键</strong><span>导出Excel与PPT</span></div>
         </div>
@@ -1900,11 +1905,13 @@ function openGuideModal() {
       <div class="modal" style="width:min(680px,100%)">
         <div class="modal-head"><div><h2>使用说明</h2><p>只需准备项目和商铺数据，其余由系统自动计算。</p></div><button class="modal-close" id="modal-close">×</button></div>
         <div class="modal-body" style="line-height:1.8;color:var(--muted);font-size:var(--fs-12)">
-          <p><strong style="color:var(--navy)">1. 项目信息：</strong>填写项目名称、位置、总建筑面积和土地价款。</p>
-          <p><strong style="color:var(--navy)">2. 成本参数：</strong>可选择参考模板，再按本地造价、装修和公共费用调整。</p>
-          <p><strong style="color:var(--navy)">3. 铺位数据：</strong>下载模板，粘贴铺位号、建筑面积、实际租赁面积、楼层和业态后导入。</p>
-          <p><strong style="color:var(--navy)">4. 运营与税费：</strong>确认租金增长、出租率、运营成本以及项目属地税费。</p>
-          <p><strong style="color:var(--navy)">5. 分析结果：</strong>查看投资、IRR、NPV、NOI、回收期和分析建议，并导出Excel与PPT。</p>
+          <p><strong style="color:var(--navy)">1. 项目基本条件：</strong>填写产权、取得方式、位置、面积、业态和开发状态。</p>
+          <p><strong style="color:var(--navy)">2. 建设投资：</strong>按土地、建安、装修、设备、公共规费和预备费形成建设投资。</p>
+          <p><strong style="color:var(--navy)">3. 商铺收益：</strong>完成楼层均价或一铺一价，并结合3–5公里市场与竞品租金校准。</p>
+          <p><strong style="color:var(--navy)">4. 筹备期成本：</strong>单独录入筹备团队、首开佣金、筹备营销和开办费用。</p>
+          <p><strong style="color:var(--navy)">5. 运营期成本：</strong>核算组织、物业、办公、招商、营销、维保和服务成本。</p>
+          <p><strong style="color:var(--navy)">6. 税费与利润：</strong>设置税费、融资、折旧、所得税和退出参数。</p>
+          <p><strong style="color:var(--navy)">7. 资本金与回报：</strong>查看投资、IRR、NPV、NOI、回收期和方案对比，并导出Excel与PPT。</p>
           <div class="callout" style="margin-top:18px;margin-bottom:0">${ICONS.info}<div>演示账号：demo / demo1234。数据只保存在本机，不上传云端。</div></div>
         </div>
         <div class="modal-foot"><button class="btn btn-primary" id="modal-cancel">知道了</button></div>
@@ -1951,7 +1958,7 @@ function renderWorkspace() {
       </aside>
       <section class="step-panel">
         <div class="panel-head"><h2>${active.label}</h2><p>${stepDescription(state.step)}</p></div>
-        <div class="panel-body">${state.step < 4 ? `<div class="formula-toolbar"><div><span class="fx-chip">ƒ</span><strong>公式就在对应数据下方</strong><small>点击任一项查看计算式、函数和参数作用</small></div><div class="formula-toolbar-actions"><button class="btn btn-ghost btn-sm" id="open-term-glossary">名词解释</button><button class="btn btn-ghost btn-sm" id="open-function-glossary">函数说明</button><button class="btn btn-ghost btn-sm" id="toggle-all-formulas">显示全部公式</button></div></div>` : ''}${renderStep()}</div>
+        <div class="panel-body">${state.step < STEPS.length - 1 ? `<div class="formula-toolbar"><div><span class="fx-chip">ƒ</span><strong>公式就在对应数据下方</strong><small>点击任一项查看计算式、函数和参数作用</small></div><div class="formula-toolbar-actions"><button class="btn btn-ghost btn-sm" id="open-term-glossary">名词解释</button><button class="btn btn-ghost btn-sm" id="open-function-glossary">函数说明</button><button class="btn btn-ghost btn-sm" id="toggle-all-formulas">显示全部公式</button></div></div>` : ''}${renderStep()}</div>
         <div class="panel-foot">
           <button class="btn btn-secondary" id="prev-step" ${state.step === 0 ? 'disabled' : ''}>${ICONS.back}<span>上一步</span></button>
           ${state.step < STEPS.length - 1
@@ -1965,17 +1972,18 @@ function renderWorkspace() {
   normalizeNumericInputDisplays();
   bindStepInputs();
   bindFormulaToolbar();
-  if (state.step === 5) requestAnimationFrame(renderResultCharts);
+  if (state.step === 6) requestAnimationFrame(renderResultCharts);
 }
 
 function stepDescription(step) {
   return [
-    '先建立项目的基本边界。除非已经有明确数据，不确定的成本可先采用系统参考值。',
-    '成本不必一次精确到合同金额。先形成合理的投资量级，后续可逐步替换为预算或已签合同。',
-    '可先用楼层均价做初步测算；招商铺位明确后，再切换一铺一价，并结合电梯口、通道口、转角铺等条件自动分配租金。',
-    `这里决定项目收益。优先关注出租率、租金增长、运营成本和折现率，税费可按${jurisdictionName()}属地政策补充。`,
-    '系统按项目地图定位，自动汇总3公里和5公里范围内的商业POI与竞品分布；可导入竞品租金样本形成市场租金结论。',
-    '结果页会自动形成投资、收益、现金流、敏感性和建议。可在核对参数后重新测算或导出汇报材料。',
+    '先明确产权状态、取得方式、项目位置、商业形态、面积和开发阶段，形成整个投资测算的基础条件。',
+    '按土地及契税、工程前期、建安、装修装饰、配套设施设备、市政规费和预备费形成项目建设投资。',
+    '先用楼层均价快速测算，再导入一铺一价；同时结合3–5公里市场、竞品和租金样本校准项目收益。',
+    '单独核算开业前发生的筹备团队、筹备物业、首开招商佣金、筹备营销和其他开办费用。',
+    '核算稳定运营期的人力资源、物业服务、办公行政、招商、营销、维保和其他运营成本。',
+    `按${jurisdictionName()}属地政策核对企业所得税、增值税、房产税等，并设置融资、折旧、退出和折现参数。`,
+    '结果页汇总资本金投入、项目IRR、股权IRR、NPV、回收期、敏感性及项目建议，可导出Excel和PPT。',
   ][step];
 }
 
@@ -1983,7 +1991,7 @@ function bindWorkspace() {
   document.querySelectorAll('[data-step]').forEach(btn => btn.addEventListener('click', () => {
     const nextStep = Number(btn.dataset.step);
     state.sidebarOpen = false;
-    if (nextStep === 5 && (state.dirty || !state.result)) {
+    if (nextStep === 6 && (state.dirty || !state.result)) {
       saveProject();
       return;
     }
@@ -1995,7 +2003,7 @@ function bindWorkspace() {
   });
   document.getElementById('next-step')?.addEventListener('click', () => {
     const nextStep = Math.min(STEPS.length - 1, state.step + 1);
-    if (nextStep === 5 && (state.dirty || !state.result)) {
+    if (nextStep === 6 && (state.dirty || !state.result)) {
       saveProject();
       return;
     }
@@ -2009,9 +2017,10 @@ function renderStep() {
     case 0: return renderProjectStep();
     case 1: return renderCostStep();
     case 2: return renderShopsStep();
-    case 3: return renderOperationsStep();
-    case 4: return renderMarketStep();
-    case 5: return renderResultsStep();
+    case 3: return renderPreOpeningCostStep();
+    case 4: return renderOperationCostsStep();
+    case 5: return renderTaxProfitStep();
+    case 6: return renderResultsStep();
     default: return '';
   }
 }
@@ -2276,7 +2285,6 @@ function renderProjectStep() {
         ${textField('招商运营年限', 'project.operationYears', { type: 'number', unit: '年', help: '可填1–50年，现金流、IRR、NPV、Excel和PPT都会按该年限计算' })}
       </div>
     </div>
-    ${renderCostReferencePanel()}
     <div class="form-section">
       <div class="section-title">面积与土地</div>
       <div class="form-grid">
@@ -2284,8 +2292,6 @@ function renderProjectStep() {
         ${textField('项目占地面积', 'project.landArea', { type: 'number', unit: '㎡', step: '0.01', help: '用于城镇土地使用税；保留两位小数' })}
         ${textField('公共部位及设备房分摊系数', 'project.commonAreaFactor', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('土地取得价款', 'project.landPrice', { type: 'number', unit: '万元', help: '土地出让金或转让价款' })}
-        ${textField('其他前期及开办费用', 'project.otherPreOpening', { type: 'number', unit: '万元', help: '咨询、尽调、筹备办公等' })}
-        ${textField('筹备期营销费用', 'project.preOpeningMarketing', { type: 'number', unit: '万元', help: '开业前品牌和招商推广' })}
         ${textField('预备费费率', 'project.contingencyRate', { type: 'number', unit: '%', scale: 0.01, help: '通常按工程及装修直接费用的3%–8%' })}
       </div>
     </div>
@@ -2388,6 +2394,11 @@ function renderShopsStep() {
       ? renderPreliminarySummary(shops, floors, totalBuilding, totalLease, totalMonthly)
       : renderDetailedPricing(m, shops, preview)}
     ${renderFloorRentSummary(preview)}
+    ${renderRevenueAssumptionsSection()}
+    <details class="advanced">
+      <summary>3–5公里市场判断与竞品租金</summary>
+      <div class="advanced-body">${renderMarketStep()}</div>
+    </details>
   `;
 }
 
@@ -3164,6 +3175,7 @@ function updateOperatingPreviewDom(result) {
   updatePayrollPreviewDom(result);
   updatePropertyServicePreviewDom(result);
   updateChannelPreviewDom(result);
+  updatePreOpeningPreviewDom(result);
   if (!breakdown.length) return;
   const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0);
   const values = new Map(breakdown.map(item => [item.name, Number(item.value || 0)]));
@@ -3180,6 +3192,21 @@ function updateOperatingPreviewDom(result) {
   });
   const totalEl = document.querySelector('[data-operating-total]');
   if (totalEl) totalEl.textContent = `${fmt(total, 1)} 万元/年`;
+}
+
+function updatePreOpeningPreviewDom(result) {
+  if (!result) return;
+  const summary = result.summary || {};
+  const values = {
+    commission: summary.preOpeningCommission || 0,
+    'team-property': Number(summary.preOpeningTeamCost || 0) + Number(summary.preOpeningPropertyCost || 0),
+    'marketing-other': Number(summary.preOpeningMarketingCost || 0) + Number(summary.preOpeningOtherCost || 0),
+  };
+  values.total = Number(values.commission) + Number(values['team-property']) + Number(values['marketing-other']);
+  document.querySelectorAll('[data-preopening]').forEach(el => {
+    const value = values[el.dataset.preopening];
+    if (value != null) el.textContent = fmt(value, 2);
+  });
 }
 
 function updateChannelPreviewDom(result) {
@@ -3405,6 +3432,7 @@ async function importOperatingBudget(file) {
       }
     }
     if (payload.maintenanceBudget && Object.keys(payload.maintenanceBudget).length) model.maintenanceBudget = { ...(model.maintenanceBudget || {}), ...payload.maintenanceBudget };
+    if (payload.projectFields && Object.keys(payload.projectFields).length) model.project = { ...(model.project || {}), ...payload.projectFields };
     if (payload.operations && Object.keys(payload.operations).length) model.operations = { ...(model.operations || {}), ...payload.operations };
     state.budgetWarnings = payload.warnings || [];
     state.dirty = true;
@@ -3520,51 +3548,95 @@ function updateOperatingReferenceValues() {
   document.querySelectorAll('[data-opex-category-row]').forEach(row => row.classList.toggle('selected', row.querySelector('input')?.checked));
 }
 
-function renderOperationsStep() {
-  const model = state.current.model;
-  const staffCostMode = model.operations?.staffCostMode || 'organization';
-  const rentGrowthMode = model.formulas?.rentGrowthMode || 'compound';
-  const propertyFeeGrowthMode = model.formulas?.propertyFeeGrowthMode || 'compound';
+function renderRevenueAssumptionsSection() {
+  const rentGrowthMode = state.current.model.formulas?.rentGrowthMode || 'compound';
+  const propertyFeeGrowthMode = state.current.model.formulas?.propertyFeeGrowthMode || 'compound';
   const growthOptions = [
     { value: 'none', label: '不递增' },
     { value: 'compound', label: '每年复利递增' },
     { value: 'simple', label: '每年单利递增' },
     { value: 'step', label: '每N年阶梯递增' },
   ];
-  const organizationAnnual = propertyServiceAnalysis(model).totalActiveStaffCost;
+  return `<div class="form-section">
+    <div class="section-title">出租率、租金增长与租赁条款</div>
+    ${formulaPanel('出租率、租金及管理费递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子', ['IF', 'POWER', 'INT', 'SUM'], '租金和管理费分别设置增长方式；阶梯递增示例：每3年递增5%，第1—3年不变，第4年开始上调。')}
+    <div class="form-grid">
+      ${textField('首年出租率', 'operations.occupancyY1', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('第二年出租率', 'operations.occupancyY2', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('稳定期出租率', 'operations.stableOccupancy', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('稳定期起始运营年', 'operations.stableYear', { type: 'number', unit: '年' })}
+      ${textField('首年免租月数', 'operations.rentFreeMonths', { type: 'number', unit: '月' })}
+      ${selectField('租金递增方式', 'formulas.rentGrowthMode', growthOptions, { help: '每年复利/单利按年递增；每N年阶梯递增只在周期到达时上调。' })}
+      ${rentGrowthMode === 'step'
+        ? `${textField('租金递增周期', 'operations.rentStepYears', { type: 'number', unit: '年' })}${textField('租金阶梯递增率', 'operations.rentStepRate', { type: 'number', unit: '%', scale: 0.01 })}`
+        : textField('租金年递增率', 'operations.rentGrowth', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('联营销售额年增长率', 'operations.salesGrowth', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('租金收缴率', 'operations.collectionRate', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('续租周期', 'operations.renewalCycle', { type: 'number', unit: '年' })}
+      ${textField('租赁保证金月数', 'operations.depositMonths', { type: 'number', unit: '月' })}
+    </div>
+  </div>
+  <div class="form-section">
+    <div class="section-title">物业管理费与其他收入</div>
+    <div class="form-grid">
+      ${textField('首年物业管理费/商业管理费', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月', help: '作为第1年管理费单价，后续按管理费递增规则逐年调整' })}
+      ${selectField('管理费递增方式', 'formulas.propertyFeeGrowthMode', growthOptions, { help: '管理费与租金分开递增，便于分别匹配租赁合同和物业服务合同。' })}
+      ${propertyFeeGrowthMode === 'step'
+        ? `${textField('管理费递增周期', 'operations.propertyFeeStepYears', { type: 'number', unit: '年' })}${textField('管理费阶梯递增率', 'operations.propertyFeeStepRate', { type: 'number', unit: '%', scale: 0.01 })}`
+        : textField('管理费年递增率', 'operations.propertyFeeGrowth', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('多经收入占租金比例', 'revenues.otherIncomeRatio', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('停车位数量', 'revenues.parkingSpaces', { type: 'number', unit: '个', optional: true })}
+      ${textField('停车月租', 'revenues.parkingMonthly', { type: 'number', unit: '元/位/月', optional: true })}
+    </div>
+  </div>`;
+}
+
+function renderPreOpeningCostStep() {
+  const model = state.current.model;
+  const project = model.project || {};
+  const preview = state.preview || state.result;
+  const summary = preview?.summary || {};
+  const commission = Number(summary.preOpeningCommission || 0);
+  const team = Number(project.preOpeningTeamCost || 0);
+  const property = Number(project.preOpeningPropertyCost || 0);
+  const marketing = Number(project.preOpeningMarketing || 0);
+  const other = Number(project.otherPreOpening || 0);
+  const total = commission + team + property + marketing + other;
   return `
-    <div class="callout">${ICONS.info}<div>如果暂时没有详细运营预算，可保留系统参考值。系统会按“${fmt(state.current.model.project.operationYears || 20)}年招商运营年限”自动形成现金流、税费和投资收益。</div></div>
+    <div class="callout">${ICONS.info}<div>本页用于开业前的筹备费用，不包含土地和建设工程。筹备团队、筹备物业、首开招商佣金、筹备营销和其他开办费会进入项目总投资，但不重复计入运营期成本。</div></div>
     <div class="form-section">
-      <div class="section-title">租金与出租率</div>
-      ${formulaPanel('出租率、租金及管理费递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子\n管理费收入 = 管理费单价 × 计租面积 × 12 × 出租率 × 管理费递增因子', ['IF', 'POWER', 'INT', 'SUM'], '租金和管理费可分别设置增长方式；阶梯递增示例：每3年递增5%，第1—3年不变，第4年开始上调。')}
+      <div class="section-title">筹备期成本参数</div>
+      ${formulaPanel('筹备期成本公式', '首开招商佣金 = 满租月租金 × 佣金月数 × 首年出租率 ÷ 10000\n筹备期非工程费用 = 筹备团队成本 + 筹备物业成本 + 首开招商佣金 + 筹备期营销费用 + 其他开办费用\n筹备期投入 = 土地契税 + 建设工程 + 预备费 + 筹备期非工程费用 + 铺底流动资金', ['SUM','IF'], '首开招商佣金和筹备期营销只进入项目总投资；运营期招商和营销预算在下一页单独核算，避免重复。')}
       <div class="form-grid">
-        ${textField('首年出租率', 'operations.occupancyY1', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('第二年出租率', 'operations.occupancyY2', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('稳定期出租率', 'operations.stableOccupancy', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('稳定期起始运营年', 'operations.stableYear', { type: 'number', unit: '年' })}
-        ${textField('首年免租月数', 'operations.rentFreeMonths', { type: 'number', unit: '月' })}
-        ${selectField('租金递增方式', 'formulas.rentGrowthMode', growthOptions, { help: '每年复利/单利按年递增；每N年阶梯递增只在周期到达时上调。' })}
-        ${rentGrowthMode === 'step'
-          ? `${textField('租金递增周期', 'operations.rentStepYears', { type: 'number', unit: '年', help: '例如3年；第1—3年不变，第4年开始按阶梯递增率上调' })}${textField('租金阶梯递增率', 'operations.rentStepRate', { type: 'number', unit: '%', scale: 0.01 })}`
-          : textField('租金年递增率', 'operations.rentGrowth', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('联营销售额年增长率', 'operations.salesGrowth', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('租金收缴率', 'operations.collectionRate', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('续租周期', 'operations.renewalCycle', { type: 'number', unit: '年' })}
-        ${textField('租赁保证金月数', 'operations.depositMonths', { type: 'number', unit: '月' })}
+        ${textField('首开招商佣金月数', 'operations.commissionMonths', { type: 'number', unit: '月', help: '按满租月租金和首年出租率计算首开招商佣金' })}
+        ${textField('筹备招商期', 'project.leasingPeriodMonths', { type: 'number', unit: '月', help: '建设完成后至正式开业之间的招商筹备期，用于资金计划和现金流分期' })}
+        ${textField('启动资金安全垫', 'project.startupReserveMonths', { type: 'number', unit: '月', help: '在资金缺口峰值之外额外准备的稳定期运营月数' })}
+        ${textField('筹备期团队成本', 'project.preOpeningTeamCost', { type: 'number', unit: '万元', help: '开业前筹备团队工资、社保、招聘培训及差旅等' })}
+        ${textField('筹备期物业成本', 'project.preOpeningPropertyCost', { type: 'number', unit: '万元', help: '开业前保安、保洁、工程介入、开荒及物业顾问费用' })}
+        ${textField('筹备期营销费用', 'project.preOpeningMarketing', { type: 'number', unit: '万元', help: '开业前品牌发布、招商推广、市场预热及媒体费用' })}
+        ${textField('其他前期及开办费用', 'project.otherPreOpening', { type: 'number', unit: '万元', help: '咨询、尽调、筹备办公、证照及其他开办费用' })}
       </div>
     </div>
+    <div class="phase-cost-kpis">
+      <div><span>首开招商佣金</span><strong data-preopening="commission">${fmt(commission, 2)}</strong><em>万元</em></div>
+      <div><span>筹备团队及物业</span><strong data-preopening="team-property">${fmt(team + property, 2)}</strong><em>万元</em></div>
+      <div><span>筹备营销及其他</span><strong data-preopening="marketing-other">${fmt(marketing + other, 2)}</strong><em>万元</em></div>
+      <div class="highlight"><span>筹备期非工程费用合计</span><strong data-preopening="total">${fmt(total, 2)}</strong><em>万元</em></div>
+    </div>
+    ${preview?.phaseCostBreakdown?.length ? `<div class="form-section"><div class="section-title">筹备期投入在项目总投资中的位置</div><div class="section-note">以下筹备期投入包含土地、建设工程、装修设备、规费、预备费和本页开办费用，是项目开业前形成的资本投入。</div><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>筹备期投入项目</th><th class="num">金额（万元）</th><th class="num">占比</th></tr></thead><tbody>${preview.phaseCostBreakdown.filter(item => item.stage === '筹备期').map(item => `<tr><td>${escapeHtml(item.name)}</td><td class="num">${fmt(item.value, 2)}</td><td class="num">${fmtPct(Number(item.value || 0) / Math.max(Number(summary.preOpeningInvestment || 0), 1))}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
+  `;
+}
+
+function renderOperationCostsStep() {
+  const model = state.current.model;
+  const staffCostMode = model.operations?.staffCostMode || 'organization';
+  const organizationAnnual = propertyServiceAnalysis(model).totalActiveStaffCost;
+  return `
+    <div class="callout">${ICONS.info}<div>本页只核算进入稳定运营期后的年度成本。筹备期团队、首开招商佣金和筹备营销请在“筹备期成本”页单独录入，系统会自动汇总到阶段成本。</div></div>
     <div class="form-section">
-      <div class="section-title">收入与运营成本</div>
-      ${formulaPanel('收入、运营成本与NOI公式', '营业收入 = 租金收入 + 物业费 + 多经收入 + 停车收入\n运营成本 = 物业 + 能耗 + 商管 + 行政 + 营销 + 维修 + 保险 + 坏账 + 其他\nNOI = 不含税营业收入 - 不含税运营成本 - 税费', ['SUM', 'MAX', 'MIN'], '所有运营参数均可直接修改，结果会联动更新。')}
+      <div class="section-title">运营期成本参数</div>
+      ${formulaPanel('运营成本与NOI公式', '运营成本 = 物业基础运营 + 公共能耗 + 人员及物业服务 + 办公行政 + 招商 + 营销 + 维保 + 保险 + 坏账 + 其他 + 业主租金\nNOI = 不含税营业收入 - 不含税运营成本 - 税费', ['SUM', 'MIN', 'IF'], '所有运营参数均可直接修改；系统会按运营年限自动形成年度成本、NOI和现金流。')}
       <div class="form-grid">
-        ${textField('首年物业管理费/商业管理费', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月', help: '作为第1年管理费单价，后续按管理费递增规则逐年调整' })}
-        ${selectField('管理费递增方式', 'formulas.propertyFeeGrowthMode', growthOptions, { help: '管理费与租金分开递增，便于分别匹配租赁合同和物业服务合同。' })}
-        ${propertyFeeGrowthMode === 'step'
-          ? `${textField('管理费递增周期', 'operations.propertyFeeStepYears', { type: 'number', unit: '年' })}${textField('管理费阶梯递增率', 'operations.propertyFeeStepRate', { type: 'number', unit: '%', scale: 0.01 })}`
-          : textField('管理费年递增率', 'operations.propertyFeeGrowth', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('多经收入占租金比例', 'revenues.otherIncomeRatio', { type: 'number', unit: '%', scale: 0.01 })}
-        ${textField('停车位数量', 'revenues.parkingSpaces', { type: 'number', unit: '个', optional: true })}
-        ${textField('停车月租', 'revenues.parkingMonthly', { type: 'number', unit: '元/位/月', optional: true })}
         ${textField('物业运营参考单价', 'operations.propertyOpsCost', { type: 'number', unit: '元/㎡/月', help: '仅在物业基础运营直接金额未填写时用于自动核算' })}
         ${textField('公共能耗参考单价', 'operations.energyCost', { type: 'number', unit: '元/㎡/月', help: '仅在公共能耗直接金额未填写时用于自动核算' })}
         ${selectField('人员成本来源', 'operations.staffCostMode', [{ value: 'organization', label: '按组织架构薪资倒推' }, { value: 'area', label: '按面积快速估算' }], { help: '推荐使用组织架构薪资倒推；面积估算仅用于前期快速判断' })}
@@ -3585,6 +3657,12 @@ function renderOperationsStep() {
     ${renderMaintenanceBudgetSection(state.current.model, state.preview)}
     ${renderAnnualCostAdjustmentSection(state.current.model)}
     ${renderOperatingCostSummary(state.preview)}
+  `;
+}
+
+function renderTaxProfitStep() {
+  return `
+    <div class="callout">${ICONS.info}<div>本页只处理税费、融资、折旧和退出假设。项目利润、所得税和现金流会在保存后进入“资本金与回报”页统一展示。</div></div>
     <details class="advanced">
       <summary>税费与属地公共费用（高级）</summary>
       <div class="advanced-body">
@@ -3647,7 +3725,8 @@ function renderOperationsStep() {
         </div>
         <div class="formula-actions"><button class="btn btn-secondary btn-sm" id="reset-formula-defaults">恢复系统默认公式参数</button></div>
       </div>
-    </details>`;
+    </details>
+  `;
 }
 
 function renderMarketStep() {
@@ -3661,7 +3740,7 @@ function renderMarketStep() {
   const comps = market.comparables || [];
   const rentSummary = (state.preview || state.result)?.marketSummary;
   if (!hasLocation) {
-    return `<div class="empty-state"><div class="new-project-icon">${ICONS.pin}</div><h3>请先给项目做地图定位</h3><p>周边市场分析需要项目经纬度。打开项目信息页，通过地址自动定位或地图选点后再回来。</p><button class="btn btn-primary" id="go-location-step">${ICONS.pin}<span>去定位项目位置</span></button></div>`;
+    return `<div class="empty-state"><div class="new-project-icon">${ICONS.pin}</div><h3>请先给项目做地图定位</h3><p>周边市场分析需要项目经纬度。打开“项目基本条件”页，通过地址自动定位或地图选点后再回来。</p><button class="btn btn-primary" id="go-location-step">${ICONS.pin}<span>去定位项目位置</span></button></div>`;
   }
   return `
     <div class="market-location-bar">
@@ -3856,6 +3935,7 @@ function renderResultsStep() {
     </div>
     ${renderOperatingResultCards()}
     ${renderPhaseCostCard()}
+    ${renderFundingPlanCard()}
     <div class="analysis-panel">
       <div class="card"><h3>分析结论</h3><ul class="analysis-list">${analysis.bullets.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul></div>
       <div class="card"><h3>建议与下一步</h3>${analysis.recommendations.map((text, i) => `<div class="recommendation"><div class="num">${i + 1}</div><p>${escapeHtml(text)}</p></div>`).join('')}</div>
@@ -3866,6 +3946,29 @@ function renderResultsStep() {
     </div>
     ${renderFloorResultTable()}
     <div class="export-bar"><div><strong>生成汇报材料</strong><span>Excel用于继续分析；PPT用于内部评审和项目汇报。</span></div><div class="export-actions"><button class="btn btn-secondary" id="export-excel">${ICONS.excel}<span>导出Excel</span></button><button class="btn btn-primary" id="export-ppt">${ICONS.ppt}<span>导出PPT汇报</span></button></div></div>`;
+}
+
+function renderFundingPlanCard() {
+  const result = state.result;
+  const s = result?.summary || {};
+  const phases = result?.phaseCashFlowSummary || [];
+  const monthly = result?.monthlyFundingPlan || [];
+  if (!phases.length) return '';
+  const breakEvenText = s.cashFlowBreakEvenMonth ? `第 ${s.cashFlowBreakEvenMonth} 个月` : s.cashFlowBreakEvenYear ? `${s.cashFlowBreakEvenYear} 年` : '当前测算期内未转正';
+  return `<div class="card funding-plan-card">
+    <h3>项目启动资金与阶段现金流</h3>
+    <div class="funding-kpis">
+      <div class="highlight"><span>建议启动资金</span><strong>${fmt(s.recommendedStartupCapital, 2)}</strong><em>万元</em></div>
+      <div><span>项目资金缺口峰值</span><strong>${fmt(s.peakProjectFundingRequirement, 2)}</strong><em>万元</em></div>
+      <div><span>资本金缺口峰值</span><strong>${fmt(s.peakEquityFundingRequirement, 2)}</strong><em>万元</em></div>
+      <div><span>累计现金流转正</span><strong>${escapeHtml(breakEvenText)}</strong><em>${s.cashFlowBreakEvenMonth ? '按月资金计划' : '按年现金流'}</em></div>
+    </div>
+    <div class="funding-phase-grid">
+      ${phases.map(item => `<div class="funding-phase-item"><strong>${escapeHtml(item.phase)}</strong><span>项目净现金流</span><em>${fmt(item.projectCashFlow, 2)} 万元</em><span>资本金净现金流</span><em>${fmt(item.equityCashFlow, 2)} 万元</em></div>`).join('')}
+    </div>
+    <div class="section-note">月度资金计划按建设期、筹备招商期和开业首年均匀铺排，用于判断需要提前准备的资金。实际支付节点应按工程合同、招商合同和融资提款计划调整。</div>
+    <div class="data-table-wrap funding-monthly-wrap"><table class="data-table funding-monthly-table"><thead><tr><th>月份</th><th>阶段</th><th>日历年</th><th class="num">项目净现金流（万元）</th><th class="num">项目累计现金流（万元）</th><th class="num">资本金净现金流（万元）</th><th class="num">资本金累计现金流（万元）</th></tr></thead><tbody>${monthly.map(row => `<tr><td>第${row.month}月</td><td>${escapeHtml(row.phase || '')}</td><td>${row.calendarYear || ''}</td><td class="num ${row.projectCashFlow < 0 ? 'neg' : 'pos'}">${fmt(row.projectCashFlow, 2)}</td><td class="num ${row.cumulativeProjectCashFlow < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeProjectCashFlow, 2)}</td><td class="num ${row.equityCashFlow < 0 ? 'neg' : 'pos'}">${fmt(row.equityCashFlow, 2)}</td><td class="num ${row.cumulativeEquityCashFlow < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeEquityCashFlow, 2)}</td></tr>`).join('')}</tbody></table></div>
+  </div>`;
 }
 
 function renderPhaseCostCard() {
@@ -4077,11 +4180,10 @@ function bindStepInputs() {
     scheduleLivePreview();
     toast('已恢复系统默认公式参数', 'success');
   });
-  if (state.step === 2) bindShopsStep();
-  if (state.step === 3) bindOperationsBudgets();
+  if (state.step === 2) { bindShopsStep(); bindMarketStep(); }
+  if (state.step === 4) bindOperationsBudgets();
   if (state.step === 1) bindCostPresets();
-  if (state.step === 4) bindMarketStep();
-  if (state.step === 5) bindResultsActions();
+  if (state.step === 6) bindResultsActions();
 }
 
 function bindFormulaToolbar() {
@@ -4751,7 +4853,7 @@ async function saveProject() {
     state.result = payload.result;
     state.preview = payload.result;
     state.dirty = false;
-    state.step = 5;
+    state.step = 6;
     await loadProjects();
     renderWorkspace();
     toast('测算已更新', 'success');
@@ -4844,7 +4946,7 @@ function drawDonut(canvas, items) {
 }
 
 window.addEventListener('resize', () => {
-  if (state.step === 5 && state.current) renderResultCharts();
+  if (state.step === 6 && state.current) renderResultCharts();
 });
 
 document.addEventListener('click', event => {

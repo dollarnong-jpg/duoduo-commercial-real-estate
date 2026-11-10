@@ -593,6 +593,22 @@ a { color: inherit; }
 .phase-cost-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .phase-cost-grid .subsection-heading { margin-top:0; padding-top:0; border-top:0; }
 .phase-cost-grid .data-table { min-width:420px; }
+.funding-plan-card { margin-bottom:16px; }
+.funding-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; margin:12px 0; }
+.funding-kpis > div { padding:11px 12px; border:1px solid #e3e9e5; border-radius:10px; background:#f7faf8; }
+.funding-kpis > div.highlight { border-color:#d9c38e; background:#fbf5e8; }
+.funding-kpis span { display:block; color:var(--muted); font-size:var(--fs-8); }
+.funding-kpis strong { display:block; margin-top:5px; color:var(--navy); font-size:var(--fs-15); }
+.funding-kpis em { display:block; margin-top:3px; color:var(--muted); font-size:var(--fs-8); font-style:normal; }
+.funding-phase-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.funding-phase-item { padding:11px 12px; border:1px solid #dce7e1; border-radius:10px; background:#fff; }
+.funding-phase-item strong { display:block; margin-bottom:7px; color:var(--navy); font-size:var(--fs-11); }
+.funding-phase-item span { display:block; margin-top:4px; color:var(--muted); font-size:var(--fs-8); }
+.funding-phase-item em { display:block; color:var(--navy); font-size:var(--fs-10); font-style:normal; font-weight:700; }
+.funding-monthly-wrap { max-height:420px; }
+.funding-monthly-table { min-width:760px; }
+.funding-monthly-table td.pos { color:var(--green); }
+.funding-monthly-table td.neg { color:#a4493f; }
 .org-structure-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0 0; padding:10px 12px; border:1px solid #d8e5de; border-radius:10px; background:#f4f9f6; }
 .org-structure-tools span { color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
 .org-structure-tools .btn { flex:0 0 auto; }
@@ -970,9 +986,9 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .payroll-result-card { grid-column:1 / -1; }
 .marketing-allocation-card { margin-bottom:16px; }
 @media (max-width:760px) { .payroll-summary-grid { grid-template-columns:1fr 1fr; } }
-@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } .phase-cost-kpis { grid-template-columns:1fr 1fr; } .phase-cost-grid { grid-template-columns:1fr; } }
+@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid { grid-template-columns:1fr 1fr; } .phase-cost-grid { grid-template-columns:1fr; } }
 @media (max-width:900px) { .share-direct-row, .compare-select-grid { grid-template-columns:1fr; } .compare-insight-grid { grid-template-columns:1fr; } }
-@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } .phase-cost-kpis { grid-template-columns:1fr; } .compare-summary-head { grid-template-columns:1fr; text-align:left; } .compare-summary-head > div:last-child { justify-content:flex-start; text-align:left; } .project-intro-actions { width:100%; } .project-intro-actions .btn { flex:1; } }
+@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid { grid-template-columns:1fr; } .compare-summary-head { grid-template-columns:1fr; text-align:left; } .compare-summary-head > div:last-child { justify-content:flex-start; text-align:left; } .project-intro-actions { width:100%; } .project-intro-actions .btn { flex:1; } }
 .market-detection-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:9px; margin:18px 0; }
 .market-detection-stats > div { padding:12px; border-radius:11px; border:1px solid var(--line); background:#fffdf9; }
 .market-detection-stats span { display:block; color:var(--muted); font-size: var(--fs-8); }

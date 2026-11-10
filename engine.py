@@ -60,6 +60,8 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "revenueModel": "rent",
             "startYear": datetime.now().year + 1,
             "constructionYears": 2,
+            "leasingPeriodMonths": 12,
+            "startupReserveMonths": 3,
             "operationYears": 20,
             "landArea": 0.0,
             "gbaOverride": 0.0,
@@ -67,6 +69,8 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "landPrice": 0.0,
             "otherPreOpening": 0.0,
             "preOpeningMarketing": 0.0,
+            "preOpeningTeamCost": 0.0,
+            "preOpeningPropertyCost": 0.0,
             "contingencyRate": 0.05,
         },
         "ownerRent": {
@@ -943,7 +947,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     contingency = direct_engineering * as_float(project.get("contingencyRate"))
     commission = total_monthly_revenue * as_float(operations.get("commissionMonths")) * as_float(operations.get("occupancyY1")) / 10000
     preopening_marketing = as_float(project.get("preOpeningMarketing"))
-    other_preopening = as_float(project.get("otherPreOpening"))
+    preopening_team = max(0.0, as_float(project.get("preOpeningTeamCost")))
+    preopening_property = max(0.0, as_float(project.get("preOpeningPropertyCost")))
+    preopening_other_direct = max(0.0, as_float(project.get("otherPreOpening")))
+    other_preopening = preopening_other_direct + preopening_team + preopening_property
 
     # First-pass investment, then add working capital based on stabilized operating costs.
     investment_without_wc = land_price + deed_tax + direct_engineering + contingency + commission + preopening_marketing + other_preopening
@@ -978,9 +985,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     loan_amount = total_investment * as_float(finance.get("debtRatio"))
     construction_years = max(0, min(10, int(as_float(project.get("constructionYears"), 2))))
+    leasing_period_months = max(0, min(60, int(as_float(project.get("leasingPeriodMonths"), 12))))
+    leasing_years = math.ceil(leasing_period_months / 12) if leasing_period_months > 0 else 0
     operation_years = max(1, min(50, int(as_float(project.get("operationYears"), 20))))
-    total_periods = construction_years + operation_years
-    draw_weights = ([1.0 / construction_years] * construction_years if construction_years > 0 else []) + [0.0] * operation_years
+    total_periods = construction_years + leasing_years + operation_years
+    draw_weights = ([1.0 / construction_years] * construction_years if construction_years > 0 else []) + [0.0] * (leasing_years + operation_years)
     loan_schedule: list[dict[str, float]] = []
     balance = 0.0
     loan_rate = as_float(finance.get("loanRate"))
@@ -990,7 +999,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     for idx in range(total_periods):
         draw = loan_amount * draw_weights[idx] if idx < len(draw_weights) else 0.0
         interest = (balance + draw / 2) * loan_rate
-        operation_year = idx - construction_years + 1
+        operation_year = idx - construction_years - leasing_years + 1
         principal = 0.0
         if operation_year > grace and operation_year <= grace + loan_term:
             if str(formulas.get("loanRepaymentMethod") or "equal_principal") == "interest_only":
@@ -1020,6 +1029,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     equity_cash_flows: list[float] = []
     cumulative_project = 0.0
     cumulative_equity = 0.0
+    hard_investment = land_price + deed_tax + direct_engineering + contingency
+    soft_preopening_investment = commission + preopening_marketing + other_preopening
+    construction_capex_per_year = safe_div(hard_investment, construction_years) if construction_years > 0 else 0.0
+    leasing_capex_per_year = safe_div(soft_preopening_investment, leasing_years) if leasing_years > 0 else 0.0
+    deferred_construction_capex = hard_investment if construction_years == 0 else 0.0
+    deferred_soft_preopening = soft_preopening_investment if leasing_years == 0 else 0.0
 
     owner_rent_config = model.get("ownerRent") if isinstance(model.get("ownerRent"), dict) else {}
     owner_rent_enabled_value = owner_rent_config.get("enabled")
@@ -1083,23 +1098,30 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     for idx in range(total_periods):
         period = idx + 1
-        op_year = idx - construction_years + 1
+        op_year = idx - construction_years - leasing_years + 1
         loan = loan_schedule[idx]
         if op_year < 1:
-            pay_ratio = draw_weights[idx] if idx < len(draw_weights) else 0.0
-            project_capex = total_investment * pay_ratio
+            in_construction = idx < construction_years
+            in_leasing = construction_years <= idx < construction_years + leasing_years
+            phase = "建设期" if in_construction else "筹备招商期"
+            project_capex = construction_capex_per_year if in_construction else leasing_capex_per_year
+            if in_leasing and deferred_construction_capex:
+                project_capex += deferred_construction_capex
+                deferred_construction_capex = 0.0
             project_cf = -project_capex
             equity_cf = -project_capex + loan["draw"] - loan["interest"]
             annual_rows.append(
                 {
                     "period": period,
                     "opYear": op_year,
+                    "phase": phase,
                     "calendarYear": int(project.get("startYear") or datetime.now().year) + idx,
                     "revenue": 0.0,
                     "rentRevenue": 0.0,
                     "propertyRevenue": 0.0,
                     "otherRevenue": 0.0,
                     "operatingCost": 0.0,
+                    "preparationCost": project_capex if in_leasing else 0.0,
                     "ownerRent": 0.0,
                     "ownerLandRent": 0.0,
                     "ownerPropertyRent": 0.0,
@@ -1255,6 +1277,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         total_taxes = property_tax + land_use_tax + stamp_duty + vat_surcharge + local_fund
         noi = revenue_net - operating_cost_net - total_taxes
         capex_reserve = rent_net * as_float(operations.get("capexRate"))
+        opening_working_capital = working_capital if op_year == 1 else 0.0
+        opening_deferred_capex = (deferred_soft_preopening + deferred_construction_capex) if op_year == 1 else 0.0
+        deferred_soft_preopening = 0.0
+        deferred_construction_capex = 0.0
+        project_capex = capex_reserve + opening_working_capital + opening_deferred_capex
         ebit = noi - annual_depreciation
         interest = loan["interest"]
         pretax_profit = ebit - interest
@@ -1282,14 +1309,15 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             else:
                 exit_value = safe_div(max(0.0, noi), as_float(valuation.get("exitCapRate"))) * (1 - as_float(taxes.get("exitTaxRate")))
         unlevered_tax = max(0.0, ebit) * as_float(taxes.get("corporateTax"))
-        project_cf = noi - capex_reserve - unlevered_tax + exit_value
-        equity_cf = noi - capex_reserve - income_tax - interest - loan["principal"] + exit_value - (loan["closing"] if idx == total_periods - 1 else 0.0)
+        project_cf = noi - project_capex - unlevered_tax + exit_value
+        equity_cf = noi - project_capex - income_tax - interest - loan["principal"] + exit_value - (loan["closing"] if idx == total_periods - 1 else 0.0)
         cumulative_project += project_cf
         cumulative_equity += equity_cf
         annual_rows.append(
             {
                 "period": period,
                 "opYear": op_year,
+                "phase": "运营期",
                 "calendarYear": int(project.get("startYear") or datetime.now().year) + idx,
                 "occupancy": occupancy,
                 "revenue": revenue_net,
@@ -1333,7 +1361,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "interest": interest,
                 "principal": loan["principal"],
                 "netProfit": net_profit,
-                "projectCapex": capex_reserve,
+                "projectCapex": project_capex,
                 "projectCashFlow": project_cf,
                 "equityCashFlow": equity_cf,
                 "cumulativeProjectCashFlow": cumulative_project,
@@ -1388,6 +1416,53 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"stage": "运营期", "name": "坏账及其他运营费用", "value": sum(as_float(row.get("badDebtCost")) + as_float(row.get("otherOpexCost")) + as_float(row.get("extraOperatingCost")) for row in operation_rows)},
         {"stage": "运营期", "name": "税费", "value": operation_period_taxes},
     ]
+    construction_rows = [row for row in annual_rows if row.get("phase") == "建设期"]
+    leasing_rows = [row for row in annual_rows if row.get("phase") == "筹备招商期"]
+    first_operation_row = operation_rows[0] if operation_rows else {}
+    phase_cash_flow_summary = [
+        {"phase": "建设期", "projectCashFlow": sum(as_float(row.get("projectCashFlow")) for row in construction_rows), "equityCashFlow": sum(as_float(row.get("equityCashFlow")) for row in construction_rows)},
+        {"phase": "筹备招商期", "projectCashFlow": sum(as_float(row.get("projectCashFlow")) for row in leasing_rows), "equityCashFlow": sum(as_float(row.get("equityCashFlow")) for row in leasing_rows)},
+        {"phase": "开业首年", "projectCashFlow": as_float(first_operation_row.get("projectCashFlow")), "equityCashFlow": as_float(first_operation_row.get("equityCashFlow"))},
+        {"phase": "运营期合计", "projectCashFlow": sum(as_float(row.get("projectCashFlow")) for row in operation_rows), "equityCashFlow": sum(as_float(row.get("equityCashFlow")) for row in operation_rows)},
+    ]
+    monthly_funding_plan: list[dict[str, Any]] = []
+    monthly_cumulative_project = 0.0
+    monthly_cumulative_equity = 0.0
+    month_index = 0
+    for row in annual_rows:
+        phase = str(row.get("phase") or "")
+        if phase == "建设期":
+            month_count = 12
+        elif phase == "筹备招商期":
+            month_count = min(12, max(1, leasing_period_months))
+        elif row.get("opYear") == 1:
+            month_count = 12
+        else:
+            break
+        monthly_project_cf = as_float(row.get("projectCashFlow")) / month_count
+        monthly_equity_cf = as_float(row.get("equityCashFlow")) / month_count
+        for month in range(month_count):
+            month_index += 1
+            monthly_cumulative_project += monthly_project_cf
+            monthly_cumulative_equity += monthly_equity_cf
+            monthly_funding_plan.append({
+                "month": month_index,
+                "phase": phase or ("开业首年" if row.get("opYear") == 1 else ""),
+                "calendarYear": row.get("calendarYear"),
+                "projectCashFlow": monthly_project_cf,
+                "equityCashFlow": monthly_equity_cf,
+                "cumulativeProjectCashFlow": monthly_cumulative_project,
+                "cumulativeEquityCashFlow": monthly_cumulative_equity,
+            })
+    peak_project_funding = max([0.0] + [-as_float(row.get("cumulativeProjectCashFlow")) for row in monthly_funding_plan])
+    peak_equity_funding = max([0.0] + [-as_float(row.get("cumulativeEquityCashFlow")) for row in monthly_funding_plan])
+    stable_monthly_operating_cost = (stable_operating_cost + stable_taxes) / 12
+    startup_reserve_months = max(0.0, as_float(project.get("startupReserveMonths"), 3.0))
+    recommended_startup_capital = peak_equity_funding + stable_monthly_operating_cost * startup_reserve_months
+    peak_month_index = min(range(len(monthly_funding_plan)), key=lambda index: as_float(monthly_funding_plan[index].get("cumulativeProjectCashFlow"))) if monthly_funding_plan else -1
+    cash_flow_break_even_month = next((row.get("month") for row in monthly_funding_plan[peak_month_index + 1:] if as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_month_index >= 0 else None
+    peak_annual_index = min(range(len(annual_rows)), key=lambda index: as_float(annual_rows[index].get("cumulativeProjectCashFlow"))) if annual_rows else -1
+    cash_flow_break_even_row = next((row for row in annual_rows[peak_annual_index + 1:] if row.get("opYear", 0) > 0 and as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_annual_index >= 0 else None
     service_breakdown_base_total = sum(as_float(item.get("serviceCost")) for item in property_service_base)
     service_breakdown_stable_total = sum(as_float(stable_row.get(item.get("costField"))) for item in property_service_base)
     service_breakdown_scale = safe_div(service_breakdown_stable_total, service_breakdown_base_total) if staff_cost_mode == "organization" else 0.0
@@ -1528,11 +1603,23 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "revenueModel": project_revenue_model,
             "totalInvestment": total_investment,
             "preOpeningInvestment": preopening_investment,
+            "preOpeningTeamCost": preopening_team,
+            "preOpeningPropertyCost": preopening_property,
+            "preOpeningMarketingCost": preopening_marketing,
+            "preOpeningOtherCost": preopening_other_direct,
+            "preOpeningCommission": commission,
             "operationPeriodOperatingCost": operation_period_operating_cost,
             "operationPeriodTaxes": operation_period_taxes,
             "operationPeriodInterest": operation_period_interest,
             "fullCycleCostExcludingFinancing": full_cycle_cost_excluding_financing,
             "fullCycleCashCostIncludingFinancing": full_cycle_cash_cost_including_financing,
+            "constructionPeriodMonths": construction_years * 12,
+            "leasingPeriodMonths": leasing_period_months,
+            "peakProjectFundingRequirement": peak_project_funding,
+            "peakEquityFundingRequirement": peak_equity_funding,
+            "recommendedStartupCapital": recommended_startup_capital,
+            "cashFlowBreakEvenMonth": cash_flow_break_even_month,
+            "cashFlowBreakEvenYear": cash_flow_break_even_row.get("calendarYear") if cash_flow_break_even_row else None,
             "equityInvestment": total_investment - loan_amount,
             "loanAmount": loan_amount,
             "investmentPerGba": safe_div(total_investment * 10000, gba),
@@ -1594,6 +1681,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         },
         "investmentBreakdown": investment_breakdown,
         "phaseCostBreakdown": phase_cost_breakdown,
+        "phaseCashFlowSummary": phase_cash_flow_summary,
+        "monthlyFundingPlan": monthly_funding_plan,
         "organizationBreakdown": organization_breakdown,
         "positionBreakdown": position_breakdown,
         "propertyServiceBreakdown": property_service_breakdown,
