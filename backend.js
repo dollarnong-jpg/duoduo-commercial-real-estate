@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-consistency5', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-position2', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1140,6 +1140,7 @@ function operatingBudgetTemplate() {
     ['组织架构中的“税前应发基本月薪”是员工税前工资，不是实发工资。系统会继续计算个人社保公积金、个人所得税、实发工资、单位社保公积金和企业人员成本。'],
     ['社保公积金比例、个税起征点和专项附加扣除必须按项目属地最新政策及员工实际情况调整；模板默认值仅为测算示例。'],
     ['物业服务模式表可分别设置物业工程、保安、保洁为自营、第三方常驻外包或第三方非常驻服务；三种模式均以岗位成本为基础，第三方模式另计综合管理费。'],
+    ['物业服务岗位表用于分别录入物业工程、保安、保洁下的岗位、编制人数和参考月薪；物业服务表负责设置服务模式和折算费率。'],
     ['招商调整阶段表用于设置运营期内的品牌升级、业态优化或换租阶段；填写阶段名称即启用，起止年不要重叠。'],
   ], [20, 100]);
   addSheet(wb, '基础参数', [
@@ -1269,6 +1270,16 @@ function preopeningBudgetTemplate() {
     ['保安服务', '第三方常驻外包', 0, 5500, 12, 70, 12, '筹备期门岗、巡逻和现场秩序'],
     ['保洁服务', '第三方常驻外包', 0, 4500, 12, 70, 12, '筹备期日常保洁和开业前开荒配合'],
   ], [18, 26, 14, 24, 14, 24, 24, 56]);
+  addSheet(wb, '物业服务岗位', [
+    ['服务类别', '岗位名称', '编制人数', '参考月薪（元/月）', '岗位说明'],
+    ['物业工程', '物业经理', 0, 13000, '物业统筹、供应商和品质管理'],
+    ['物业工程', '工程主管', 0, 9000, '机电、暖通、给排水和维修'],
+    ['物业工程', '消防及强弱电', 0, 7000, '消防、弱电、配电及设备巡检'],
+    ['保安服务', '保安主管', 0, 7000, '秩序维护、排班和应急管理'],
+    ['保安服务', '保安员', 0, 5000, '门岗、巡逻、监控和车辆管理'],
+    ['保洁服务', '保洁主管', 0, 6000, '保洁品质、排班和物料管理'],
+    ['保洁服务', '保洁员', 0, 4000, '公共区域、卫生间和垃圾清运'],
+  ], [18, 22, 14, 24, 62]);
   addSheet(wb, '物业一次性费用', [
     ['费用项目', '金额（万元）', '说明'],
     ['工程介入', 0, '工程条件核查、设备接管、施工配合等'],
@@ -1361,6 +1372,34 @@ function parsePreopeningBudgetWorkbook(base64, filename) {
       }
     }
   }
+  const propertyPositionSheet = findSheet('物业服务岗位');
+  const positionsByService = new Map();
+  if (propertyPositionSheet) {
+    const rows = getTemplateRows(wb, propertyPositionSheet);
+    const headerIdx = findHeader(rows, ['服务类别', '岗位名称']);
+    if (headerIdx >= 0) {
+      for (const row of rows.slice(headerIdx + 1)) {
+        const serviceName = String(row?.[0] || '').trim();
+        const positionName = String(row?.[1] || '').trim();
+        if (!serviceName || !positionName) continue;
+        if (!positionsByService.has(serviceName)) positionsByService.set(serviceName, []);
+        positionsByService.get(serviceName).push({
+          name: positionName,
+          headcount: Math.max(0, safeNumber(row?.[2])),
+          monthlySalary: Math.max(0, safeNumber(row?.[3])),
+          note: String(row?.[4] || '').trim(),
+        });
+      }
+    }
+  }
+  budget.property.services.forEach(service => {
+    service.positions = positionsByService.get(service.name) || [{
+      name: `${service.name}岗位`,
+      headcount: service.headcount,
+      monthlySalary: service.monthlySalary,
+      note: '由物业服务汇总行迁移',
+    }];
+  });
   const oneOffSheet = findSheet('物业一次性');
   if (oneOffSheet) {
     const rows = getTemplateRows(wb, oneOffSheet);
@@ -1827,18 +1866,26 @@ function exportExcel(result) {
       const training = (gross + social) * recruitmentRate;
       return [item.department || '', item.position || '', headcount, salary, months, gross, social, training, gross + social + training, item.note || ''];
     });
-    const prePropertyRows = (preBudget.property?.services || []).map(item => {
-      const headcount = Number(item.headcount || 0);
-      const salary = Number(item.monthlySalary || 0);
+    const prePropertyDetails = (preBudget.property?.services || []).map(item => {
       const months = Number(item.months || 0);
       const factor = Number(item.nonResidentFactor ?? 0.7);
       const feeRate = Number(item.managementFeeRate ?? 0.12);
-      const base = headcount * salary * months * (1 + socialRate) / 10000;
+      const positions = (Array.isArray(item.positions) && item.positions.length ? item.positions : [{ name: `${item.name || '物业服务'}岗位`, headcount: item.headcount, monthlySalary: item.monthlySalary }]).map(position => {
+        const headcount = Number(position.headcount || 0);
+        const salary = Number(position.monthlySalary || 0);
+        const companyCost = headcount * salary * months * (1 + socialRate) / 10000;
+        return { ...position, headcount, salary, companyCost };
+      });
+      const headcount = positions.reduce((sum, position) => sum + position.headcount, 0);
+      const salary = headcount > 0 ? positions.reduce((sum, position) => sum + position.headcount * position.salary, 0) / headcount : 0;
+      const base = positions.reduce((sum, position) => sum + position.companyCost, 0);
       const positionCost = item.mode === 'non_resident' ? base * factor : base;
       const managementFee = ['resident_outsourced', 'non_resident'].includes(item.mode) ? positionCost * feeRate : 0;
       const selfTraining = item.mode === 'self' ? positionCost * Number(preBudget.property?.selfRecruitmentRate ?? 0.02) : 0;
-      return [item.name || '', PROPERTY_SERVICE_MODE_LABELS[item.mode] || item.mode || '', headcount, salary, months, factor, feeRate, positionCost + managementFee + selfTraining];
+      return { ...item, positions, headcount, salary, months, factor, feeRate, total: positionCost + managementFee + selfTraining };
     });
+    const prePropertyRows = prePropertyDetails.map(item => [item.name || '', PROPERTY_SERVICE_MODE_LABELS[item.mode] || item.mode || '', item.headcount, item.salary, item.months, item.factor, item.feeRate, item.total]);
+    const prePropertyPositionRows = prePropertyDetails.flatMap(item => item.positions.map(position => [item.name || '', position.name || '', position.headcount, position.salary, position.companyCost, position.note || '']));
     const preAdminRows = (preBudget.admin?.items || []).map(item => {
       const amount = Number(item.amount || 0);
       const months = Number(item.months || 0);
@@ -1860,9 +1907,13 @@ function exportExcel(result) {
       ['团队合计', '', '', '', '', '', '', '', preTeamTotal, ''],
       [''],
       ['二、筹备期物业工程、保安、保洁'],
-      ['服务类别', '服务模式', '编制', '参考月薪（元/月）', '服务月数', '非驻场折算', '综合管理费率', '服务成本（万元）'],
+      ['服务类别', '服务模式', '编制', '加权月薪（元/月）', '服务月数', '非驻场折算', '综合管理费率', '服务成本（万元）'],
       ...prePropertyRows,
       ['物业服务小计', '', '', '', '', '', '', prePropertyServiceTotal],
+      [''],
+      ['物业服务岗位明细'],
+      ['服务类别', '岗位', '编制', '参考月薪（元/月）', '岗位工资+单位社保（万元）', '岗位说明'],
+      ...prePropertyPositionRows,
       [''],
       ['物业一次性费用', '金额（万元）'],
       ...preOneOffRows,

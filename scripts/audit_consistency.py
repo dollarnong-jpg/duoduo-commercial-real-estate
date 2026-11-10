@@ -63,6 +63,7 @@ def audit_defaults_and_units() -> None:
     assert set(team_months) == {total_months}, team_months
     assert set(service_months) == {total_months}, service_months
     assert set(admin_months) == {total_months}, admin_months
+    assert all(service.get("positions") for service in model["preOpeningBudget"]["property"]["services"])
 
     backend = read("backend.js")
     app = read("app.js")
@@ -82,6 +83,13 @@ def audit_defaults_and_units() -> None:
         ("保洁服务", "第三方常驻外包", 4500),
     ):
         require_text(backend, f"['{service}', '{mode}', 0, {salary}, 12,", f"template {service} months")
+    require_text(backend, "addSheet(wb, '物业服务岗位'", "property service position template")
+    require_text(backend, "['物业工程', '物业经理', 0, 13000,", "property manager template")
+    require_text(app, "data-add-preop-property-position", "property position add action")
+    require_text(app, "data-remove-preop-property-position", "property position delete action")
+    require_text(app, "org-delete-btn danger-text", "organization icon delete action")
+    assert "<span>删除岗位</span>" not in app
+    assert "<span>删除部门</span>" not in app
     require_text(app, "budget.monthsVersion = 2", "preopening month migration")
     require_text(app, "data-sync-preopening-months", "preopening month sync action")
 

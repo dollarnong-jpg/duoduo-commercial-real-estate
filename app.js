@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-consistency5';
+import './backend.js?v=20261110-position2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.8';
+const APP_VERSION = '1.21.9';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3514,7 +3514,7 @@ function renderOrganizationSection(model, preview) {
   const annualCost = payrollTotals.companyCost + recruitmentTraining;
   return `<div class="form-section budget-section">
     <div class="section-title">组织架构、岗位与人员成本</div>
-    <div class="section-note">按“部门 → 岗位”两级维护组织架构。表格第二列提供“新增岗位 / 删除岗位 / 删除部门”操作；岗位月薪是税前应发基本工资，系统据此计算税前年度工资、个人和单位社保公积金、个人所得税、实发工资及企业人员成本。</div>
+    <div class="section-note">按“部门 → 岗位”两级维护组织架构。表格最右侧提供“新增岗位”和删除图标操作；岗位月薪是税前应发基本工资，系统据此计算税前年度工资、个人和单位社保公积金、个人所得税、实发工资及企业人员成本。</div>
     ${formulaPanel('岗位工资、个税与社保公式', '税前年度工资 = Σ(岗位编制人数 × 税前应发月薪 × 年度薪资月数)\n个人社保公积金 = Σ(税前应发月薪 × 12 × 个人社保公积金比例)\n单位社保公积金 = Σ(税前应发月薪 × 12 × 单位社保公积金比例)\n年度应纳税所得额（每人）= 税前年度工资 - 个人社保公积金 - 个税起征点×12 - 专项附加扣除×12\n个人所得税 = MAX(0, 应纳税所得额 × 适用税率 - 速算扣除数)\n实发工资 = 税前年度工资 - 个人社保公积金 - 个人所得税\n企业人员成本 = 税前年度工资 + 单位社保公积金\n含招聘培训人员成本 = 企业人员成本 + 招聘培训费', ['SUM','MAX','IF'], '12/13/15薪影响年度应税工资，但社保公积金按每月缴费基数缴纳12个月。当前以税前月薪作为月缴费基数；社保、公积金比例和缴费基数上下限必须按项目属地最新政策及员工实际情况调整。')}
     <div class="callout soft payroll-caliber-note">${ICONS.info}<div><strong>当前为“税前应发工资”口径。</strong>项目位置：${escapeHtml(payrollLocation)}。默认单位社保公积金 ${fmtPct(Number(organization.socialInsuranceRate || 0))}、个人社保公积金 ${fmtPct(Number(organization.employeeSocialInsuranceRate || 0))} 仅为测算参考，不能视为当地法定统一比例。个税按中国综合所得七级年度超额累进税率估算；实际应以项目属地缴费基数上下限、险种明细、公积金政策和年度汇算为准。</div></div>
     <div class="form-grid">
@@ -3535,9 +3535,9 @@ function renderOrganizationSection(model, preview) {
       </div>
       <div class="section-note">个人所得税 = 年度应纳税所得额 × 适用税率 - 速算扣除数。税率表按中国居民个人综合所得年度税率展示；系统用于年度投资测算，正式申报以累计预扣预缴和年度汇算结果为准。</div>
     </details>
-    <div class="org-structure-tools"><span>部门操作：新增部门；岗位操作：在对应部门行点击“新增岗位”，在岗位行点击“删除岗位”。</span><button class="btn btn-secondary btn-sm" type="button" data-add-department>${ICONS.plus}<span>新增部门</span></button></div>
+    <div class="org-structure-tools"><span>部门操作：新增部门；岗位操作：在对应部门行点击“新增岗位”，删除部门和岗位统一使用表格最右侧垃圾桶图标。</span><button class="btn btn-secondary btn-sm" type="button" data-add-department>${ICONS.plus}<span>新增部门</span></button></div>
     <div class="data-table-wrap budget-table-wrap org-structure-wrap">
-      <table class="data-table budget-table org-structure-table"><thead><tr><th>部门 / 岗位</th><th class="org-actions">操作</th><th class="num">编制人数</th><th class="num">税前应发月薪（元）</th><th class="num">税前年度工资（万元）</th><th class="num">个人社保公积金（万元）</th><th class="num">个人所得税（万元）</th><th class="num">实发工资（万元）</th><th class="num">单位社保公积金（万元）</th><th class="num">企业人员成本（万元）</th><th>岗位职责说明</th></tr></thead><tbody>
+      <table class="data-table budget-table org-structure-table"><thead><tr><th>部门 / 岗位</th><th class="num">编制人数</th><th class="num">税前应发月薪（元）</th><th class="num">税前年度工资（万元）</th><th class="num">个人社保公积金（万元）</th><th class="num">个人所得税（万元）</th><th class="num">实发工资（万元）</th><th class="num">单位社保公积金（万元）</th><th class="num">企业人员成本（万元）</th><th>岗位职责说明</th><th class="org-actions">操作</th></tr></thead><tbody>
         ${departments.map((dept, i) => {
           const positions = Array.isArray(dept.positions) ? dept.positions : [];
           const deptHeadcount = positions.reduce((sum, position) => sum + Number(position.headcount || 0), 0);
@@ -3546,7 +3546,6 @@ function renderOrganizationSection(model, preview) {
           const deptPayroll = organizationPayrollTotals(positions.length ? positions : [dept], organization);
           return `<tr class="org-department-row">
             <td><span class="org-level-tag">部门</span><input class="table-input text-left" data-path="organization.departments.${i}.name" data-type="text" value="${escapeHtml(dept.name || '')}"></td>
-            <td class="org-actions"><button class="btn btn-secondary btn-sm" type="button" data-add-position="${i}">${ICONS.plus}<span>新增岗位</span></button><button class="btn btn-ghost btn-sm danger-text" type="button" data-remove-department="${i}">${ICONS.trash}<span>删除部门</span></button></td>
             <td class="num"><strong>${fmt(deptHeadcount)}</strong></td>
             <td class="num"><strong>${fmt(deptAvgSalary, 2)}</strong></td>
             <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="grossPayroll">${fmt(deptPayroll.grossPayroll, 2)}</strong></td>
@@ -3556,10 +3555,10 @@ function renderOrganizationSection(model, preview) {
             <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="employerSocialInsurance">${fmt(deptPayroll.employerSocial, 2)}</strong></td>
             <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="annualCost">${fmt(deptPayroll.companyCost, 2)}</strong></td>
             <td><input class="table-input text-left" data-path="organization.departments.${i}.note" data-type="text" value="${escapeHtml(dept.note || '')}"></td>
+            <td class="org-actions"><button class="btn btn-secondary btn-sm" type="button" data-add-position="${i}">${ICONS.plus}<span>新增岗位</span></button><button class="btn btn-ghost btn-sm org-delete-btn danger-text" type="button" data-remove-department="${i}" title="删除部门" aria-label="删除部门">${ICONS.trash}</button></td>
           </tr>
           ${positions.map((position, j) => { const payroll = organizationPositionPayroll(position, organization); return `<tr class="org-position-row">
             <td><span class="org-position-branch">└ 岗位</span><input class="table-input text-left" data-path="organization.departments.${i}.positions.${j}.name" data-type="text" value="${escapeHtml(position.name || '')}"></td>
-            <td class="org-actions"><button class="btn btn-ghost btn-sm danger-text" type="button" data-remove-position="${i}" data-position-index="${j}">${ICONS.trash}<span>删除岗位</span></button></td>
             <td class="num"><input class="table-input" data-path="organization.departments.${i}.positions.${j}.headcount" data-type="number" type="number" step="1" value="${position.headcount ?? 0}"></td>
             <td class="num"><input class="table-input" data-path="organization.departments.${i}.positions.${j}.avgMonthlySalary" data-type="number" type="number" step="100" value="${position.avgMonthlySalary ?? 0}"></td>
             <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="grossPayroll">${fmt(payroll.grossPayroll, 2)}</strong></td>
@@ -3569,6 +3568,7 @@ function renderOrganizationSection(model, preview) {
             <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="employerSocialInsurance">${fmt(payroll.employerSocial, 2)}</strong></td>
             <td class="num"><strong data-payroll-position="${i}:${j}" data-payroll-field="annualCost">${fmt(payroll.companyCost, 2)}</strong></td>
             <td><input class="table-input text-left" data-path="organization.departments.${i}.positions.${j}.note" data-type="text" value="${escapeHtml(position.note || '')}"></td>
+            <td class="org-actions"><button class="btn btn-ghost btn-sm org-delete-btn danger-text" type="button" data-remove-position="${i}" data-position-index="${j}" title="删除岗位" aria-label="删除岗位">${ICONS.trash}</button></td>
           </tr>`; }).join('')}
         `; }).join('') || '<tr><td colspan="11" class="empty-table-cell">尚未设置部门和岗位</td></tr>'}
       </tbody></table>
@@ -4009,6 +4009,38 @@ function updatePreOpeningPreviewDom(result) {
     const value = values[el.dataset.preopening];
     if (value != null) el.textContent = fmt(value, 2);
   });
+  if (!state.current?.model || !document.querySelector('#preopening-detail-zone')) return;
+  const detailed = preOpeningDetailedAnalysis(state.current.model);
+  document.querySelectorAll('[data-preop-team-total]').forEach(el => {
+    const item = detailed.teamPositions[Number(el.dataset.preopTeamTotal)];
+    if (item) el.textContent = fmt(item.total, 2);
+  });
+  document.querySelectorAll('[data-preop-property-total]').forEach(el => {
+    const item = detailed.propertyServices[Number(el.dataset.preopPropertyTotal)];
+    if (item) el.textContent = fmt(item.total, 2);
+  });
+  detailed.propertyServices.forEach((item, index) => {
+    const headcountEl = document.querySelector(`[data-preop-property-headcount="${index}"]`);
+    if (headcountEl) headcountEl.textContent = fmt(item.headcount);
+    const salaryEl = document.querySelector(`[data-preop-property-salary="${index}"]`);
+    if (salaryEl) salaryEl.textContent = fmt(item.salary, 2);
+  });
+  document.querySelectorAll('[data-preop-property-position-cost]').forEach(el => {
+    const [serviceIndex, positionIndex] = String(el.dataset.preopPropertyPositionCost || '').split(':').map(Number);
+    const item = detailed.propertyServices[serviceIndex]?.positions?.[positionIndex];
+    if (item) el.textContent = fmt(item.companyCost, 2);
+  });
+  const sectionValues = {
+    team: detailed.teamTotal,
+    propertyService: detailed.propertyServiceTotal,
+    propertyOneOff: detailed.propertyOneOffTotal,
+    property: detailed.propertyTotal,
+    admin: detailed.adminTotal,
+  };
+  document.querySelectorAll('[data-preop-section-summary]').forEach(el => {
+    const value = sectionValues[el.dataset.preopSectionSummary];
+    if (value != null) el.textContent = fmt(value, 2);
+  });
 }
 
 function updateChannelPreviewDom(result) {
@@ -4126,6 +4158,20 @@ function bindPreOpeningActions() {
   });
   document.querySelectorAll('[data-add-preop-team]').forEach(button => button.addEventListener('click', () => {
     budget.team.positions.push({ department: '新增部门', position: '新增岗位', headcount: 1, monthlySalary: 8000, months: Number(state.current.model.project.leasingPeriodMonths || 12), note: '' });
+    syncPreOpeningBudgetTotals(model); state.dirty = true; state.preview = null; renderWorkspace(); scheduleLivePreview();
+  }));
+  document.querySelectorAll('[data-add-preop-property-position]').forEach(button => button.addEventListener('click', () => {
+    const service = budget.property.services[Number(button.dataset.addPreopPropertyPosition)];
+    if (!service) return;
+    service.positions ||= [];
+    service.positions.push({ name: '新增物业服务岗位', headcount: 1, monthlySalary: Number(service.monthlySalary || 8000), note: '' });
+    syncPreOpeningBudgetTotals(model); state.dirty = true; state.preview = null; renderWorkspace(); scheduleLivePreview();
+  }));
+  document.querySelectorAll('[data-remove-preop-property-position]').forEach(button => button.addEventListener('click', () => {
+    const [serviceIndex, positionIndex] = String(button.dataset.removePreopPropertyPosition || '').split(':').map(Number);
+    const service = budget.property.services[serviceIndex];
+    if (!service?.positions) return;
+    service.positions.splice(positionIndex, 1);
     syncPreOpeningBudgetTotals(model); state.dirty = true; state.preview = null; renderWorkspace(); scheduleLivePreview();
   }));
   document.querySelectorAll('[data-sync-preopening-months]').forEach(button => button.addEventListener('click', () => {
@@ -4648,6 +4694,17 @@ function normalizePreOpeningBudget(model) {
   budget.admin ||= {};
   budget.admin.items = Array.isArray(budget.admin.items) ? budget.admin.items : [];
   const totalMonths = Math.max(0, Number(model.project?.leasingPeriodMonths ?? 12));
+  budget.property.services.forEach(service => {
+    if (!service) return;
+    if (!Array.isArray(service.positions) || !service.positions.length) {
+      service.positions = [{
+        name: `${service.name || '物业服务'}岗位`,
+        headcount: Math.max(0, Number(service.headcount || 0)),
+        monthlySalary: Math.max(0, Number(service.monthlySalary || 0)),
+        note: '由原服务类别汇总口径迁移，可继续拆分岗位',
+      }];
+    }
+  });
   if (Number(budget.monthsVersion || 0) < 2) {
     budget.team.positions.forEach(position => { if (position) position.months = totalMonths; });
     budget.property.services.forEach(service => { if (service) service.months = totalMonths; });
@@ -4684,18 +4741,25 @@ function preOpeningDetailedAnalysis(model) {
   const teamTotal = teamPositions.reduce((sum, item) => sum + item.total, 0);
   const selfRecruitmentRate = Math.max(0, Number(budget.property.selfRecruitmentRate ?? 0.02));
   const propertyServices = (budget.property.services || []).map(service => {
-    const headcount = Math.max(0, Number(service.headcount || 0));
-    const salary = Math.max(0, Number(service.monthlySalary || 0));
     const months = Math.max(0, Number(service.months || 0));
     const nonResidentFactor = Math.min(1, Math.max(0, Number(service.nonResidentFactor ?? 0.70)));
     const managementFeeRate = Math.max(0, Number(service.managementFeeRate ?? 0.12));
-    const gross = headcount * salary * months / 10000;
-    const employerSocial = headcount * salary * months * socialRate / 10000;
+    const positions = (service.positions || []).map(position => {
+      const headcount = Math.max(0, Number(position.headcount || 0));
+      const salary = Math.max(0, Number(position.monthlySalary || 0));
+      const gross = headcount * salary * months / 10000;
+      const employerSocial = headcount * salary * months * socialRate / 10000;
+      return { ...position, headcount, salary, gross, employerSocial, companyCost: gross + employerSocial };
+    });
+    const headcount = positions.reduce((sum, position) => sum + position.headcount, 0);
+    const salary = headcount > 0 ? positions.reduce((sum, position) => sum + position.headcount * position.salary, 0) / headcount : 0;
+    const gross = positions.reduce((sum, position) => sum + position.gross, 0);
+    const employerSocial = positions.reduce((sum, position) => sum + position.employerSocial, 0);
     const baseCompanyCost = gross + employerSocial;
     const positionCost = service.mode === 'non_resident' ? baseCompanyCost * nonResidentFactor : baseCompanyCost;
     const managementFee = ['resident_outsourced', 'non_resident'].includes(service.mode) ? positionCost * managementFeeRate : 0;
     const selfRecruitment = service.mode === 'self' ? positionCost * selfRecruitmentRate : 0;
-    return { ...service, headcount, salary, months, nonResidentFactor, managementFeeRate, gross, employerSocial, baseCompanyCost, positionCost, managementFee, selfRecruitment, total: positionCost + managementFee + selfRecruitment };
+    return { ...service, positions, headcount, salary, months, nonResidentFactor, managementFeeRate, gross, employerSocial, baseCompanyCost, positionCost, managementFee, selfRecruitment, total: positionCost + managementFee + selfRecruitment };
   });
   const serviceTotal = propertyServices.reduce((sum, item) => sum + item.total, 0);
   const oneOffItems = (budget.property.oneOffItems || []).map(item => ({ ...item, amount: Math.max(0, Number(item.amount || 0)) }));
@@ -4759,6 +4823,14 @@ function updatePreOpeningDerivedDom() {
   (detailed.propertyServices || []).forEach((item, index) => {
     const el = document.querySelector(`[data-preop-property-total="${index}"]`);
     if (el) el.textContent = fmt(item.total, 2);
+    const headcountEl = document.querySelector(`[data-preop-property-headcount="${index}"]`);
+    if (headcountEl) headcountEl.textContent = fmt(item.headcount);
+    const salaryEl = document.querySelector(`[data-preop-property-salary="${index}"]`);
+    if (salaryEl) salaryEl.textContent = fmt(item.salary, 2);
+    (item.positions || []).forEach((position, positionIndex) => {
+      const costEl = document.querySelector(`[data-preop-property-position-cost="${index}:${positionIndex}"]`);
+      if (costEl) costEl.textContent = fmt(position.companyCost, 2);
+    });
   });
   (detailed.oneOffItems || []).forEach((item, index) => {
     const el = document.querySelector(`[data-preop-oneoff-total="${index}"]`);
@@ -4858,17 +4930,32 @@ function renderPreOpeningDetailedSections(analysis) {
       <div class="section-title">筹备期物业工程、保安、保洁明细</div>
       <div class="section-note">自营按岗位工资和单位社保；第三方常驻另计综合管理费；第三方非常驻先按折算比例计算岗位成本，再计综合管理费。工程介入、开荒保洁等单列在下方一次性费用。</div>
       <div class="form-grid">${textField('自营招聘培训费率', 'preOpeningBudget.property.selfRecruitmentRate', { type: 'number', unit: '%', scale: 0.01 })}</div>
-      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>服务类别</th><th>服务模式</th><th class="num">编制</th><th class="num">参考月薪（元）</th><th class="num">服务月数（默认=总周期）</th><th class="num">非驻场折算</th><th class="num">综合管理费率</th><th class="num">服务成本（万元）</th></tr></thead><tbody>
-        ${analysis.propertyServices.map((item, index) => `<tr>
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table property-service-summary-table"><thead><tr><th>服务类别</th><th>服务模式</th><th class="num">岗位 / 编制</th><th class="num">加权月薪（元）</th><th class="num">服务月数</th><th class="num">非驻场折算</th><th class="num">综合管理费率</th><th class="num">服务成本（万元）</th></tr></thead><tbody>
+        ${analysis.propertyServices.map((item, index) => `<tr class="property-service-main-row">
           <td><strong>${escapeHtml(item.name)}</strong></td>
           <td><select class="table-select" data-path="preOpeningBudget.property.services.${index}.mode" data-type="text">${modes.map(mode => `<option value="${mode.value}" ${item.mode === mode.value ? 'selected' : ''}>${mode.label}</option>`).join('')}</select></td>
-          <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.headcount" data-type="number" type="number" step="1" value="${Number(item.headcount || 0)}"></td>
-          <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.monthlySalary" data-type="number" type="number" step="100" value="${Number(item.monthlySalary || 0)}"></td>
+          <td class="num"><strong>${item.positions.length}个岗位 / <span data-preop-property-headcount="${index}">${fmt(item.headcount)}</span>人</strong></td>
+          <td class="num"><strong data-preop-property-salary="${index}">${fmt(item.salary, 2)}</strong></td>
           <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.months" data-type="number" type="number" step="0.5" value="${Number(item.months || 0)}"></td>
           <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.nonResidentFactor" data-type="number" data-scale="0.01" type="number" step="1" value="${(Number(item.nonResidentFactor || 0) * 100).toFixed(1)}"></td>
           <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.managementFeeRate" data-type="number" data-scale="0.01" type="number" step="1" value="${(Number(item.managementFeeRate || 0) * 100).toFixed(1)}"></td>
           <td class="num"><strong data-preop-property-total="${index}">${fmt(item.total, 2)}</strong></td>
-        </tr>`).join('')}
+        </tr>
+        <tr class="property-service-position-row"><td colspan="8">
+          <div class="service-position-panel">
+            <div class="service-position-head"><div><strong>${escapeHtml(item.name)}岗位明细</strong><span>岗位成本先按岗位工资和单位社保汇总，再按上面的服务模式计算折算、管理费或自营招聘培训。</span></div><button class="btn btn-secondary btn-sm" type="button" data-add-preop-property-position="${index}">${ICONS.plus}<span>新增岗位</span></button></div>
+            <div class="data-table-wrap" style="max-height:none"><table class="data-table service-position-table"><thead><tr><th>岗位名称</th><th class="num">编制人数</th><th class="num">参考月薪（元）</th><th class="num">岗位工资+单位社保（万元）</th><th>岗位说明</th><th></th></tr></thead><tbody>
+              ${item.positions.map((position, positionIndex) => `<tr>
+                <td><input class="table-input" data-path="preOpeningBudget.property.services.${index}.positions.${positionIndex}.name" data-type="text" value="${escapeHtml(position.name || '')}"></td>
+                <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.positions.${positionIndex}.headcount" data-type="number" type="number" step="1" value="${Number(position.headcount || 0)}"></td>
+                <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.positions.${positionIndex}.monthlySalary" data-type="number" type="number" step="100" value="${Number(position.salary || 0)}"></td>
+                <td class="num"><strong data-preop-property-position-cost="${index}:${positionIndex}">${fmt(position.companyCost, 2)}</strong></td>
+                <td><input class="table-input text-left" data-path="preOpeningBudget.property.services.${index}.positions.${positionIndex}.note" data-type="text" value="${escapeHtml(position.note || '')}"></td>
+                <td><button class="btn btn-ghost btn-sm" type="button" data-remove-preop-property-position="${index}:${positionIndex}">${ICONS.trash}</button></td>
+              </tr>`).join('') || '<tr><td colspan="6" class="admin-empty">该服务暂无岗位，请点击“新增岗位”。</td></tr>'}
+            </tbody></table></div>
+          </div>
+        </td></tr>`).join('')}
         </tbody></table></div>
       <div class="data-table-wrap" style="max-height:none;margin-top:14px"><table class="data-table"><thead><tr><th>物业一次性费用</th><th class="num">金额（万元）</th><th></th></tr></thead><tbody>
         ${analysis.oneOffItems.map((item, index) => `<tr><td>${escapeHtml(item.name)}</td><td class="num"><input class="table-input" data-path="preOpeningBudget.property.oneOffItems.${index}.amount" data-type="number" type="number" step="0.1" value="${Number(item.amount || 0)}"></td><td class="num"><strong data-preop-oneoff-total="${index}">${fmt(item.amount, 2)}</strong></td></tr>`).join('')}

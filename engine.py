@@ -90,9 +90,19 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "property": {
                 "selfRecruitmentRate": 0.02,
                 "services": [
-                    {"key": "engineering", "name": "物业工程", "mode": "self", "headcount": 0.0, "monthlySalary": 8000.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
-                    {"key": "security", "name": "保安服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 5500.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
-                    {"key": "cleaning", "name": "保洁服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 4500.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+                    {"key": "engineering", "name": "物业工程", "mode": "self", "headcount": 0.0, "monthlySalary": 8000.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12, "positions": [
+                        {"name": "物业经理", "headcount": 0.0, "monthlySalary": 13000.0, "note": "物业统筹、供应商和品质管理"},
+                        {"name": "工程主管", "headcount": 0.0, "monthlySalary": 9000.0, "note": "机电、暖通、给排水和维修"},
+                        {"name": "消防及强弱电", "headcount": 0.0, "monthlySalary": 7000.0, "note": "消防、弱电、配电及设备巡检"},
+                    ]},
+                    {"key": "security", "name": "保安服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 5500.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12, "positions": [
+                        {"name": "保安主管", "headcount": 0.0, "monthlySalary": 7000.0, "note": "秩序维护、排班和应急管理"},
+                        {"name": "保安员", "headcount": 0.0, "monthlySalary": 5000.0, "note": "门岗、巡逻、监控和车辆管理"},
+                    ]},
+                    {"key": "cleaning", "name": "保洁服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 4500.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12, "positions": [
+                        {"name": "保洁主管", "headcount": 0.0, "monthlySalary": 6000.0, "note": "保洁品质、排班和物料管理"},
+                        {"name": "保洁员", "headcount": 0.0, "monthlySalary": 4000.0, "note": "公共区域、卫生间和垃圾清运"},
+                    ]},
                 ],
                 "oneOffItems": [
                     {"key": "engineeringIntervention", "name": "工程介入", "amount": 0.0},

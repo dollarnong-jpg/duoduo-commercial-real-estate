@@ -538,6 +538,8 @@ a { color: inherit; }
 .org-actions { white-space:nowrap; }
 .org-actions .btn { display:inline-flex; align-items:center; gap:3px; padding:5px 7px; font-size:var(--fs-9); }
 .org-actions .btn + .btn { margin-left:4px; }
+.org-delete-btn { min-width:30px; justify-content:center; padding:5px 6px !important; }
+.org-delete-btn svg { width:15px; height:15px; }
 .danger-text { color:#a4493f !important; }
 .payroll-caliber-note { align-items:flex-start; margin:12px 0; }
 .payroll-caliber-note strong { color:var(--navy); }
@@ -813,6 +815,14 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .leasing-stage-table { min-width:1180px; }
 .leasing-stage-table td:first-child { min-width:150px; }
 .leasing-stage-table td:last-child { min-width:64px; }
+.property-service-main-row td { background:#f7faf8; vertical-align:middle; }
+.property-service-position-row > td { padding:0 14px 14px; background:#fff; }
+.service-position-panel { padding:12px; border:1px solid #e1e9e5; border-top:0; border-radius:0 0 10px 10px; background:#fbfdfc; }
+.service-position-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:9px; }
+.service-position-head strong { display:block; color:var(--navy); font-size:var(--fs-10); }
+.service-position-head span { display:block; margin-top:3px; color:var(--muted); font-size:var(--fs-8); line-height:1.45; }
+.service-position-table th { background:#eef5f2; font-size:var(--fs-8); }
+.service-position-table td { background:#fff; }
 .import-share-modal { width:min(680px,100%); }
 .compare-projects-modal { width:min(1180px,100%); }
 .compare-select-grid { display:grid; grid-template-columns:1fr 1fr auto; align-items:end; gap:10px; }
