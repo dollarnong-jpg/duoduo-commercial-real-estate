@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-taxstats4';
+import './backend.js?v=20261110-consistency3';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.0';
+const APP_VERSION = '1.21.2';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -47,8 +47,8 @@ const PROPERTY_SERVICE_MODE_OPTIONS = [
 ];
 
 const FIELD_FORMULAS = {
-  'project.gbaOverride': { title: '总建筑面积', formula: '总建筑面积 = 手动总建筑面积；若为0，则 = 商铺建筑面积 ×（1 + 公区系数）', functions: ['IF', 'SUM'], role: '作为建安、装修、设备、预备费和单位投资指标的计算基数。' },
-  'project.commonAreaFactor': { title: '公区分摊系数', formula: '总建筑面积 = 商铺建筑面积合计 ×（1 + 公共部位及设备房分摊系数）', functions: ['SUM'], role: '提高该系数会增加总建筑面积，进而增加按面积计取的建设投资。' },
+  'project.gbaOverride': { title: '总建筑面积', formula: '总建筑面积 = 手动值；若为0：一铺一价=商铺建筑面积×（1+公区系数），初步测算=楼层建筑面积合计', functions: ['IF', 'SUM'], role: '作为建安、装修、设备、预备费和单位投资指标的计算基数。' },
+  'project.commonAreaFactor': { title: '公区分摊系数', formula: '一铺一价：总建筑面积 = 商铺建筑面积合计 ×（1 + 公共部位及设备房分摊系数）；初步测算不乘该系数', functions: ['SUM'], role: '提高该系数会增加总建筑面积，进而增加按面积计取的建设投资。' },
   'project.landArea': { title: '占地面积与土地使用税', formula: '城镇土地使用税 = 占地面积 × 单位土地税额 ÷ 10000', functions: ['ROUND'], role: '仅影响城镇土地使用税，不影响土地价款。' },
   'project.landPrice': { title: '土地价款与契税', formula: '土地取得成本 = 土地价款 + 土地价款 × 契税率', functions: ['SUM'], role: '土地价款同时进入项目总投资和融资基数。' },
   'project.propertyRightsStatus': { title: '产权状态', formula: '自有产权/租赁物业/股权持有/政府合作', functions: ['IF'], role: '不同产权状态决定土地、物业租赁、收购对价和运营边界的核算方式。' },
@@ -136,7 +136,7 @@ const FIELD_FORMULAS = {
   'taxes.landUseTax': { title: '城镇土地使用税', formula: '土地使用税 = 占地面积 × 单位税额 ÷ 10000', functions: ['ROUND'], role: '不同土地等级税额不同，应按属地政策填写。' },
   'taxes.stampDuty': { title: '印花税', formula: '印花税 = 不含税租金收入 × 印花税率', functions: ['SUM'], role: '按租金收入估算。' },
   'taxes.localFundRate': { title: '地方基金及附加', formula: '地方基金 = 不含税营业收入 × 地方基金费率', functions: ['SUM'], role: '默认0，按属地政策填写。' },
-  'taxes.corporateTax': { title: '企业所得税', formula: '所得税 = MAX(0, 税前利润 - 可结转亏损）× 企业所得税率', functions: ['MAX', 'IF'], role: '用于税后净利润和股权现金流。' },
+  'taxes.corporateTax': { title: '企业所得税', formula: '融资前项目所得税 = MAX(0, EBIT - 项目亏损结转）× 税率；融资后股权所得税 = MAX(0, EBIT - 利息 - 亏损结转）× 税率', functions: ['MAX', 'IF'], role: '融资前项目口径计入项目现金流、项目IRR和NPV；融资后股权口径扣除利息后计入净利润、股权现金流和股权IRR。' },
   'taxes.deedTax': { title: '土地契税', formula: '契税 = 土地价款 × 契税率', functions: ['SUM'], role: '进入土地及契税投资。' },
   'taxes.exitTaxRate': { title: '退出税费率', formula: '净退出价值 = 退出价值 ×（1 - 退出税费率）', functions: ['SUM'], role: '用于期末退出现金流扣除。' },
   'finance.debtRatio': { title: '贷款额', formula: '贷款额 = 项目总投资 × 债务融资比例', functions: ['SUM'], role: '影响股权投入、利息和还本现金流。' },
@@ -145,7 +145,7 @@ const FIELD_FORMULAS = {
   'finance.graceYears': { title: '还款宽限期', formula: '运营年 > 宽限期 且 运营年 ≤ 宽限期 + 贷款期限时还本', functions: ['IF'], role: '控制开始还本的时间。' },
   'valuation.discountRate': { title: '折现率与NPV', formula: 'NPV = Σ[CFt ÷（1 + 折现率）^t]', functions: ['SUM', 'POWER', 'NPV'], role: '折现率越高，未来现金流现值越低。' },
   'valuation.exitCapRate': { title: '资本化率退出法', formula: '退出价值 = 期末NOI ÷ 退出资本化率 ×（1 - 退出税费率）', functions: ['MAX', 'IF'], role: '在“公式参数”中选择NOI资本化率法时使用。' },
-  'valuation.includeExit': { title: '期末退出价值', formula: '项目现金流 = NOI - 资本化改造 - 所得税 + 期末退出价值', functions: ['IF'], role: '关闭后不计算期末退出价值。' },
+  'valuation.includeExit': { title: '期末退出价值', formula: '项目现金流 = NOI - 资本化改造 - 融资前项目所得税 + 期末退出价值', functions: ['IF'], role: '关闭后不计算期末退出价值。' },
   'formulas.rentGrowthMode': { title: '租金增长方式', formula: '复利 = POWER(1+g,n)；单利 = 1 + g×n', functions: ['POWER', 'IF'], role: '决定租金和销售额随运营年份的增长曲线。' },
   'formulas.propertyFeeGrowthMode': { title: '物业管理费增长方式', formula: '不复递增 / 每年复利 / 每年单利 / 每N年阶梯递增', functions: ['POWER', 'IF'], role: '物业管理费增长与租金、商管费和空调费分别设置，便于匹配物业服务合同。' },
   'formulas.commercialManagementGrowthMode': { title: '商业管理费增长方式', formula: '不复递增 / 每年复利 / 每年单利 / 每N年阶梯递增', functions: ['POWER', 'IF'], role: '商业管理费独立递增，可按商业管理委托合同设置不同周期。' },
@@ -266,7 +266,7 @@ const FORMULA_GUIDES = {
     adjust: '出租率按招商计划，租金和管理费分别按合同递增条款设置。每年复利/单利适合逐年调整，每N年阶梯递增适合“每3年上调5%”之类的合同。每次只调整一个变量，并比较NPV敏感性结果。'
   },
   taxes: {
-    how: '先按含税收入计算销项税，再用可抵扣成本和进项税率计算进项税，得到增值税净额及附加税；随后计算房产税、土地使用税、印花税和企业所得税。',
+    how: '先按含税收入计算销项税，再用可抵扣成本和进项税率计算进项税，得到增值税净额及附加税；随后计算房产税、土地使用税、印花税，并分别计算融资前项目所得税和融资后股权所得税。',
     adjust: '税率和计征方式必须按项目属地最新税政、税务顾问意见和实际合同口径填写。房产税从租/从价、进项抵扣比例、亏损结转年限是影响税后收益的主要变量。'
   },
   finance: {
@@ -378,7 +378,7 @@ const TERM_DEFINITIONS = {
   '铺底流动资金': { category: '运营资金', definition: '项目开业初期为支付运营成本和周转需要准备的启动资金。', why: '即使项目长期可行，开业初期也可能因出租率和现金流爬坡需要额外资金。', how: '按稳定运营成本的一定比例估算，并结合招商爬坡速度检查是否充足。' },
   '增值税': { category: '税费', definition: '对商品和服务增值部分征收的流转税，项目测算中通常分别计算销项税和可抵扣进项税。', why: '影响不含税收入、运营成本和现金流。', how: '按项目实际纳税人身份、业务类型和属地税务口径设置，不建议直接套用单一税率。' },
   '房产税': { category: '税费', definition: '商业物业持有期间按房产原值或租金收入计征的税。', why: '是持有型商业项目的重要年度税费。', how: '需确认从租计征或从价计征及当地扣除比例，按税务认定填写。' },
-  '企业所得税': { category: '税费', definition: '对项目税前利润征收的所得税。', why: '影响税后净利润和股权现金流。', how: '按适用企业所得税率和亏损结转政策测算，并结合融资利息和折旧影响。' },
+  '企业所得税': { category: '税费', definition: '对项目税前利润征收的所得税。', why: '影响税后净利润和股权现金流。', how: '系统分别计算融资前项目所得税和融资后股权所得税；两者都受折旧、亏损结转影响，股权口径还受融资利息影响。' },
   '租金收缴率': { category: '运营管理', definition: '实际收到租金占应收租金的比例。', why: '收缴率不足会形成坏账并影响现金流。', how: '根据商户质量、运营管理能力和历史收缴情况设置，不宜默认100%。' },
   '运营成本': { category: '运营管理', definition: '项目运营期间发生的物业、能耗、人员、办公、招商、营销、维保、保险和坏账等成本。', why: '运营成本直接决定NOI和资产估值。', how: '按年度预算和合同逐项填写，重点区分固定成本、随出租率变化的成本和一次性费用。' },
 };
@@ -623,6 +623,8 @@ const state = {
   importHints: null,
   budgetWarnings: [],
   preOpeningWarnings: [],
+  costBaselineNoticeShown: false,
+  shopBaselineNoticeShown: false,
   sidebarOpen: false,
   adminUsers: [],
   adminProjects: [],
@@ -844,6 +846,30 @@ function applyCostReference(model, overrides = {}, rerender = false) {
   return reference;
 }
 
+function ensureCostBaselineForCalculation(model) {
+  if (!model?.project) return null;
+  const project = model.project;
+  if (project.costBaselineChecked) return null;
+  const gba = projectGrossBuildingArea(model);
+  if (gba <= 0) return null;
+  const costs = model.costs || (model.costs = {});
+  const directRate = ['preconstructionRate', 'constructionRate', 'fitoutRate', 'equipmentRate', 'otherEngineeringRate', 'municipalFeeRate', 'civilDefenseFeeRate', 'otherPublicFeeRate']
+    .reduce((sum, key) => sum + Math.max(0, Number(costs[key] || 0)), 0);
+  project.costBaselineChecked = true;
+  if (directRate >= 100) return null;
+  const reference = applyCostReference(model);
+  project.costBaselineSource = `${reference.cityLabel} · ${reference.developmentLabel}`;
+  return reference;
+}
+
+function ensureShopDetailedBaseline(model) {
+  const shops = Array.isArray(model?.shops) ? model.shops : [];
+  if (!shops.length || model.calculationMode === 'detailed' || model.calculationModeManual) return false;
+  model.calculationMode = 'detailed';
+  ensureFloorsFromShops(model, { replace: true });
+  return true;
+}
+
 const OPEX_STANDARD_OPTIONS = [
   { value: 'basic', label: '基础运营标准', factor: 0.86 },
   { value: 'standard', label: '标准运营标准', factor: 1.0 },
@@ -877,8 +903,8 @@ function operatingCostReference(model = state.current?.model, overrides = {}) {
   const formatFactor = FORMAT_COST_FACTORS[project.projectType || '其他'] || 1;
   const floors = model?.floors || [];
   const shops = model?.shops || [];
-  const gba = Number(project.gbaOverride || 0) || floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0) || shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0) * (1 + Number(project.commonAreaFactor || 0));
-  const gla = floors.reduce((sum, floor) => sum + Number(floor.leasableArea || 0), 0) || shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
+  const gba = projectGrossBuildingArea(model);
+  const gla = projectLeasableArea(model);
   const departments = model?.organization?.departments || [];
   const headcount = departments.reduce((sum, dept) => sum + (Array.isArray(dept.positions) ? dept.positions : []).reduce((n, position) => n + Number(position.headcount || 0), 0), 0) || 7;
   const cityFactor = Math.max(0.85, Math.min(1.35, city.factor));
@@ -2200,7 +2226,7 @@ function locationField() {
       <button class="map-button" type="button" id="open-map-picker">${ICONS.pin}<span>地图选点</span></button>
     </div>
     <div class="map-status ${located ? 'located' : ''}" id="map-coord-status"><span class="status-dot"></span><span>${located ? `${source} · ${lat.toFixed(6)}, ${lon.toFixed(6)}` : '输入地址后自动解析；如未识别，可打开地图手动选点'}</span></div>
-    <div class="field-help">地址搜索由 OpenStreetMap 提供；地图选点会保存经纬度并随项目一起保存。</div>
+    <div class="field-help">地图底图优先使用国内加速源并自动切换备用地图；地址搜索使用公开地理编码服务，选点经纬度会随项目一起保存。</div>
   </div>`;
 }
 
@@ -2405,10 +2431,13 @@ function renderProjectStep() {
   const shopLease = (m.shops || []).reduce((s, x) => s + Number(x.leasableArea || 0), 0);
   const floorBuilding = floors.reduce((s, x) => s + Number(x.buildingArea || 0), 0);
   const floorLease = floors.reduce((s, x) => s + Number(x.leasableArea || 0), 0);
+  const projectGba = projectGrossBuildingArea(m);
   const preview = state.preview || state.result;
+  const gbaBelowShopArea = !preliminary && Number(m.project.gbaOverride || 0) > 0 && Number(m.project.gbaOverride || 0) + 0.01 < shopBuilding;
   return `
-    <div class="callout">${ICONS.info}<div>不确定“总建筑面积”时可以先留空，系统会按商铺建筑面积 ×（1 + 公共部位分摊系数）自动推算。</div></div>
-    ${formulaPanel('面积、租金与投资基数公式', '总建筑面积 = IF(手动值为0, 商铺建筑面积合计 ×（1 + 公区系数), 手动值)\n有效租金 = 租赁面积 × 基准租金 × 业态系数 ×（1 + 条件溢价）\n项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金', ['IF', 'SUM', 'MAX', 'POWER'], '每个参数下方的ƒ按钮会显示该参数在公式中的具体作用。')}
+    <div class="callout">${ICONS.info}<div>不确定“总建筑面积”时可以先留空：${preliminary ? '初步测算按楼层建筑面积合计计算' : '一铺一价按商铺建筑面积 ×（1 + 公共部位分摊系数）自动推算'}。</div></div>
+    ${gbaBelowShopArea ? `<div class="callout soft" style="border-color:#d9a44e">${ICONS.info}<div><strong>面积口径冲突：</strong>手填项目总建筑面积 ${fmtArea(m.project.gbaOverride)}㎡，小于商铺建筑面积合计 ${fmtArea(shopBuilding)}㎡。请核对规划总建筑面积或铺位面积。</div></div>` : ''}
+    ${formulaPanel('面积、租金与投资基数公式', `总建筑面积 = IF(手动值为0, ${preliminary ? '楼层建筑面积合计' : '商铺建筑面积合计 ×（1 + 公区系数)'}, 手动值)\n有效租金 = 租赁面积 × 基准租金 × 业态系数 ×（1 + 条件溢价）\n项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金`, ['IF', 'SUM', 'MAX', 'POWER'], '每个参数下方的ƒ按钮会显示该参数在公式中的具体作用。')}
     <div class="form-section">
       <div class="section-title">项目概况</div>
       <div class="form-grid">
@@ -2429,7 +2458,7 @@ function renderProjectStep() {
     <div class="form-section">
       <div class="section-title">面积与土地</div>
       <div class="form-grid">
-        ${textField('项目总建筑面积', 'project.gbaOverride', { type: 'number', unit: '㎡', step: '0.01', help: '留空或为0时，系统按商铺面积自动推算；保留两位小数', optional: true })}
+        ${textField('项目总建筑面积', 'project.gbaOverride', { type: 'number', unit: '㎡', step: '0.01', help: '留空或为0时：一铺一价按商铺面积×（1+公区系数）推算，初步测算按楼层建筑面积合计；保留两位小数', optional: true })}
         ${textField('项目占地面积', 'project.landArea', { type: 'number', unit: '㎡', step: '0.01', help: '用于城镇土地使用税；保留两位小数' })}
         ${textField('公共部位及设备房分摊系数', 'project.commonAreaFactor', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('土地取得价款', 'project.landPrice', { type: 'number', unit: '万元', help: '土地出让金或转让价款' })}
@@ -2439,9 +2468,11 @@ function renderProjectStep() {
     ${renderOwnerRentSection()}
     <div class="form-section">
       <div class="section-title">当前基础结果</div>
-      <div class="stats-row">
+      <div class="section-note">当前测算基准：${preliminary ? '楼层均价' : '一铺一价'}。${preliminary ? '面积和租金取楼层汇总。' : `面积取 ${m.shops?.length || 0} 个铺位明细，项目总建筑面积按商铺建筑面积 ×（1 + 公区系数）推算；如已填写项目总建筑面积，则优先使用手填值。`}</div>
+      <div class="stats-row project-result-stats">
         <div class="mini-stat"><strong>${fmt(preliminary ? floors.filter(floor => Number(floor.buildingArea) > 0).length : (m.shops?.length || 0))}</strong><span>${preliminary ? '已填写楼层' : '已导入铺位'}</span></div>
         <div class="mini-stat"><strong>${fmtArea((preliminary ? floorBuilding : shopBuilding) || m.project.gbaOverride || 0)}</strong><span>${preliminary ? '楼层建筑面积合计/㎡' : '商铺建筑面积合计/㎡'}</span></div>
+        <div class="mini-stat"><strong>${fmtArea(projectGba)}</strong><span>项目总建筑面积（含公区）/㎡</span></div>
         <div class="mini-stat"><strong>${fmtArea(preliminary ? floorLease : shopLease)}</strong><span>可租赁面积合计/㎡</span></div>
         <div class="mini-stat"><strong data-live="investment">${preview ? fmt(preview.summary.totalInvestment) : '待计算'}</strong><span>项目总投资/万元</span></div>
       </div>
@@ -2493,8 +2524,8 @@ function renderCostStep() {
       </div>
     </div>
     <div class="stats-row">
-      <div class="mini-stat"><strong id="cost-estimate">${state.result ? fmt(state.result.summary.totalInvestment) : '保存后计算'}</strong><span>预计项目总投资/万元</span></div>
-      <div class="mini-stat"><strong>${fmtArea(state.current.model.project.gbaOverride || state.current.model.shops.reduce((s, x) => s + Number(x.buildingArea || 0), 0) * (1 + Number(state.current.model.project.commonAreaFactor || 0)) || 0)}</strong><span>计算用总建筑面积/㎡</span></div>
+      <div class="mini-stat"><strong id="cost-estimate">${(state.preview || state.result) ? fmt((state.preview || state.result).summary.totalInvestment) : '保存后计算'}</strong><span>预计项目总投资/万元</span></div>
+      <div class="mini-stat"><strong>${fmtArea(projectGrossBuildingArea(state.current.model))}</strong><span>计算用总建筑面积/㎡</span></div>
       <div class="mini-stat"><strong>${fmtPct(state.current.model.project.contingencyRate)}</strong><span>预备费费率</span></div>
       <div class="mini-stat"><strong>${fmt(state.current.model.shops.length)}</strong><span>铺位数量</span></div>
     </div>`;
@@ -2518,7 +2549,7 @@ function renderShopsStep() {
   }, 0);
   return `
     <div class="callout">${ICONS.info}<div>初期没有铺位明细时，可按楼层填写可租赁面积和平均月租金快速测算；招商方案明确后，再切换为一铺一价测算。</div></div>
-    ${shops.length && mode === 'preliminary' ? `<div class="callout soft shop-detail-notice">${ICONS.info}<div>系统检测到 <strong>${shops.length}</strong> 个铺位明细，但当前仍在“初步测算”。点击“查看一铺一价明细”可查看全部铺位、租金单价和收入统计。</div><button class="btn btn-secondary btn-sm" type="button" id="view-detailed-shops">查看一铺一价明细</button></div>` : ''}
+    ${shops.length && mode === 'preliminary' ? `<div class="callout soft shop-detail-notice">${ICONS.info}<div>系统检测到 <strong>${shops.length}</strong> 个铺位明细，但当前仍在“初步测算”。可立即切换为“一铺一价”，让面积、租金收入和投资分摊都按铺位明细核算。</div><button class="btn btn-secondary btn-sm" type="button" id="view-detailed-shops">按一铺一价重新核算</button></div>` : ''}
     <div class="mode-switch">
       <button type="button" class="mode-card ${mode === 'preliminary' ? 'active' : ''}" data-shop-mode="preliminary"><strong>初步测算</strong><span>按楼层均价快速判断项目量级</span></button>
       <button type="button" class="mode-card ${mode === 'detailed' ? 'active' : ''}" data-shop-mode="detailed"><strong>一铺一价</strong><span>按铺位、业态和位置条件精细定价</span></button>
@@ -2642,7 +2673,7 @@ function renderFloorRentSummary(preview) {
             return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || '—')}</td><td><span class="tag">${basisLabel}</span></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmtArea(floor.rentArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(monthly)}</td><td class="num">${fmt(property)}</td><td class="num">${fmt(commercial)}</td><td class="num">${fmt(central)}</td><td class="num"><strong>${fmt(property + commercial + central)}</strong></td><td class="num">${fmt(monthly * 12 / 10000, 1)}</td><td class="num">${fmtPct(total.monthly ? monthly / total.monthly : 0)}</td></tr>`;
           }).join('')}
         </tbody>
-        <tfoot><tr><td colspan="3"><strong>项目合计</strong></td><td class="num"><strong>${fmtArea(total.buildingArea)}</strong></td><td class="num"><strong>${fmtArea(total.leasableArea)}</strong></td><td class="num"><strong>${fmtArea(total.rentArea)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 1)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.property)}</strong></td><td class="num"><strong>${fmt(total.commercial)}</strong></td><td class="num"><strong>${fmt(total.central)}</strong></td><td class="num"><strong>${fmt(total.property + total.commercial + total.central)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 1)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
+        <tfoot><tr><td colspan="3"><strong>楼层/铺位明细合计（不含公区）</strong></td><td class="num"><strong>${fmtArea(total.buildingArea)}</strong></td><td class="num"><strong>${fmtArea(total.leasableArea)}</strong></td><td class="num"><strong>${fmtArea(total.rentArea)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 1)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.property)}</strong></td><td class="num"><strong>${fmt(total.commercial)}</strong></td><td class="num"><strong>${fmt(total.central)}</strong></td><td class="num"><strong>${fmt(total.property + total.commercial + total.central)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 1)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
       </table>
     </div>
   </div>`;
@@ -3022,9 +3053,22 @@ function projectGrossBuildingArea(model) {
   const project = model?.project || {};
   const floors = model?.floors || [];
   const shops = model?.shops || [];
-  return Number(project.gbaOverride || 0)
-    || floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0)
-    || shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0) * (1 + Number(project.commonAreaFactor || 0));
+  const manual = Number(project.gbaOverride || 0);
+  if (manual > 0) return manual;
+  const shopBuilding = shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0);
+  if (model?.calculationMode === 'detailed' && shops.length) return shopBuilding * (1 + Number(project.commonAreaFactor || 0));
+  return floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0)
+    || shopBuilding * (1 + Number(project.commonAreaFactor || 0));
+}
+
+function projectLeasableArea(model) {
+  const shops = model?.shops || [];
+  const floors = model?.floors || [];
+  if (model?.calculationMode === 'detailed' && shops.length) {
+    return shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
+  }
+  return floors.reduce((sum, floor) => sum + Number(floor.leasableArea || 0), 0)
+    || shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
 }
 
 function estimatedProjectAverageRent(model, preview) {
@@ -3032,6 +3076,17 @@ function estimatedProjectAverageRent(model, preview) {
   if (previewRent > 0) return previewRent;
   const categoryRent = new Map((model.categories || []).map(item => [item.name, Number(item.rent || 0)]));
   const shops = model.shops || [];
+  if (model.calculationMode !== 'detailed') {
+    let floorArea = 0;
+    let floorRentValue = 0;
+    (model.floors || []).forEach(floor => {
+      const basis = resolvedRentAreaBasis(floor, model);
+      const area = basis === 'building' ? Number(floor.buildingArea || 0) : Number(floor.leasableArea || 0);
+      floorArea += area;
+      floorRentValue += area * Number(floor.avgRent || 0);
+    });
+    if (floorArea > 0 && floorRentValue > 0) return floorRentValue / floorArea;
+  }
   if (shops.length) {
     let area = 0;
     let rentValue = 0;
@@ -3160,7 +3215,7 @@ function renderLeasingBudgetSection(model, preview) {
       </div>` : `<div class="channel-amount-mode-note">当前按直接金额核算。可在下方渠道及代理费行选择年度或月度录入，系统自动换算月度和年度金额。</div>`}
     </div>
     <div class="data-table-wrap budget-table-wrap">
-      <table class="data-table budget-table budget-period-table" data-share-table data-budget-unit="yuan"><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（元/期）</th><th class="num">月度金额（元/月）</th><th class="num">年度金额（元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
+      <table class="data-table budget-table budget-period-table" data-share-table><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（万元/期）</th><th class="num">月度金额（万元/月）</th><th class="num">年度金额（万元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
         ${items.map(item => {
           if (item.key === 'channelFeeAnnual') {
             const enteredCell = channel.channelMode === 'area_rent'
@@ -4230,7 +4285,8 @@ function taxStatisticsData(result) {
   const stableRow = annual.find(row => Number(row.opYear) === stableYear) || [...annual].reverse().find(row => Number(row.opYear) > 0) || {};
   const stableTaxes = Number(summary.stableTaxes || stableRow.taxes || 0);
   const stableVatPayable = Number(summary.stableVatPayable || stableRow.vatPayable || 0);
-  const stableIncomeTax = Number(summary.stableIncomeTax || stableRow.incomeTax || 0);
+  const stableIncomeTax = Number(summary.stableIncomeTax || stableRow.projectIncomeTax || 0);
+  const stableEquityIncomeTax = Number(summary.stableEquityIncomeTax || stableRow.equityIncomeTax || stableRow.incomeTax || 0);
   const stableCash = Number(summary.stableTaxCashOutflow || (stableVatPayable + stableTaxes + stableIncomeTax));
   const rows = [
     { key: 'vatPayable', label: '应纳增值税', basis: '租金、物业费、联营扣点及其他收入；租金类收入已乘出租率', stable: stableVatPayable, cumulative: Number(summary.operationPeriodVatPayable || 0), occupancy: '是' },
@@ -4240,8 +4296,9 @@ function taxStatisticsData(result) {
     { key: 'stampDuty', label: '印花税', basis: '不含税租金收入 × 印花税率；租金已乘出租率', stable: Number(summary.stableStampDuty || stableRow.stampDuty || 0), cumulative: Number(summary.operationPeriodStampDuty || 0), occupancy: '是' },
     { key: 'localFund', label: '地方基金及附加', basis: '不含税营业收入 × 地方基金/附加以外费率', stable: Number(summary.stableLocalFund || stableRow.localFund || 0), cumulative: Number(summary.operationPeriodLocalFund || 0), occupancy: '是' },
     { key: 'operatingTaxes', label: '计入NOI的经营税费合计', basis: '房产税 + 土地使用税 + 印花税 + 附加 + 地方基金', stable: stableTaxes, cumulative: Number(summary.operationPeriodTaxes || 0), occupancy: '部分联动' },
-    { key: 'incomeTax', label: '企业所得税', basis: '应纳税所得额 × 所得税率；扣除可结转亏损后计算', stable: stableIncomeTax, cumulative: Number(summary.operationPeriodIncomeTax || 0), occupancy: '间接联动' },
-    { key: 'cashTotal', label: '税费现金支出合计', basis: '应纳增值税 + 计入NOI经营税费 + 企业所得税', stable: stableCash, cumulative: Number(summary.operationPeriodTaxCashOutflow || 0), occupancy: '—' },
+    { key: 'incomeTax', label: '企业所得税（融资前项目口径）', basis: 'EBIT 扣除可结转亏损后 × 所得税率；不含融资利息抵税，与项目IRR/NPV口径一致', stable: stableIncomeTax, cumulative: Number(summary.operationPeriodIncomeTax || 0), occupancy: '间接联动' },
+    { key: 'equityIncomeTax', label: '企业所得税（融资后股权口径）', basis: '扣除融资利息并适用亏损结转后 × 所得税率；用于股权现金流和股权IRR', stable: stableEquityIncomeTax, cumulative: Number(summary.operationPeriodEquityIncomeTax || 0), occupancy: '随融资变化' },
+    { key: 'cashTotal', label: '税费现金支出合计', basis: '应纳增值税 + 计入NOI经营税费 + 融资前项目所得税', stable: stableCash, cumulative: Number(summary.operationPeriodTaxCashOutflow || 0), occupancy: '—' },
   ];
   return {
     summary,
@@ -4254,6 +4311,7 @@ function taxStatisticsData(result) {
     stableMonthlyTaxes: Number(summary.stableMonthlyTaxes || stableTaxes / 12),
     cumulativeOperatingTaxes: Number(summary.operationPeriodTaxes || 0),
     cumulativeIncomeTax: Number(summary.operationPeriodIncomeTax || 0),
+    cumulativeEquityIncomeTax: Number(summary.operationPeriodEquityIncomeTax || 0),
     cumulativeCash: Number(summary.operationPeriodTaxCashOutflow || 0),
     rows,
   };
@@ -4271,6 +4329,7 @@ function updateTaxStatisticsDom(result) {
       cashTotal: data.rows.at(-1).stable,
       cumulativeTaxes: data.cumulativeOperatingTaxes,
       cumulativeIncomeTax: data.cumulativeIncomeTax,
+      cumulativeEquityIncomeTax: data.cumulativeEquityIncomeTax,
       cumulativeCash: data.cumulativeCash,
     }[key];
     if (value != null) el.textContent = fmt(value, 2);
@@ -4304,7 +4363,8 @@ function renderTaxExpenseSummary(preview) {
     </tbody></table></div>
     <div class="phase-cost-kpis" style="margin-top:14px">
       <div><span>运营期经营税费累计</span><strong data-tax-stat="cumulativeTaxes">${fmt(data.cumulativeOperatingTaxes, 2)}</strong><em>万元</em></div>
-      <div><span>运营期企业所得税累计</span><strong data-tax-stat="cumulativeIncomeTax">${fmt(data.cumulativeIncomeTax, 2)}</strong><em>万元</em></div>
+      <div><span>运营期项目所得税累计</span><strong data-tax-stat="cumulativeIncomeTax">${fmt(data.cumulativeIncomeTax, 2)}</strong><em>万元</em></div>
+      <div><span>运营期股权所得税累计</span><strong data-tax-stat="cumulativeEquityIncomeTax">${fmt(data.cumulativeEquityIncomeTax, 2)}</strong><em>万元</em></div>
       <div class="highlight"><span>运营期税费现金支出累计</span><strong data-tax-stat="cumulativeCash">${fmt(data.cumulativeCash, 2)}</strong><em>万元</em></div>
     </div>
     <div class="field-help">开发建设阶段的契税、市政基础设施配套费、人防易地建设费等属于建设投资规费，已在“建设投资”页计入资本投入；本表统计运营期实际发生和累计税费。</div>
@@ -4342,7 +4402,7 @@ function renderTaxProfitStep() {
     <details class="advanced">
       <summary>融资与退出假设</summary>
       <div class="advanced-body">
-        ${formulaPanel('融资、折旧、所得税与退出公式', '贷款额 = 总投资 × 债务比例\n利息 =（期初余额 + 当年提款÷2）× 年利率\n年折旧 = 建筑投资÷建筑年限 + 装修投资÷装修年限 + 设备投资÷设备年限\n项目现金流 = NOI - 资本化改造 - 所得税 + 期末退出价值\nNPV = Σ[CFt ÷（1+r）^t]；IRR：NPV(IRR)=0', ['IF', 'SUM', 'MAX', 'POWER', 'NPV', 'IRR'], '折旧年限、亏损结转、还款方式、退出方法和敏感性区间均可在下方“公式参数”中调整。')}
+        ${formulaPanel('融资、折旧、所得税与退出公式', '贷款额 = 总投资 × 债务比例\n利息 =（期初余额 + 当年提款÷2）× 年利率\n年折旧 = 建筑投资÷建筑年限 + 装修投资÷装修年限 + 设备投资÷设备年限\n项目现金流 = NOI - 资本化改造 - 融资前项目所得税 + 期末退出价值\n股权现金流 = NOI - 资本化改造 - 融资后所得税 - 利息 - 本金 + 退出价值\nNPV = Σ[CFt ÷（1+r）^t]；IRR：NPV(IRR)=0', ['IF', 'SUM', 'MAX', 'POWER', 'NPV', 'IRR'], '折旧年限、亏损结转、还款方式、退出方法和敏感性区间均可在下方“公式参数”中调整。')}
         <div class="form-grid">
           ${textField('债务融资比例', 'finance.debtRatio', { type: 'number', unit: '%', scale: 0.01 })}
           ${textField('年贷款利率', 'finance.loanRate', { type: 'number', unit: '%', scale: 0.01 })}
@@ -4991,6 +5051,69 @@ function fallbackMapCenter(project) {
   return { lat: 23.80, lon: 108.30 };
 }
 
+const MAP_TILE_SOURCES = [
+  {
+    id: 'amap',
+    label: '高德地图',
+    gcj: true,
+    url: (x, y, z) => `https://webrd0${Math.abs(x + y) % 4 + 1}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=${x}&y=${y}&z=${z}`,
+  },
+  {
+    id: 'osm',
+    label: 'OpenStreetMap',
+    gcj: false,
+    url: (x, y, z) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`,
+  },
+];
+
+function outOfChina(lat, lon) {
+  return lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271;
+}
+
+function transformLat(x, y) {
+  let result = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  result += (20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2 / 3;
+  result += (20 * Math.sin(y * Math.PI) + 40 * Math.sin(y / 3 * Math.PI)) * 2 / 3;
+  result += (160 * Math.sin(y / 12 * Math.PI) + 320 * Math.sin(y * Math.PI / 30)) * 2 / 3;
+  return result;
+}
+
+function transformLon(x, y) {
+  let result = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  result += (20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2 / 3;
+  result += (20 * Math.sin(x * Math.PI) + 40 * Math.sin(x / 3 * Math.PI)) * 2 / 3;
+  result += (150 * Math.sin(x / 12 * Math.PI) + 300 * Math.sin(x / 30 * Math.PI)) * 2 / 3;
+  return result;
+}
+
+function wgs84ToGcj02(lat, lon) {
+  if (outOfChina(lat, lon)) return { lat, lon };
+  const a = 6378245;
+  const ee = 0.006693421622965943;
+  const dLat = transformLat(lon - 105, lat - 35);
+  const dLon = transformLon(lon - 105, lat - 35);
+  const radLat = lat / 180 * Math.PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - ee * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  return {
+    lat: lat + (dLat * 180) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI),
+    lon: lon + (dLon * 180) / (a / sqrtMagic * Math.cos(radLat) * Math.PI),
+  };
+}
+
+function gcj02ToWgs84(lat, lon) {
+  if (outOfChina(lat, lon)) return { lat, lon };
+  let wgsLat = lat;
+  let wgsLon = lon;
+  for (let i = 0; i < 3; i++) {
+    const converted = wgs84ToGcj02(wgsLat, wgsLon);
+    wgsLat -= converted.lat - lat;
+    wgsLon -= converted.lon - lon;
+  }
+  return { lat: wgsLat, lon: wgsLon };
+}
+
 function openMapPicker() {
   const project = state.current.model.project;
   const hasCoordinates = Number.isFinite(Number(project.latitude)) && project.latitude !== null && project.longitude !== null;
@@ -5019,7 +5142,8 @@ function openMapPicker() {
             <div class="map-tile-layer" id="map-tile-layer"></div>
             <div class="map-center-marker">${ICONS.pin}</div>
             <div class="map-instruction">拖动地图或点击选点，中心标记即项目位置</div>
-            <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
+            <div class="map-load-status" id="map-load-status">正在加载国内地图…</div>
+            <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">高德地图 / OpenStreetMap</a>
           </div>
           <div class="map-coordinate-box">
             <div><strong id="map-picked-address">${escapeHtml(picked.address || '尚未选择地址')}</strong><span>点击地图后会自动反向解析地址</span></div>
@@ -5040,6 +5164,12 @@ function openMapPicker() {
 
   const map = new TileMap(document.getElementById('map-canvas'), document.getElementById('map-tile-layer'), picked);
   activeMapPicker = map;
+  const mapLoadStatus = document.getElementById('map-load-status');
+  map.onStatus = (text, mode = 'ready') => {
+    if (!mapLoadStatus) return;
+    mapLoadStatus.textContent = text;
+    mapLoadStatus.className = `map-load-status ${mode}`.trim();
+  };
   const resultsEl = document.getElementById('map-search-results');
   const addressEl = document.getElementById('map-picked-address');
   const coordsEl = document.getElementById('map-picked-coords');
@@ -5154,13 +5284,29 @@ class TileMap {
     this.lat = Number(state.lat);
     this.lon = Number(state.lon);
     this.zoom = Math.max(3, Math.min(19, Number(state.zoom) || 12));
+    this.tileSource = MAP_TILE_SOURCES[0];
+    this.fallbackUsed = false;
+    this.primaryErrors = 0;
+    this.loadedTiles = 0;
+    this.loadTimer = null;
     this.onSelect = null;
+    this.onStatus = null;
     this.drag = null;
     this.frame = null;
     this.bind();
   }
 
   get worldSize() { return 256 * 2 ** this.zoom; }
+  activeTileSource() { return this.fallbackUsed ? MAP_TILE_SOURCES[1] : this.tileSource; }
+  displayCoords(lat = this.lat, lon = this.lon) {
+    return this.activeTileSource().gcj ? wgs84ToGcj02(lat, lon) : { lat, lon };
+  }
+  projectCoords(lat, lon) {
+    return this.activeTileSource().gcj ? gcj02ToWgs84(lat, lon) : { lat, lon };
+  }
+  tileUrl(x, y, zoom) {
+    return this.activeTileSource().url(x, y, zoom);
+  }
   lonToX(lon) { return (lon + 180) / 360 * this.worldSize; }
   latToY(lat) {
     const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
@@ -5169,7 +5315,10 @@ class TileMap {
   }
   xToLon(x) { return x / this.worldSize * 360 - 180; }
   yToLat(y) { return Math.atan(Math.sinh(Math.PI * (1 - 2 * y / this.worldSize))) * 180 / Math.PI; }
-  centerWorld() { return { x: this.lonToX(this.lon), y: this.latToY(this.lat) }; }
+  centerWorld() {
+    const display = this.displayCoords();
+    return { x: this.lonToX(display.lon), y: this.latToY(display.lat) };
+  }
 
   setView(lat, lon, zoom = this.zoom) {
     this.lat = Math.max(-85.05, Math.min(85.05, lat));
@@ -5186,6 +5335,9 @@ class TileMap {
   drawTiles() {
     const rect = this.container.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
+    clearTimeout(this.loadTimer);
+    this.loadedTiles = 0;
+    this.primaryErrors = 0;
     const center = this.centerWorld();
     const left = center.x - rect.width / 2;
     const top = center.y - rect.height / 2;
@@ -5202,13 +5354,43 @@ class TileMap {
         const img = document.createElement('img');
         img.alt = '';
         img.draggable = false;
-        img.src = `https://tile.openstreetmap.org/${this.zoom}/${wrappedX}/${y}.png`;
+        img.loading = 'eager';
+        img.decoding = 'async';
+        img.referrerPolicy = 'no-referrer';
+        img.onload = () => {
+          this.loadedTiles += 1;
+          if (this.loadedTiles === 1) this.onStatus?.('', 'ready');
+        };
+        img.onerror = () => {
+          if (!this.fallbackUsed) {
+            this.primaryErrors += 1;
+            if (this.primaryErrors >= 2) {
+              this.fallbackUsed = true;
+              this.onStatus?.('国内地图响应较慢，已切换备用地图', 'ready');
+              this.drawTiles();
+              return;
+            }
+            img.src = MAP_TILE_SOURCES[1].url(wrappedX, y, this.zoom);
+          } else {
+            img.style.visibility = 'hidden';
+          }
+        };
+        img.src = this.tileUrl(wrappedX, y, this.zoom);
         img.style.left = `${x * 256 - left}px`;
         img.style.top = `${y * 256 - top}px`;
         fragment.appendChild(img);
       }
     }
     this.tileLayer.replaceChildren(fragment);
+    if (!this.fallbackUsed) {
+      this.loadTimer = setTimeout(() => {
+        if (this.loadedTiles === 0) {
+          this.fallbackUsed = true;
+          this.onStatus?.('国内地图加载超时，已自动切换备用地图', 'ready');
+          this.drawTiles();
+        }
+      }, 3500);
+    }
   }
 
   bind() {
@@ -5231,8 +5413,9 @@ class TileMap {
       if (Math.abs(dx) + Math.abs(dy) > 3) this.drag.moved = true;
       const x = this.drag.center.x - dx;
       const y = this.drag.center.y - dy;
-      this.lon = this.xToLon(x);
-      this.lat = this.yToLat(y);
+      const projectCoords = this.projectCoords(this.yToLat(y), this.xToLon(x));
+      this.lon = projectCoords.lon;
+      this.lat = projectCoords.lat;
       this.render();
     });
     const finish = event => {
@@ -5245,7 +5428,8 @@ class TileMap {
         const center = this.centerWorld();
         const x = center.x - rect.width / 2 + (event.clientX - rect.left);
         const y = center.y - rect.height / 2 + (event.clientY - rect.top);
-        this.setView(this.yToLat(y), this.xToLon(x), this.zoom);
+        const projectCoords = this.projectCoords(this.yToLat(y), this.xToLon(x));
+        this.setView(projectCoords.lat, projectCoords.lon, this.zoom);
       }
       if (this.onSelect) this.onSelect(this.lat, this.lon);
     };
@@ -5258,7 +5442,9 @@ class TileMap {
 
   destroy() {
     if (this.frame) cancelAnimationFrame(this.frame);
+    clearTimeout(this.loadTimer);
     this.onSelect = null;
+    this.onStatus = null;
   }
 }
 
@@ -5271,11 +5457,30 @@ function scheduleLivePreview() {
 async function runLivePreview() {
   if (!state.current) return null;
   try {
+    const shopBaselineChanged = ensureShopDetailedBaseline(state.current.model);
+    const costBaseline = ensureCostBaselineForCalculation(state.current.model);
+    if (shopBaselineChanged) {
+      state.dirty = true;
+      updateSaveState();
+      if (!state.shopBaselineNoticeShown) {
+        state.shopBaselineNoticeShown = true;
+        toast('检测到已导入铺位明细，已自动切换为一铺一价测算', 'success');
+      }
+    }
+    if (costBaseline) {
+      state.dirty = true;
+      updateSaveState();
+      if (!state.costBaselineNoticeShown) {
+        state.costBaselineNoticeShown = true;
+        toast(`检测到工程投资为空，已按${costBaseline.cityLabel} · ${costBaseline.developmentLabel}补充参考单价，请到“建设投资”复核`, 'success');
+      }
+    }
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
     state.preview = result;
     updateLiveStats();
     updateOperatingPreviewDom(result);
     updateTaxStatisticsDom(result);
+    if (shopBaselineChanged) renderWorkspace();
     return result;
   } catch (error) {
     console.warn('实时测算失败', error);
@@ -5397,6 +5602,7 @@ function bindShopsStep() {
   }));
   document.querySelectorAll('[data-shop-mode]').forEach(btn => btn.addEventListener('click', () => {
     state.current.model.calculationMode = btn.dataset.shopMode;
+    state.current.model.calculationModeManual = true;
     if (btn.dataset.shopMode === 'detailed') ensureFloorsFromShops(state.current.model);
     state.preview = null;
     state.dirty = true;
@@ -5405,6 +5611,7 @@ function bindShopsStep() {
   }));
   document.getElementById('view-detailed-shops')?.addEventListener('click', () => {
     state.current.model.calculationMode = 'detailed';
+    state.current.model.calculationModeManual = false;
     ensureFloorsFromShops(state.current.model, { replace: true });
     state.preview = null;
     state.result = null;
@@ -5476,6 +5683,7 @@ async function handleShopImport(file) {
     const contentBase64 = await fileToBase64(file);
     const payload = await api('/api/import-shops', { method: 'POST', body: { filename: file.name, contentBase64 } });
     state.current.model.calculationMode = 'detailed';
+    state.current.model.calculationModeManual = false;
     state.current.model.shops = payload.shops || [];
     state.importWarnings = payload.warnings || [];
     state.rentImportStats = {

@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-taxstats4', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-consistency3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1759,15 +1759,16 @@ function exportExcel(result) {
     ['印花税', s.stableStampDuty || 0, (s.stableStampDuty || 0) / 12, s.operationPeriodStampDuty || 0, '是'],
     ['地方基金及附加', s.stableLocalFund || 0, (s.stableLocalFund || 0) / 12, s.operationPeriodLocalFund || 0, '是'],
     ['计入NOI的经营税费', s.stableTaxes || 0, (s.stableTaxes || 0) / 12, s.operationPeriodTaxes || 0, '部分联动'],
-    ['企业所得税', s.stableIncomeTax || 0, (s.stableIncomeTax || 0) / 12, s.operationPeriodIncomeTax || 0, '间接联动'],
+    ['企业所得税（融资前项目口径）', s.stableIncomeTax || 0, (s.stableIncomeTax || 0) / 12, s.operationPeriodIncomeTax || 0, '间接联动'],
+    ['企业所得税（融资后股权口径）', s.stableEquityIncomeTax || 0, (s.stableEquityIncomeTax || 0) / 12, s.operationPeriodEquityIncomeTax || 0, '随融资变化'],
     ['税费现金支出合计', s.stableTaxCashOutflow || 0, (s.stableTaxCashOutflow || 0) / 12, s.operationPeriodTaxCashOutflow || 0, '—'],
     [''],
     ['年度税费明细'],
-    ['运营年', '日历年', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '企业所得税', '税费现金支出'],
-    ...(result.annual || []).filter(x => Number(x.opYear) > 0).map(x => [x.opYear, x.calendarYear, x.outputVat || 0, x.inputVat || 0, x.vatPayable || 0, x.propertyTax || 0, x.landUseTax || 0, x.stampDuty || 0, x.vatSurcharge || 0, x.localFund || 0, x.taxes || 0, x.incomeTax || 0, x.taxCashOutflow || 0]),
-  ], [28, 20, 20, 24, 20, 18, 18, 18, 18, 18, 20, 18, 20]);
-  setSheetColumnNumberFormat(taxWs, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], '0.00');
-  setSheetColumnNumberFormat(taxWs, [1], '0.00%');
+    ['运营年', '日历年', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '股权税费现金支出'],
+    ...(result.annual || []).filter(x => Number(x.opYear) > 0).map(x => [x.opYear, x.calendarYear, x.outputVat || 0, x.inputVat || 0, x.vatPayable || 0, x.propertyTax || 0, x.landUseTax || 0, x.stampDuty || 0, x.vatSurcharge || 0, x.localFund || 0, x.taxes || 0, x.projectIncomeTax || 0, x.taxCashOutflow || 0, x.equityIncomeTax || x.incomeTax || 0, x.equityTaxCashOutflow || 0]),
+  ], [28, 20, 20, 24, 20, 18, 18, 18, 18, 18, 20, 22, 22, 22, 22]);
+  setSheetColumnNumberFormat(taxWs, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], '0.00');
+  if (taxWs.B2) taxWs.B2.z = '0.00%';
   const preBudget = model.preOpeningBudget || {};
   if (preBudget.mode === 'detailed') {
     const socialRate = Math.max(0, Number(preBudget.team?.socialInsuranceRate ?? 0.28));
@@ -1856,7 +1857,7 @@ function exportExcel(result) {
     ...(result.monthlyFundingPlan || []).map(x => [x.month, x.phase, x.calendarYear, x.projectCashFlow, x.cumulativeProjectCashFlow, x.equityCashFlow, x.cumulativeEquityCashFlow]),
   ], [20, 32, 22, 26, 28, 28, 30]);
   const formulaRows = [
-    ['面积', '总建筑面积', 'IF(手动总建筑面积=0,商铺建筑面积合计×(1+公区系数),手动总建筑面积)', ['IF','SUM'], '先判断是否手动填写总建筑面积；没有则按商铺面积和公区系数推算；结果进入建设投资和单位投资指标计算。', '优先填规划面积或测绘面积；没有时用商铺面积反推。调整公区系数后观察总投资和单位投资变化。', 'project.commonAreaFactor', model.project.commonAreaFactor, '公区系数增加会同步增加建安、装修、设备和规费。'],
+    ['面积', '总建筑面积', '手动总建筑面积；若为0：一铺一价=商铺建筑面积合计×(1+公区系数)，初步测算=楼层建筑面积合计', ['IF','SUM'], '先判断是否手动填写总建筑面积；没有则按商铺面积和公区系数推算；结果进入建设投资和单位投资指标计算。', '优先填规划面积或测绘面积；没有时用商铺面积反推。调整公区系数后观察总投资和单位投资变化。', 'project.commonAreaFactor', model.project.commonAreaFactor, '公区系数增加会同步增加建安、装修、设备和规费。'],
     ['租金', '有效出租率', 'IF(运营年=1,首年出租率,IF(运营年<稳定年,第二年出租率,稳定出租率))', ['IF'], '按运营年份选择出租率：首年、爬坡第二年或稳定期；再乘租金、物业费和停车收入。', '出租率按招商计划和同类项目爬坡速度设置。先看首年出租率，再调稳定出租率；两者都会影响NOI和NPV。', 'operations.occupancyY1', model.operations.occupancyY1, '首年出租率影响首年现金流和招商佣金。'],
     ['租金', '租金递增因子', '不递增=1；每年复利=(1+年递增率)^(运营年-1)；每年单利=1+年递增率×(运营年-1)；每N年阶梯=(1+阶梯递增率)^INT((运营年-1)÷N)', ['POWER','INT','IF'], '按所选模式逐年计算租金增长因子，再乘首年满租租金。阶梯模式只在每个N年周期到达时上调。', '有租约递增条款时按条款设置，例如“每3年递增5%”选择阶梯模式并填周期3、递增率5%。租金与销售扣点增长分开管理。', 'formulas.rentGrowthMode', formulas.rentGrowthMode, '增长方式会显著影响后期NOI和退出价值。'],
     ['租金', '首年免租调整', '首年租金×出租率×(1-免租月数÷12)', ['IF','SUM'], '首年免租系数将免租月数换算成年化扣减比例，只影响首年租金收入。', '按实际免租期和装修期填写；免租越长，首年现金流越低，但不改变合同单价。', 'operations.rentFreeMonths', model.operations.rentFreeMonths, '仅影响首年收入及现金流的低点。'],
@@ -1875,7 +1876,7 @@ function exportExcel(result) {
     ['税费', '销项税与进项税', '销项=Σ[含税收入÷(1+税率)×税率]；进项=MIN(销项,可抵扣成本×比例×税率÷(1+税率))', ['SUM','MIN'], '先按租金、物业、其他收入和联营扣点分别计算销项税，再估算可抵扣进项税，差额形成增值税净额。', '税率和抵扣比例按项目属地、合同类型和税务认定设置；不能直接套用全国统一值。', 'taxes.vatRent', model.taxes.vatRent, '增值税净额影响附加税和现金流。'],
     ['税费', '房产税', 'IF(从租,不含税租金×12%,房产原值×(1-扣除比例)×1.2%)', ['IF'], '根据从租或从价方式选择公式；从租按不含税租金，从价按房产余值。', '先确认税务认定的计征方式；从租和从价结果差异较大，不能同时使用。', 'taxes.propertyTaxMethod', model.taxes.propertyTaxMethod, '房产税是商业地产重要持有税。'],
     ['税费', '土地使用税', '占地面积×单位税额÷10000', ['ROUND'], '按项目占地面积和土地等级对应单位税额计算，金额换算为万元。', '按项目所在地最新土地等级和税额标准填写；不同地块可能适用不同税额。', 'taxes.landUseTax', model.taxes.landUseTax, '属于年度固定税费。'],
-    ['税费', '企业所得税', 'MAX(0,税前利润-可结转亏损)×所得税率', ['MAX','IF'], '税前利润先抵减可结转亏损，再乘企业所得税率；亏损按设定年限结转。', '所得税率按适用税法填写；亏损结转年限和税务口径应与财务顾问确认。', 'taxes.corporateTax', model.taxes.corporateTax, '影响税后净利润和股权现金流。'],
+    ['税费', '企业所得税（融资前/融资后）', '融资前项目所得税=MAX(0,EBIT-项目可结转亏损)×税率；融资后股权所得税=MAX(0,EBIT-利息-可结转亏损)×税率', ['MAX','IF'], '项目口径不含融资利息抵税，与项目IRR/NPV一致；股权口径扣除融资利息，与股权现金流和股权IRR一致。两者分别计算亏损结转。', '所得税率按适用税法填写；亏损结转年限及税务口径应与财务顾问确认，不要把融资前和融资后所得税混用。', 'taxes.corporateTax', model.taxes.corporateTax, '项目所得税影响项目现金流、IRR和NPV；股权所得税影响净利润和股权IRR。'],
     ['融资', '贷款额与利息', '贷款额=总投资×债务比例；利息=(期初余额+当年提款÷2)×年利率', ['SUM'], '先按总投资和债务比例确定贷款额，再按建设期提款和期初余额计算每年利息。', '按融资方案调整债务比例、利率和提款节奏；提高杠杆可能提高股权IRR，但增加偿债压力。', 'finance.debtRatio', model.finance.debtRatio, '影响股权投入、利息和股权现金流。'],
     ['融资', '还款方式', '等额本金：贷款额÷期限；先息后本：期末一次还本', ['IF'], '等额本金在宽限期后逐年偿还本金；先息后本在贷款期末一次性偿还本金。', '按融资合同设置；先息后本前期现金流压力小，但期末还本压力集中。', 'formulas.loanRepaymentMethod', formulas.loanRepaymentMethod, '影响本金流出年度分布。'],
     ['折旧', '年折旧', '建筑投资÷建筑年限+装修投资÷装修年限+设备投资÷设备年限', ['SUM'], '三类资产分别按各自年限直线折旧，再合计为年度折旧。', '折旧年限按会计政策、税法规定和资产寿命设置；折旧不是现金支出，但会影响所得税。', 'formulas.buildingDepreciationYears', formulas.buildingDepreciationYears, '折旧变化影响税前利润、所得税和净利润。'],
@@ -1906,7 +1907,7 @@ function exportExcel(result) {
     ...Object.entries(EXPORT_FUNCTIONS).map(([name, f]) => [name, f.syntax, f.meaning, f.example, f.note])
   ], [16, 38, 55, 55, 70]);
   addSheet(wb, '投资构成', [['项目', '金额（万元）', '占比'], ...result.investmentBreakdown.map(x => [x.name, x.value, s.totalInvestment ? x.value / s.totalInvestment : 0])], [28, 18, 14]);
-  const floorWs = addSheet(wb, '楼层均价', [['楼栋', '楼层', '计租口径', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '平均月租金（元/㎡/月）', '物业费单价（元/㎡/月）', '商管费单价（元/㎡/月）', '空调费单价（元/㎡/月）', '满租月租金（万元）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '租金收入占比'], ...(result.floors || []).map(x => { const monthlyWan = Number(x.monthlyRevenue || x.monthlyRent || 0) / 10000; const monthlyProperty = Number(x.monthlyPropertyFee || 0); const monthlyCommercial = Number(x.monthlyCommercialManagementFee || 0); const monthlyCentral = Number(x.monthlyCentralAcFee || 0); return [x.building || '1号楼', x.name, x.rentAreaBasis === 'building' ? '建筑面积' : x.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.weightedRent || x.avgRent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), monthlyWan, monthlyProperty, monthlyCommercial, monthlyCentral, monthlyProperty + monthlyCommercial + monthlyCentral, (monthlyProperty + monthlyCommercial + monthlyCentral) * 12 / 10000, s.totalMonthlyRent ? (Number(x.monthlyRevenue || x.monthlyRent || 0) / s.totalMonthlyRent) : 0]; })], [12, 10, 14, 18, 18, 18, 24, 22, 22, 22, 22, 22, 22, 22, 26, 24, 16]);
+  const floorWs = addSheet(wb, '楼层均价', [['楼栋', '楼层', '计租口径', '铺位/楼层建筑面积（㎡，不含公区）', '实用面积（㎡）', '计租面积（㎡）', '平均月租金（元/㎡/月）', '物业费单价（元/㎡/月）', '商管费单价（元/㎡/月）', '空调费单价（元/㎡/月）', '满租月租金（万元）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '租金收入占比'], ...(result.floors || []).map(x => { const monthlyWan = Number(x.monthlyRevenue || x.monthlyRent || 0) / 10000; const monthlyProperty = Number(x.monthlyPropertyFee || 0); const monthlyCommercial = Number(x.monthlyCommercialManagementFee || 0); const monthlyCentral = Number(x.monthlyCentralAcFee || 0); return [x.building || '1号楼', x.name, x.rentAreaBasis === 'building' ? '建筑面积' : x.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.weightedRent || x.avgRent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), monthlyWan, monthlyProperty, monthlyCommercial, monthlyCentral, monthlyProperty + monthlyCommercial + monthlyCentral, (monthlyProperty + monthlyCommercial + monthlyCentral) * 12 / 10000, s.totalMonthlyRent ? (Number(x.monthlyRevenue || x.monthlyRent || 0) / s.totalMonthlyRent) : 0]; })], [12, 10, 14, 18, 18, 18, 24, 22, 22, 22, 22, 22, 22, 22, 26, 24, 16]);
 
   setSheetColumnNumberFormat(floorWs, [3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15], '0.00');
   const exportShopWs = addSheet(wb, '商铺明细', [['楼栋', '铺位号', '楼层', '计租口径', '业态', '状态', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '租金单价（元/㎡/月）', '物业管理费（元/㎡/月）', '商业管理费（元/㎡/月）', '中央空调费（元/㎡/月）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '条件', '满租月租金收益（万元）'], ...(result.shops || []).map(x => [x.building || '1号楼', x.id, x.floor, x.rentAreaBasis === 'building' ? '建筑面积' : '实用面积', x.category, x.status || '', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.rent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), Number(x.monthlyPropertyFee || 0), Number(x.monthlyCommercialManagementFee || 0), Number(x.monthlyCentralAcFee || 0), Number(x.monthlyServiceFee || 0), Number(x.monthlyServiceFee || 0) * 12 / 10000, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [12, 16, 10, 14, 16, 12, 18, 18, 18, 22, 24, 24, 24, 22, 22, 22, 26, 24, 24, 24]);
@@ -1956,7 +1957,7 @@ function exportExcel(result) {
   ], [22, 30, 70]);
   addSheet(wb, '竞品租金样本', [['样本名称', '地址', '楼层', '业态', '可租赁面积（㎡）', '月租金（元/㎡/月）', '数据日期', '距项目（km）', '备注'], ...(model.market?.comparables || []).map(x => [x.name, x.address, x.floor, x.category, x.leasableArea, x.rent, x.date, x.distanceKm, x.note])], [24, 30, 10, 16, 18, 22, 14, 14, 28]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
-  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '租金收入', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '企业所得税', '税费现金支出', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.phase || '运营期', x.calendarYear, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.rentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.incomeTax, x.taxCashOutflow, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,16,10,14,16,16,16,16,20,20,20,18,16,14,14,16,14,14,14,14,14,16,16,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
+  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '租金收入', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.phase || '运营期', x.calendarYear, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.rentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.projectIncomeTax, x.taxCashOutflow, x.equityIncomeTax || x.incomeTax || 0, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,16,10,14,16,16,16,16,20,20,20,18,16,14,14,16,14,14,14,14,14,16,16,18,18,22,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
 
   addSheet(wb, '敏感性分析', [['租金变化 ↓ / 投资变化 →', ...(result.sensitivity.capexSteps || []).map(v => (v * 100).toFixed(0) + '%')], ...(result.sensitivity.rentSteps || []).map((rent, i) => [(rent * 100).toFixed(0) + '%', ...(result.sensitivity.npvMatrix[i] || [])])], [24, 14, 14, 14, 14, 14]);
   addSheet(wb, '分析结论', [['类型', '内容'], ...(result.analysis.bullets || []).map(x => ['分析结论', x]), ...(result.analysis.recommendations || []).map(x => ['建议', x]), ...(result.diagnostics || []).map(x => [x.level, `${x.title}：${x.detail}`])], [18, 100]);
@@ -2032,7 +2033,7 @@ async function exportPPT(result) {
   slide.addText(`稳定期费用性收入：物业管理费 ${Number(s.stablePropertyManagementIncome || 0).toFixed(2)} 万元/年｜商业管理费 ${Number(s.stableCommercialManagementIncome || 0).toFixed(2)} 万元/年｜中央空调费 ${Number(s.stableCentralAcIncome || 0).toFixed(2)} 万元/年｜三项合计 ${Number(s.stablePropertyFeeIncome || 0).toFixed(2)} 万元/年`, { x: 0.72, y: 6.35, w: 11.95, h: 0.5, fontFace: 'Microsoft YaHei', fontSize: 8, color: '17211E', fill: { color: 'E5F0EB' }, margin: 0.08, valign: 'mid' });
 
   slide = pptx.addSlide();
-  addSlideTitle(slide, '楼栋与楼层面积及租金汇总', `租金核算口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}`);
+  addSlideTitle(slide, '楼栋与楼层面积及租金汇总', `租金核算口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}｜表内面积为铺位/楼层明细面积，不含公区｜项目总建筑面积 ${Number(s.grossFloorArea || 0).toFixed(2)}㎡`);
   const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','平均租金','年租金(万元)','占比'], ...(result.floors || []).slice(0, 12).map(x => [x.building || '1号楼', x.name, Number(x.buildingArea || 0).toFixed(0), Number(x.leasableArea || 0).toFixed(0), Number(x.rentArea || 0).toFixed(0), Number(x.weightedRent || x.avgRent || 0).toFixed(2), (Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000).toFixed(2), `${(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1) * 100).toFixed(2)}%`])];
   slide.addTable(floorSummaryRows, { x: 0.55, y: 1.4, w: 12.3, colW: [1.25, 0.9, 1.35, 1.35, 1.35, 1.55, 1.9, 1.2], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.5, margin: 0.03, rowH: 0.28, autoFit: false });
   if ((result.floors || []).length > 12) slide.addText(`仅展示前12个楼层，完整数据见Excel。`, { x: 0.7, y: 6.65, w: 5, h: 0.25, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F' });
@@ -2116,7 +2117,7 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
   addSlideTitle(slide, '测算公式（一）', '面积、租金、投资与运营成本');
   slide.addTable([
     ['模块', '公式', '使用函数'],
-    ['面积', 'GBA = IF(手动值为0, 商铺面积×(1+公区系数), 手动值)', 'IF / SUM'],
+    ['面积', 'GBA = 手动值；若为0：一铺一价=商铺面积×(1+公区系数)，初步测算=楼层建筑面积合计', 'IF / SUM'],
     ['租金', '有效出租率 = IF(首年, 首年出租率, IF(稳定前, 第二年出租率, 稳定出租率))', 'IF'],
     ['租金', '租金收入 = 满租月租金×12×出租率×免租系数×租金递增因子', 'POWER / INT / SUM'],
     ['物业费', '物业管理费收入 = Σ计租面积×物业费单价×12×出租率×物业费递增因子', 'POWER / INT / SUM'],
@@ -2136,8 +2137,8 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
     ['房产税', 'IF(从租, 不含税租金×12%, 房产原值×(1-扣除比例)×1.2%)', 'IF'],
     ['融资', '贷款利息 = (期初余额+当年提款÷2)×年利率；等额本金=贷款额÷期限', 'IF / MIN'],
     ['折旧', '年折旧 = 建筑投资÷年限 + 装修投资÷年限 + 设备投资÷年限', 'SUM'],
-    ['所得税', '所得税 = MAX(0, 税前利润-可结转亏损)×所得税率', 'MAX / IF'],
-    ['现金流', '项目CF = NOI - 资本化改造 - 所得税 + 期末退出价值', 'SUM / IF'],
+    ['所得税', '项目所得税=MAX(0,EBIT-项目亏损)×税率；股权所得税=MAX(0,EBIT-利息-亏损)×税率', 'MAX / IF'],
+    ['现金流', '项目CF=NOI-资本化改造-项目所得税+退出价值；股权CF=NOI-资本化改造-股权所得税-利息-本金+退出价值', 'SUM / IF'],
     ['收益', 'NPV = Σ[CFt÷(1+r)^t]；IRR：NPV(IRR)=0；回收期按累计CF插值', 'NPV / IRR / LOOKUP'],
     ['敏感性', 'NPV=f(租金系数,投资系数)，在MIN~MAX间按STEP生成矩阵', 'SEQUENCE / NPV'],
   ], { x: 0.7, y: 1.45, w: 12.0, colW: [1.2, 8.7, 2.1], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.48, autoFit: false });

@@ -882,9 +882,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         return guarantee_value, 0.0, guarantee_value
 
     if calculation_mode == "preliminary":
-        shop_building_area = sum(max(0.0, as_float(floor.get("buildingArea"))) for floor in floors)
-        gla = sum(max(0.0, as_float(floor.get("leasableArea"))) for floor in floors)
-        gba = shop_building_area if shop_building_area > 0 else gba_override
+        floor_building_area = sum(max(0.0, as_float(floor.get("buildingArea"))) for floor in floors)
+        shop_building_area = sum(max(0.0, as_float(shop.get("buildingArea"))) for shop in shops)
+        floor_leasable_area = sum(max(0.0, as_float(floor.get("leasableArea"))) for floor in floors)
+        shop_leasable_area = sum(max(0.0, as_float(shop.get("leasableArea"))) for shop in shops)
+        gla = floor_leasable_area if floor_leasable_area > 0 else shop_leasable_area
+        gba = gba_override if gba_override > 0 else (
+            floor_building_area if floor_building_area > 0 else shop_building_area * (1 + as_float(project.get("commonAreaFactor")))
+        )
         for floor in floors:
             leasable = max(0.0, as_float(floor.get("leasableArea")))
             rent_area = rent_area_for(floor, project)
@@ -1161,6 +1166,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     annual_rows: list[dict[str, Any]] = []
     tax_loss_carry: list[tuple[int, float]] = []
+    project_tax_loss_carry: list[tuple[int, float]] = []
     construction_interest_loss = sum(max(0.0, row["interest"]) for row in loan_schedule[:construction_years])
     if construction_interest_loss > 0:
         tax_loss_carry.append((0, construction_interest_loss))
@@ -1460,6 +1466,21 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         income_tax = taxable_income * as_float(taxes.get("corporateTax"))
         if pretax_profit < 0:
             tax_loss_carry.append((op_year, -pretax_profit))
+        project_tax_loss_carry = [(year, amount) for year, amount in project_tax_loss_carry if amount > 1e-9 and op_year - year <= loss_carry_years]
+        project_loss_available = sum(amount for _, amount in project_tax_loss_carry)
+        project_loss_used = min(project_loss_available, max(0.0, ebit))
+        project_remaining_loss_use = project_loss_used
+        project_retained_losses: list[tuple[int, float]] = []
+        for loss_year, amount in project_tax_loss_carry:
+            used = min(amount, project_remaining_loss_use)
+            project_remaining_loss_use -= used
+            if amount - used > 1e-9:
+                project_retained_losses.append((loss_year, amount - used))
+        project_tax_loss_carry = project_retained_losses
+        project_taxable_income = max(0.0, ebit - project_loss_used)
+        project_income_tax = project_taxable_income * as_float(taxes.get("corporateTax"))
+        if ebit < 0:
+            project_tax_loss_carry.append((op_year, -ebit))
         net_profit = pretax_profit - income_tax
         exit_value = 0.0
         if idx == total_periods - 1 and bool(valuation.get("includeExit")):
@@ -1467,8 +1488,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 exit_value = max(0.0, revenue_net) * as_float(formulas.get("exitRevenueMultiple"), 1.0) * (1 - as_float(taxes.get("exitTaxRate")))
             else:
                 exit_value = safe_div(max(0.0, noi), as_float(valuation.get("exitCapRate"))) * (1 - as_float(taxes.get("exitTaxRate")))
-        unlevered_tax = max(0.0, ebit) * as_float(taxes.get("corporateTax"))
-        project_cf = noi - project_capex - unlevered_tax + exit_value
+        project_cf = noi - project_capex - project_income_tax + exit_value
         equity_cf = noi - project_capex - income_tax - interest - loan["principal"] + exit_value - (loan["closing"] if idx == total_periods - 1 else 0.0)
         cumulative_project += project_cf
         cumulative_equity += equity_cf
@@ -1530,8 +1550,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "vatSurcharge": vat_surcharge,
                 "localFund": local_fund,
                 "incomeTax": income_tax,
-                "totalTaxAndIncomeTax": total_taxes + income_tax,
-                "taxCashOutflow": max(0.0, output_vat - input_vat) + total_taxes + income_tax,
+                "equityIncomeTax": income_tax,
+                "projectIncomeTax": project_income_tax,
+                "totalTaxAndIncomeTax": total_taxes + project_income_tax,
+                "equityTotalTaxAndIncomeTax": total_taxes + income_tax,
+                "taxCashOutflow": max(0.0, output_vat - input_vat) + total_taxes + project_income_tax,
+                "equityTaxCashOutflow": max(0.0, output_vat - input_vat) + total_taxes + income_tax,
                 "taxOccupancy": occupancy,
                 "noi": noi,
                 "depreciation": annual_depreciation,
@@ -1585,7 +1609,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_stamp_duty = as_float(stable_row.get("stampDuty"))
     stable_vat_surcharge = as_float(stable_row.get("vatSurcharge"))
     stable_local_fund = as_float(stable_row.get("localFund"))
-    stable_income_tax = as_float(stable_row.get("incomeTax"))
+    stable_income_tax = as_float(stable_row.get("projectIncomeTax"))
+    stable_equity_income_tax = as_float(stable_row.get("equityIncomeTax", stable_row.get("incomeTax")))
     stable_total_tax_and_income_tax = as_float(stable_row.get("totalTaxAndIncomeTax"))
     stable_tax_occupancy = as_float(stable_row.get("taxOccupancy"))
     operation_rows = [row for row in annual_rows if row.get("opYear", 0) > 0]
@@ -1599,7 +1624,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     operation_period_stamp_duty = sum(as_float(row.get("stampDuty")) for row in operation_rows)
     operation_period_vat_surcharge = sum(as_float(row.get("vatSurcharge")) for row in operation_rows)
     operation_period_local_fund = sum(as_float(row.get("localFund")) for row in operation_rows)
-    operation_period_income_tax = sum(as_float(row.get("incomeTax")) for row in operation_rows)
+    operation_period_income_tax = sum(as_float(row.get("projectIncomeTax")) for row in operation_rows)
+    operation_period_equity_income_tax = sum(as_float(row.get("equityIncomeTax", row.get("incomeTax"))) for row in operation_rows)
     operation_period_total_tax_and_income_tax = sum(as_float(row.get("totalTaxAndIncomeTax")) for row in operation_rows)
     operation_period_interest = sum(as_float(row.get("interest")) for row in operation_rows)
     preopening_investment = total_investment
@@ -1874,6 +1900,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "operationPeriodVatSurcharge": operation_period_vat_surcharge,
             "operationPeriodLocalFund": operation_period_local_fund,
             "operationPeriodIncomeTax": operation_period_income_tax,
+            "operationPeriodEquityIncomeTax": operation_period_equity_income_tax,
             "operationPeriodTotalTaxAndIncomeTax": operation_period_total_tax_and_income_tax,
             "operationPeriodTaxCashOutflow": operation_period_vat_payable + operation_period_taxes + operation_period_income_tax,
             "operationPeriodInterest": operation_period_interest,
@@ -1956,6 +1983,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableVatSurcharge": stable_vat_surcharge,
             "stableLocalFund": stable_local_fund,
             "stableIncomeTax": stable_income_tax,
+            "stableEquityIncomeTax": stable_equity_income_tax,
             "stableTotalTaxAndIncomeTax": stable_total_tax_and_income_tax,
             "stableTaxCashOutflow": stable_vat_payable + stable_taxes + stable_income_tax,
             "stableTaxOccupancy": stable_tax_occupancy,
@@ -2108,6 +2136,13 @@ def build_diagnostics(
         items.append({"level": "error", "title": "尚未导入铺位", "detail": "请导入铺位号、建筑面积、实际租赁面积后再进行详细测算。"})
     if gba <= 0:
         items.append({"level": "error", "title": "项目总建筑面积为零", "detail": "请录入铺位面积或直接填写项目总建筑面积。"})
+    shop_building_total = sum(max(0.0, as_float(shop.get("buildingArea"))) for shop in shops)
+    if mode == "detailed" and shop_building_total > 0 and gba > 0 and gba + 0.01 < shop_building_total:
+        items.append({
+            "level": "error",
+            "title": "项目总建筑面积小于商铺建筑面积合计",
+            "detail": f"项目总建筑面积 {gba:.2f}㎡，商铺建筑面积合计 {shop_building_total:.2f}㎡。请核对手填总建筑面积或铺位面积，避免投资和公区分摊基数失真。",
+        })
     seen: set[str] = set()
     for shop in shop_calc:
         sid = shop["id"]
