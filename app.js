@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-consistency3';
+import './backend.js?v=20261110-sharefix6';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.2';
+const APP_VERSION = '1.21.3';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -476,12 +476,60 @@ const SETTLEMENT_PRESETS = {
       '其他': { rent: 40, rentRange: [22, 60], salesPerSqmMonth: 600, salesRange: [350, 900], concessionRate: 0.08, concessionRange: [0.06, 0.12] },
     },
   },
+  street: {
+    label: '街区商业行业常规',
+    shortLabel: '街区商业',
+    version: '2026.11',
+    source: '公开街区商业租赁惯例、临街铺位租金区间及项目测算经验区间',
+    categories: {
+      '零售': { rent: 95, rentRange: [60, 140], salesPerSqmMonth: 900, salesRange: [600, 1250], concessionRate: 0.14, concessionRange: [0.10, 0.18] },
+      '餐饮': { rent: 105, rentRange: [65, 150], salesPerSqmMonth: 850, salesRange: [550, 1150], concessionRate: 0.11, concessionRange: [0.08, 0.14] },
+      '娱乐': { rent: 55, rentRange: [30, 80], salesPerSqmMonth: 500, salesRange: [300, 750], concessionRate: 0.08, concessionRange: [0.05, 0.11] },
+      '教培': { rent: 65, rentRange: [38, 95], salesPerSqmMonth: 650, salesRange: [400, 950], concessionRate: 0.09, concessionRange: [0.07, 0.13] },
+      '服务': { rent: 75, rentRange: [42, 110], salesPerSqmMonth: 650, salesRange: [420, 900], concessionRate: 0.10, concessionRange: [0.07, 0.14] },
+      '超市/主力店': { rent: 38, rentRange: [20, 58], salesPerSqmMonth: 420, salesRange: [250, 650], concessionRate: 0.05, concessionRange: [0.03, 0.08] },
+      '其他': { rent: 65, rentRange: [38, 95], salesPerSqmMonth: 650, salesRange: [420, 950], concessionRate: 0.09, concessionRange: [0.07, 0.13] },
+    },
+  },
+  community: {
+    label: '社区商业行业常规',
+    shortLabel: '社区商业',
+    version: '2026.11',
+    source: '公开社区商业租金惯例、社区型消费业态承受力及项目测算经验区间',
+    categories: {
+      '零售': { rent: 78, rentRange: [48, 115], salesPerSqmMonth: 700, salesRange: [450, 1000], concessionRate: 0.12, concessionRange: [0.09, 0.16] },
+      '餐饮': { rent: 88, rentRange: [55, 125], salesPerSqmMonth: 720, salesRange: [450, 1000], concessionRate: 0.10, concessionRange: [0.07, 0.13] },
+      '娱乐': { rent: 42, rentRange: [24, 62], salesPerSqmMonth: 400, salesRange: [250, 600], concessionRate: 0.06, concessionRange: [0.04, 0.09] },
+      '教培': { rent: 58, rentRange: [35, 85], salesPerSqmMonth: 650, salesRange: [400, 950], concessionRate: 0.09, concessionRange: [0.07, 0.13] },
+      '服务': { rent: 62, rentRange: [38, 90], salesPerSqmMonth: 580, salesRange: [380, 850], concessionRate: 0.09, concessionRange: [0.07, 0.13] },
+      '超市/主力店': { rent: 30, rentRange: [18, 48], salesPerSqmMonth: 380, salesRange: [220, 600], concessionRate: 0.04, concessionRange: [0.025, 0.07] },
+      '其他': { rent: 52, rentRange: [30, 78], salesPerSqmMonth: 550, salesRange: [350, 800], concessionRate: 0.08, concessionRange: [0.06, 0.12] },
+    },
+  },
+  community_base: {
+    label: '社区底商行业常规',
+    shortLabel: '社区底商',
+    version: '2026.11',
+    source: '公开住宅底商租赁惯例、小面积便民业态承受力及项目测算经验区间',
+    categories: {
+      '零售': { rent: 70, rentRange: [42, 105], salesPerSqmMonth: 620, salesRange: [400, 900], concessionRate: 0.10, concessionRange: [0.07, 0.14] },
+      '餐饮': { rent: 82, rentRange: [50, 118], salesPerSqmMonth: 680, salesRange: [420, 950], concessionRate: 0.09, concessionRange: [0.06, 0.12] },
+      '娱乐': { rent: 36, rentRange: [20, 55], salesPerSqmMonth: 350, salesRange: [220, 550], concessionRate: 0.06, concessionRange: [0.04, 0.09] },
+      '教培': { rent: 50, rentRange: [30, 75], salesPerSqmMonth: 580, salesRange: [350, 850], concessionRate: 0.08, concessionRange: [0.06, 0.12] },
+      '服务': { rent: 55, rentRange: [32, 82], salesPerSqmMonth: 520, salesRange: [330, 760], concessionRate: 0.08, concessionRange: [0.06, 0.12] },
+      '超市/主力店': { rent: 26, rentRange: [15, 42], salesPerSqmMonth: 340, salesRange: [200, 520], concessionRate: 0.04, concessionRange: [0.025, 0.065] },
+      '其他': { rent: 46, rentRange: [27, 70], salesPerSqmMonth: 500, salesRange: [320, 740], concessionRate: 0.07, concessionRange: [0.05, 0.11] },
+    },
+  },
 };
 
 function settlementPresetKeyFor(model) {
   const type = String(model?.project?.projectType || '');
   if (/百货/.test(type)) return 'department';
   if (/奥莱/i.test(type)) return 'outlet';
+  if (/社区底商/.test(type)) return 'community_base';
+  if (/社区商业/.test(type)) return 'community';
+  if (/街区/.test(type)) return 'street';
   return model?.settlementBenchmark?.preset && SETTLEMENT_PRESETS[model.settlementBenchmark.preset] ? model.settlementBenchmark.preset : 'shopping';
 }
 
@@ -638,6 +686,11 @@ const state = {
 let locationGeocodeTimer = null;
 let activeMapPicker = null;
 let previewTimer = null;
+let shareInboxSocket = null;
+let shareInboxHeartbeat = null;
+let shareInboxReconnect = null;
+let shareInboxUserId = '';
+const processedShareIds = new Set();
 
 function safeParse(value) {
   try { return value ? JSON.parse(value) : null; } catch { return null; }
@@ -771,6 +824,7 @@ const FORMAT_COST_FACTORS = {
   '奥特莱斯': 0.92,
   '街区商业': 0.90,
   '社区商业': 0.82,
+  '社区底商': 0.78,
   '商业综合体': 1.10,
   '其他': 1.00,
 };
@@ -1140,11 +1194,16 @@ async function api(path, options = {}) {
   const contentType = response.headers.get('Content-Type') || '';
   if (!response.ok) {
     let message = `请求失败（${response.status}）`;
+    let errorCode = '';
     if (contentType.includes('application/json')) {
       const payload = await response.json().catch(() => ({}));
       message = payload.error || message;
+      errorCode = payload.code || '';
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.code = errorCode;
+    error.status = response.status;
+    throw error;
   }
   return contentType.includes('application/json') ? response.json() : response;
 }
@@ -1183,9 +1242,11 @@ function saveSession(token, user) {
   state.user = user;
   localStorage.setItem('cr_token', token);
   localStorage.setItem('cr_user', JSON.stringify(user));
+  startShareInbox();
 }
 
 function clearSession() {
+  stopShareInbox();
   state.token = '';
   state.user = null;
   state.projects = [];
@@ -1219,6 +1280,7 @@ async function boot() {
     const me = await api('/api/me');
     state.user = { ...me, username: me.username, displayName: me.displayName };
     localStorage.setItem('cr_user', JSON.stringify(state.user));
+    startShareInbox();
     await loadProjects();
     renderProjectList();
   } catch {
@@ -1483,21 +1545,195 @@ function renderProjectList() {
   }));
 }
 
-function encodeProjectShareCode(payload) {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+function bytesToBase64Url(bytes) {
   let binary = '';
   bytes.forEach(byte => { binary += String.fromCharCode(byte); });
-  return `DDPROJECT1.${btoa(binary)}`;
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-function decodeProjectShareCode(code) {
-  const clean = String(code || '').trim();
-  if (!clean.startsWith('DDPROJECT1.')) throw new Error('分享码格式不正确');
-  const binary = atob(clean.slice('DDPROJECT1.'.length));
-  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
-  const payload = JSON.parse(new TextDecoder().decode(bytes));
+function base64UrlToBytes(value) {
+  const padded = String(value || '').replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(String(value || '').length / 4) * 4, '=');
+  const binary = atob(padded);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+
+function buildModelPatch(base, current) {
+  if (Array.isArray(current) || current?.__shareTable || current === null || typeof current !== 'object') {
+    return { changed: JSON.stringify(base) !== JSON.stringify(current), value: current };
+  }
+  if (!base || typeof base !== 'object' || Array.isArray(base)) return { changed: true, value: current };
+  const patch = {};
+  let changed = false;
+  for (const [key, value] of Object.entries(current)) {
+    const child = buildModelPatch(base[key], value);
+    if (child.changed) {
+      patch[key] = child.value;
+      changed = true;
+    }
+  }
+  return { changed, value: patch };
+}
+
+function packShareTable(rows, columns) {
+  return {
+    __shareTable: 1,
+    columns,
+    rows: (Array.isArray(rows) ? rows : []).map(row => columns.map(column => row?.[column] ?? null)),
+  };
+}
+
+function expandShareValue(value) {
+  if (Array.isArray(value)) return value.map(expandShareValue);
+  if (!value || typeof value !== 'object') return value;
+  if (value.__shareTable) {
+    return (value.rows || []).map(row => Object.fromEntries((value.columns || []).map((column, index) => [column, expandShareValue(row[index])])));
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, expandShareValue(item)]));
+}
+
+function applyModelPatch(base, patch) {
+  if (Array.isArray(patch) || patch === null || typeof patch !== 'object') return patch;
+  const result = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : {};
+  for (const [key, value] of Object.entries(patch || {})) result[key] = applyModelPatch(result[key], value);
+  return result;
+}
+
+function compactProjectModelForShare(model) {
+  const compact = JSON.parse(JSON.stringify(model || {}));
+  delete compact.shareMeta;
+  if (compact.calculationMode === 'detailed' && Array.isArray(compact.shops) && compact.shops.length) delete compact.floors;
+  if (Array.isArray(compact.shops)) {
+    compact.shops = packShareTable(compact.shops.map(shop => {
+      const row = {
+        id: shop.id,
+        building: shop.building || '1号楼',
+        floor: shop.floor || '未分楼层',
+        buildingArea: Number(shop.buildingArea || 0),
+        leasableArea: Number(shop.leasableArea || 0),
+        category: shop.category || '其他',
+      };
+      if (shop.status && shop.status !== '营业') row.status = shop.status;
+      if (shop.rentOverride !== null && shop.rentOverride !== undefined) row.rentOverride = Number(shop.rentOverride);
+      if (shop.rentAreaBasis && shop.rentAreaBasis !== 'inherit') row.rentAreaBasis = shop.rentAreaBasis;
+      if (Array.isArray(shop.conditions) && shop.conditions.length) row.conditions = shop.conditions;
+      if (shop.note) row.note = shop.note;
+      for (const key of ['propertyFeeOverride', 'commercialManagementFeeOverride', 'centralAcFeeOverride']) {
+        if (shop[key] !== null && shop[key] !== undefined) row[key] = Number(shop[key]);
+      }
+      return row;
+    }), ['id', 'building', 'floor', 'buildingArea', 'leasableArea', 'category', 'status', 'rentOverride', 'rentAreaBasis', 'conditions', 'note', 'propertyFeeOverride', 'commercialManagementFeeOverride', 'centralAcFeeOverride']);
+  }
+  if (Array.isArray(compact.categories)) {
+    compact.categories = packShareTable(compact.categories.map(category => ({
+      name: category.name,
+      rent: Number(category.rent || 0),
+      factor: Number(category.factor ?? 1),
+      revenueMode: category.revenueMode || 'inherit',
+      salesPerSqmMonth: Number(category.salesPerSqmMonth || 0),
+      concessionRate: Number(category.concessionRate || 0),
+    })), ['name', 'rent', 'factor', 'revenueMode', 'salesPerSqmMonth', 'concessionRate']);
+  }
+  if (Array.isArray(compact.conditionPremiums)) compact.conditionPremiums = packShareTable(compact.conditionPremiums, ['name', 'premium', 'note']);
+  if (Array.isArray(compact.market?.comparables)) compact.market.comparables = packShareTable(compact.market.comparables, ['name', 'address', 'floor', 'category', 'leasableArea', 'rent', 'date', 'distanceKm', 'note']);
+  if (Array.isArray(compact.organization?.departments)) {
+    compact.organization.departments = packShareTable(compact.organization.departments.map(department => ({
+      name: department.name,
+      note: department.note || '',
+      positions: packShareTable(department.positions || [], ['name', 'headcount', 'avgMonthlySalary', 'monthlySalary', 'note']),
+    })), ['name', 'note', 'positions']);
+  }
+  if (compact.settlementBenchmark) {
+    compact.settlementBenchmark = {
+      preset: compact.settlementBenchmark.preset || 'shopping',
+      version: compact.settlementBenchmark.version || SETTLEMENT_PRESETS.shopping.version,
+      appliedAt: compact.settlementBenchmark.appliedAt || new Date().toISOString(),
+    };
+  }
+  return compact;
+}
+
+async function encodeProjectShareCode(payload) {
+  let sharePayload = payload;
+  try {
+    const defaults = await api('/api/default-model');
+    if (defaults?.model && payload?.project?.model) {
+      const compactModel = compactProjectModelForShare(payload.project.model);
+      const diff = buildModelPatch(defaults.model, compactModel);
+      sharePayload = {
+        ...payload,
+        version: 2,
+        project: { name: payload.project.name, modelFormat: 'delta-v1', modelPatch: diff.value },
+      };
+    }
+  } catch (error) {
+    console.warn('分享模型差异压缩不可用，使用完整模型', error);
+  }
+  const json = JSON.stringify(sharePayload);
+  if (typeof CompressionStream !== 'undefined' && typeof Blob !== 'undefined' && typeof Response !== 'undefined') {
+    try {
+      const stream = new Blob([json], { type: 'application/json' }).stream().pipeThrough(new CompressionStream('gzip'));
+      const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
+      return `DD2.${bytesToBase64Url(compressed)}`;
+    } catch (error) {
+      console.warn('分享码压缩失败，使用兼容格式', error);
+    }
+  }
+  return `DDPROJECT1.${bytesToBase64Url(new TextEncoder().encode(json))}`;
+}
+
+async function decodeProjectShareCode(code) {
+  let clean = String(code || '').replace(/\s+/g, '');
+  const segmented = [...clean.matchAll(/DDP(\d+)OF(\d+):([A-Za-z0-9_-]+?)(?=DDP\d+OF\d+:|$)/gi)].map(match => ({ index: Number(match[1]), total: Number(match[2]), payload: match[3] }));
+  if (segmented.length) {
+    const total = segmented[0].total;
+    if (segmented.length !== total || new Set(segmented.map(item => item.index)).size !== total) throw new Error('微信分段分享码不完整，请把全部分段一起粘贴');
+    clean = `DD2.${segmented.sort((a, b) => a.index - b.index).map(item => item.payload).join('')}`;
+  }
+  let payload = null;
+  if (clean.startsWith('DD2.')) {
+    if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持新版分享码，请升级浏览器后重试');
+    const compressed = base64UrlToBytes(clean.slice(4));
+    const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+    payload = JSON.parse(new TextDecoder().decode(new Uint8Array(await new Response(stream).arrayBuffer())));
+  } else if (clean.startsWith('DDPROJECT1.')) {
+    const bytes = base64UrlToBytes(clean.slice('DDPROJECT1.'.length));
+    payload = JSON.parse(new TextDecoder().decode(bytes));
+  } else {
+    throw new Error('分享码格式不正确，请粘贴完整的 DD2. 分享码');
+  }
+  if (payload?.project?.modelFormat === 'delta-v1') {
+    const defaults = await api('/api/default-model');
+    if (!defaults?.model) throw new Error('无法读取分享码基础模板，请刷新后重试');
+    payload.project.model = applyModelPatch(defaults.model, payload.project.modelPatch || {});
+    delete payload.project.modelPatch;
+    delete payload.project.modelFormat;
+  }
+  payload.project.model = expandShareValue(payload.project.model);
+  if (payload?.project?.model?.calculationMode === 'detailed' && payload.project.model.shops?.length) {
+    ensureFloorsFromShops(payload.project.model, { replace: true });
+  }
   if (!payload?.project?.model?.project) throw new Error('分享码中没有有效项目数据');
   return payload;
+}
+
+function downloadShareCodeFile(shareCode, projectName) {
+  const safeName = String(projectName || '商业地产项目').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
+  const blob = new Blob([shareCode], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safeName}_项目分享.ddshare.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildWechatShareSegments(shareCode, chunkSize = 1400) {
+  if (!shareCode.startsWith('DD2.') || shareCode.length <= chunkSize) return [];
+  const payload = shareCode.slice(4);
+  const count = Math.ceil(payload.length / chunkSize);
+  return Array.from({ length: count }, (_, index) => `DDP${index + 1}OF${count}:${payload.slice(index * chunkSize, (index + 1) * chunkSize)}`);
 }
 
 async function copyTextValue(text) {
@@ -1510,6 +1746,128 @@ async function copyTextValue(text) {
   textarea.remove();
 }
 
+function cloudRealtimeConfig() {
+  const config = window.DUODUO_CLOUD_CONFIG || {};
+  return config.mode === 'cloud' && config.url && config.anonKey ? config : null;
+}
+
+function stopShareInbox() {
+  clearInterval(shareInboxHeartbeat);
+  clearTimeout(shareInboxReconnect);
+  shareInboxHeartbeat = null;
+  shareInboxReconnect = null;
+  shareInboxUserId = '';
+  if (shareInboxSocket) {
+    try { shareInboxSocket.close(); } catch {}
+  }
+  shareInboxSocket = null;
+}
+
+async function receiveRealtimeProjectShare(data) {
+  if (!data?.shareCode || data.recipientId !== state.user?.id || processedShareIds.has(data.shareId)) return;
+  const receive = async () => {
+    const processedKey = `duoduo_share_received_${state.user.id}_${data.shareId || data.shareCode.slice(-24)}`;
+    if (localStorage.getItem(processedKey)) return;
+    if (data.shareId) processedShareIds.add(data.shareId);
+    const payload = await decodeProjectShareCode(data.shareCode);
+    const model = payload.project.model;
+    model.shareMeta = {
+      importedFrom: payload.sourceUsername || data.senderUsername || '',
+      importedFromName: payload.sourceDisplayName || data.senderName || '',
+      importedAt: new Date().toISOString(),
+      note: data.note || '',
+      delivery: 'realtime',
+    };
+    model.project.name = `${payload.project.name || model.project.name || '未命名项目'} · ${payload.sourceDisplayName || data.senderName || '用户'}分享`;
+    const result = await api('/api/projects', { method: 'POST', body: { name: model.project.name, model } });
+    await loadProjects();
+    localStorage.setItem(processedKey, new Date().toISOString());
+    if (!state.current) renderProjectList();
+    toast(`收到 ${data.senderName || payload.sourceDisplayName || '用户'} 分享的项目：${result.project?.model?.project?.name || model.project.name}`, 'success');
+  };
+  const lockKey = `duoduo-share-${state.user.id}-${data.shareId || data.shareCode.slice(-24)}`;
+  if (navigator.locks?.request) return navigator.locks.request(lockKey, receive);
+  return receive();
+}
+
+function startShareInbox() {
+  stopShareInbox();
+  const config = cloudRealtimeConfig();
+  const userId = state.user?.id;
+  if (!config || !userId || !state.token) return;
+  shareInboxUserId = userId;
+  const topic = `duoduo-share-${userId}`;
+  const connect = () => {
+    if (shareInboxUserId !== userId || !state.token || state.user?.id !== userId) return;
+    const wsUrl = config.url.replace(/^http/, 'ws').replace(/\/$/, '') + `/realtime/v1/websocket?apikey=${encodeURIComponent(config.anonKey)}&vsn=1.0.0`;
+    const socket = new WebSocket(wsUrl);
+    shareInboxSocket = socket;
+    let ref = 0;
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        topic: `realtime:${topic}`,
+        event: 'phx_join',
+        payload: { config: { broadcast: { ack: false, self: false }, presence: { key: userId }, postgres_changes: [] }, access_token: state.token },
+        ref: String(++ref),
+        join_ref: String(ref),
+      }));
+      clearInterval(shareInboxHeartbeat);
+      shareInboxHeartbeat = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: String(++ref), join_ref: null }));
+      }, 25000);
+    };
+    socket.onmessage = event => {
+      try {
+        const message = JSON.parse(event.data);
+        const broadcast = message.event === 'broadcast' ? message.payload : message.event === 'project_share' ? message.payload : null;
+        if (broadcast?.event === 'project_share' && broadcast.payload) receiveRealtimeProjectShare(broadcast.payload).catch(error => console.warn('站内项目接收失败', error));
+      } catch (error) {
+        console.warn('站内分享消息解析失败', error);
+      }
+    };
+    socket.onclose = () => {
+      clearInterval(shareInboxHeartbeat);
+      if (shareInboxUserId === userId && state.token && state.user?.id === userId) {
+        shareInboxReconnect = setTimeout(connect, 4000);
+      }
+    };
+  };
+  connect();
+}
+
+async function broadcastProjectShare({ recipientId, recipientUsername, recipientName, shareCode, note }) {
+  const config = cloudRealtimeConfig();
+  if (!config) throw new Error('当前为本地模式，无法使用在线站内投递');
+  const shareId = crypto.randomUUID();
+  const response = await fetch(`${config.url.replace(/\/$/, '')}/realtime/v1/api/broadcast`, {
+    method: 'POST',
+    headers: {
+      apikey: config.anonKey,
+      Authorization: `Bearer ${state.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messages: [{
+        topic: `duoduo-share-${recipientId}`,
+        event: 'project_share',
+        private: false,
+        payload: {
+          shareId,
+          recipientId,
+          recipientUsername,
+          senderId: state.user?.id || '',
+          senderUsername: state.user?.username || '',
+          senderName: state.user?.displayName || state.user?.username || '',
+          note: note || '',
+          shareCode,
+        },
+      }],
+    }),
+  });
+  if (!response.ok) throw new Error(`站内投递失败（HTTP ${response.status}），请改用分享码或分享文件`);
+  return { shareId, recipientName };
+}
+
 async function openShareProjectModal(projectId) {
   setBusy(true);
   try {
@@ -1520,13 +1878,14 @@ async function openShareProjectModal(projectId) {
     const project = payload.project;
     const model = payload.result?.model || project.model;
     const projectName = model?.project?.name || project.name || '未命名项目';
-    const shareCode = encodeProjectShareCode({
+    const shareCode = await encodeProjectShareCode({
       version: 1,
       sourceUsername: state.user?.username || '',
       sourceDisplayName: state.user?.displayName || state.user?.username || '',
       sharedAt: new Date().toISOString(),
       project: { name: projectName, model },
     });
+    const wechatSegments = buildWechatShareSegments(shareCode);
     const users = userPayload.users || [];
     modalRegion.innerHTML = `
       <div class="modal-backdrop" id="share-project-backdrop">
@@ -1535,14 +1894,15 @@ async function openShareProjectModal(projectId) {
           <div class="modal-body share-project-body">
             <div class="share-option-card">
               <div class="share-option-head"><strong>发送给系统内已审核用户</strong><span>对方收到的是独立副本，不会修改您的原项目。</span></div>
-              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>发送项目</span></button></div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前没有其他已审核用户。请先让对方注册并通过审核，或使用下方项目分享码。')}</div>`}
+              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}" data-name="${escapeHtml(user.displayName || user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>站内发送</span></button></div><div class="field-help">对方在线时可直接进入其项目工作台；若对方不在线，系统会提示改用下方分享码或分享文件。</div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前没有其他已审核用户。请先让对方注册并通过审核，或使用下方项目分享码。')}</div>`}
               <div id="share-direct-status" class="share-direct-status"></div>
             </div>
             <div class="share-divider"><span>或使用跨账号项目分享码</span></div>
             <div class="share-option-card share-code-card">
-              <div class="share-option-head"><strong>复制项目分享码发送给B用户</strong><span>B在“接收项目”中粘贴后，系统会生成完整项目副本。分享码包含测算参数，不包含账号密码。</span></div>
+              <div class="share-option-head"><strong>微信分享码 / 分享文件</strong><span>分享码已压缩。代码较长时直接下载分享文件，通过微信发送给B用户，再由B在“接收项目”中导入。</span></div>
               <textarea class="share-code-text" id="share-code-text" readonly>${escapeHtml(shareCode)}</textarea>
-              <div class="share-code-actions"><button class="btn btn-secondary" id="copy-share-code">${ICONS.copy}<span>复制分享码</span></button><span id="copy-share-status"></span></div>
+              <div class="share-code-actions"><button class="btn btn-secondary" id="copy-share-code">${ICONS.copy}<span>复制完整分享码</span></button><button class="btn btn-secondary" id="download-share-code">${ICONS.download}<span>下载分享文件</span></button><span id="share-code-size">${shareCode.length.toLocaleString('zh-CN')} 个字符${wechatSegments.length ? ' · 可分段发送' : ''}</span><span id="copy-share-status"></span></div>
+              ${wechatSegments.length ? `<details class="share-segment-details"><summary>微信分段发送：共 ${wechatSegments.length} 段，每段约 1,400 字符</summary><p>依次复制并发送每一段。对方把所有分段一起粘贴到“接收项目”，系统会自动合并识别。</p><div class="share-segment-grid">${wechatSegments.map((_, index) => `<button class="btn btn-secondary btn-sm" type="button" data-copy-share-segment="${index}">${ICONS.copy}<span>复制第 ${index + 1} 段</span></button>`).join('')}</div></details>` : ''}
             </div>
           </div>
           <div class="modal-foot"><span class="admin-readonly-note">建议发送后由接收方另存为独立方案，再基于同一项目进行对比。</span><button class="btn btn-secondary" id="share-project-done">关闭</button></div>
@@ -1556,6 +1916,14 @@ async function openShareProjectModal(projectId) {
       await copyTextValue(shareCode);
       document.getElementById('copy-share-status').textContent = '已复制';
     });
+    document.getElementById('download-share-code').addEventListener('click', () => {
+      downloadShareCodeFile(shareCode, projectName);
+      document.getElementById('copy-share-status').textContent = '分享文件已生成';
+    });
+    document.querySelectorAll('[data-copy-share-segment]').forEach(button => button.addEventListener('click', async () => {
+      await copyTextValue(wechatSegments[Number(button.dataset.copyShareSegment)]);
+      document.getElementById('copy-share-status').textContent = `已复制第 ${Number(button.dataset.copyShareSegment) + 1} 段`;
+    }));
     document.getElementById('send-project-direct')?.addEventListener('click', async event => {
       const button = event.currentTarget;
       const select = document.getElementById('share-recipient');
@@ -1574,10 +1942,28 @@ async function openShareProjectModal(projectId) {
           },
         });
         status.classList.add('success');
-        status.textContent = `已发送给 ${option?.textContent || '接收用户'}，对方登录后可在项目工作台查看副本。`;
+        status.textContent = `已直接发送给 ${option?.dataset.name || '接收用户'}，对方登录后可在项目工作台查看副本。`;
       } catch (error) {
-        status.classList.add('warning');
-        status.textContent = `${error.message} 可直接复制下方项目分享码发送。`;
+        if (error.code === 'SHARE_REQUIRES_CODE' || /云端项目权限未开放/.test(error.message)) {
+          try {
+            status.textContent = `正在向 ${option?.dataset.name || '接收用户'} 的在线收件箱投递…`;
+            await broadcastProjectShare({
+              recipientId: select.value,
+              recipientUsername: option?.dataset.username || '',
+              recipientName: option?.dataset.name || option?.textContent || '接收用户',
+              shareCode,
+              note: document.getElementById('share-note').value.trim(),
+            });
+            status.classList.add('success');
+            status.textContent = `已向 ${option?.dataset.name || '接收用户'} 的在线收件箱发送。若对方当前未登录，请发送下方分享码或分享文件。`;
+          } catch (broadcastError) {
+            status.classList.add('warning');
+            status.textContent = `${broadcastError.message} 可复制分享码或下载分享文件发送。`;
+          }
+        } else {
+          status.classList.add('warning');
+          status.textContent = `${error.message} 可复制分享码或下载分享文件发送。`;
+        }
       } finally {
         button.disabled = false;
       }
@@ -1596,7 +1982,8 @@ function openImportShareModal() {
         <div class="modal-head"><div><span class="eyebrow">Import shared project</span><h2>接收项目</h2><p>粘贴其他用户发送的项目分享码，系统将生成独立副本。</p></div><button class="modal-close" id="import-share-close">×</button></div>
         <form id="import-share-form">
           <div class="modal-body">
-            <div class="field"><label>项目分享码</label><textarea class="share-code-text" name="shareCode" required placeholder="粘贴 DDPROJECT1. 开头的分享码"></textarea></div>
+            <div class="field"><label>项目分享码</label><textarea class="share-code-text" name="shareCode" required placeholder="粘贴 DD2. 开头的分享码或旧版分享码"></textarea></div>
+            <div class="field"><label>或者选择分享文件</label><input class="input" type="file" id="share-file-input" accept=".txt,.ddshare,text/plain"><div class="field-help">支持对方通过微信发送的“项目分享.ddshare.txt”文件。</div></div>
             <div id="import-share-status" class="share-direct-status"></div>
           </div>
           <div class="modal-foot"><button class="btn btn-secondary" type="button" id="import-share-cancel">取消</button><button class="btn btn-primary" type="submit">${ICONS.download}<span>生成项目副本</span></button></div>
@@ -1607,11 +1994,16 @@ function openImportShareModal() {
   document.getElementById('import-share-close').addEventListener('click', close);
   document.getElementById('import-share-cancel').addEventListener('click', close);
   document.getElementById('import-share-backdrop').addEventListener('click', event => { if (event.target.id === 'import-share-backdrop') close(); });
+  document.getElementById('share-file-input').addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    document.querySelector('#import-share-form textarea[name="shareCode"]').value = (await file.text()).trim();
+  });
   document.getElementById('import-share-form').addEventListener('submit', async event => {
     event.preventDefault();
     const status = document.getElementById('import-share-status');
     try {
-      const payload = decodeProjectShareCode(new FormData(event.currentTarget).get('shareCode'));
+      const payload = await decodeProjectShareCode(new FormData(event.currentTarget).get('shareCode'));
       status.className = 'share-direct-status';
       status.textContent = '正在生成项目副本…';
       const model = payload.project.model;
@@ -2023,7 +2415,7 @@ function openNewProjectModal() {
             <div class="field"><label>项目名称</label><input class="input" name="name" required placeholder="例如：柳江沿岸商业中心"></div>
             <div class="field"><label>项目位置</label><input class="input" name="location" value="广西壮族自治区" placeholder="例如：广西壮族自治区柳州市"></div>
             <div class="field"><label>项目开发状态</label><select class="select" name="developmentType">${DEVELOPMENT_TYPE_OPTIONS.map(item => `<option value="${item.value}">${item.label}</option>`).join('')}</select></div>
-            <div class="field"><label>商业项目形态</label><select class="select" name="projectType"><option>购物中心</option><option>百货商场</option><option>奥特莱斯</option><option>街区商业</option><option>社区商业</option><option>商业综合体</option><option>其他</option></select></div>
+            <div class="field"><label>商业项目形态</label><select class="select" name="projectType"><option>购物中心</option><option>百货商场</option><option>奥特莱斯</option><option>街区商业</option><option>社区商业</option><option>社区底商</option><option>商业综合体</option><option>其他</option></select></div>
             <div class="field"><label>租金核算面积口径</label><select class="select" name="rentAreaBasis"><option value="leasable">实用面积（套内/租赁面积）</option><option value="building">建筑面积</option></select></div>
             <div class="field"><label>项目计租方式</label><select class="select" name="revenueModel"><option value="rent">纯租金</option><option value="concession">纯联营扣点</option><option value="guarantee_or_concession">保底与联营扣点取高</option></select></div>
           </div>
@@ -2444,7 +2836,7 @@ function renderProjectStep() {
         ${textField('项目名称', 'project.name', { placeholder: '例如：柳江沿岸商业中心' })}
         ${locationField()}
         ${selectField('项目开发状态', 'project.developmentType', DEVELOPMENT_TYPE_OPTIONS, { help: '不同状态会自动匹配新建土建、旧改改造或运营提升的参考造价' })}
-        ${selectField('商业项目形态', 'project.projectType', ['购物中心', '百货商场', '奥特莱斯', '街区商业', '社区商业', '商业综合体', '其他'])}
+        ${selectField('商业项目形态', 'project.projectType', ['购物中心', '百货商场', '奥特莱斯', '街区商业', '社区商业', '社区底商', '商业综合体', '其他'])}
         ${selectField('产权状态', 'project.propertyRightsStatus', PROPERTY_RIGHTS_OPTIONS, { help: '区分自有、租赁、股权或政府合作等产权安排，影响投资和运营边界。' })}
         ${selectField('取得方式', 'project.acquisitionMethod', ACQUISITION_METHOD_OPTIONS, { help: '用于识别招拍挂、协议转让、股权收购、租赁取得等不同前期风险。' })}
         ${selectField('物业建设 / 经营状态', 'project.buildingStatus', BUILDING_STATUS_OPTIONS, { help: '用于区分在建、竣工未开业、运营中和待改造项目的成本重点。' })}
@@ -2480,7 +2872,7 @@ function renderProjectStep() {
 }
 
 function renderCostStep() {
-  const presets = ['社区商业', '街区商业', '购物中心', '商业综合体'];
+  const presets = ['社区商业', '社区底商', '街区商业', '购物中心', '商业综合体'];
   const reference = getCostReference();
   return `
     <div class="callout">${ICONS.info}<div>当前参考为“${escapeHtml(reference.cityLabel)} · ${escapeHtml(reference.developmentLabel)} · ${escapeHtml(reference.formatLabel)}”。系统已自动套用${escapeHtml(DEVELOPMENT_TYPE_LABELS[reference.developmentType] || '新建项目')}的造价逻辑，以下单价仍可按目标成本、设计概算和现场鉴定结果逐项调整。</div></div>
@@ -2684,10 +3076,11 @@ function renderSettlementBenchmarkPanel(model) {
   const detection = model.market?.lastAnalysis || {};
   const active = context.presetKey;
   const button = (key, label) => `<button type="button" class="preset benchmark-preset ${active === key ? 'active' : ''}" data-settlement-preset="${key}">${label}</button>`;
+  const presetButtons = Object.entries(SETTLEMENT_PRESETS).map(([key, preset]) => button(key, preset.shortLabel)).join('');
   return `<div class="benchmark-card">
     <div class="benchmark-head">
       <div><span class="eyebrow">INDUSTRY BENCHMARK · ${escapeHtml(context.preset.version)}</span><strong>${escapeHtml(context.preset.label)}</strong><small>点击基准只补全销售基数、扣点率和空保底租金，不自动改变项目当前结算方式。</small></div>
-      <div class="benchmark-presets">${button('shopping', '购物中心')}${button('department', '百货')}${button('outlet', '奥莱')}</div>
+      <div class="benchmark-presets">${presetButtons}</div>
     </div>
     <div class="benchmark-factor-row">
       <span><b>销售修正</b> ×${Number(context.combinedFactor).toFixed(2)}</span>

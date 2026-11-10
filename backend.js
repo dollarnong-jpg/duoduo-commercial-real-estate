@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-consistency3', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-sharefix6', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -975,7 +975,7 @@ function shopTemplate() {
     ['项目名称', '', '项目正式名称'],
     ['项目位置', '广西壮族自治区', '省/市/城区，例如：广西壮族自治区柳州市'],
     ['项目开发状态', '新建项目', '新建项目/旧改项目/运营中项目/轻资产运营项目'],
-    ['商业项目形态', '购物中心', '购物中心/街区商业/社区商业等'],
+    ['商业项目形态', '购物中心', '购物中心/街区商业/社区商业/社区底商等'],
     ['租金核算面积口径', '实用面积（套内/租赁面积）', '可填写：实用面积（套内/租赁面积）或建筑面积'],
     ['首年物业管理费单价（元/㎡/月）', 18, '物业管理服务费，默认适用于全部铺位'],
     ['首年商业管理费单价（元/㎡/月）', 0, '商业运营管理服务费，如项目不收可填0'],
@@ -1575,7 +1575,7 @@ function exportExcel(result) {
   const formulas = model.formulas || {};
   const developmentLabels = { new_build: '新建项目', renovation: '旧改 / 存量改造项目', operating: '运营中项目', light_asset: '轻资产运营项目' };
   const growthModeLabels = { none: '不递增', compound: '每年复利递增', simple: '每年单利递增', step: '每N年阶梯递增' };
-  const settlementPresetLabels = { shopping: '购物中心行业常规', department: '百货商场行业常规', outlet: '奥特莱斯行业常规' };
+  const settlementPresetLabels = { shopping: '购物中心行业常规', department: '百货商场行业常规', outlet: '奥特莱斯行业常规', street: '街区商业行业常规', community: '社区商业行业常规', community_base: '社区底商行业常规' };
   const ownerRentGrowthLabels = { none: '不复递增', compound: '按比例复利递增', simple: '按比例单利递增', fixed_amount: '每年固定金额递增', step: '每N年阶梯递增' };
   const ownerRentLeaseLabels = { land: '仅土地租赁', property: '仅物业租赁', land_and_property: '土地+物业租赁' };
   const propertyRightsLabels = { owned: '自有产权', leased: '租赁物业', equity: '股权持有', government: '政府划拨/合作持有', other: '其他产权安排' };
@@ -2605,6 +2605,10 @@ async function handleApi(path, init) {
   if (!user && !pathname.endsWith('/api/health')) return jsonResponse({ error: '请先登录' }, 401);
 
   if (pathname.endsWith('/api/me') && method === 'GET') return jsonResponse(user);
+
+  if (pathname.endsWith('/api/default-model') && method === 'GET') {
+    return jsonResponse({ model: await defaultModel('分享项目模板') });
+  }
 
   if (pathname.endsWith('/api/calculate') && method === 'POST') {
     const body = await requestJSON(init);
