@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-leverage1';
+import './backend.js?v=20261110-fees1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.18.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -83,16 +83,24 @@ const FIELD_FORMULAS = {
   'operations.rentGrowth': { title: '租金年递增率', formula: '每年复利：租金 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：租金 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '用于每年复利或每年单利递增；阶梯递增使用单独的递增周期和递增率。' },
   'operations.rentStepYears': { title: '租金递增周期', formula: '阶梯递增：每 N 个运营年上调一次租金', functions: ['INT', 'POWER'], role: '例如填3，表示第1—3年不变，第4年开始按阶梯递增率上调。' },
   'operations.rentStepRate': { title: '租金阶梯递增率', formula: '租金因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '仅在“每N年阶梯递增”模式下生效。' },
-  'operations.propertyFeeGrowth': { title: '管理费年递增率', formula: '每年复利：管理费 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：管理费 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '管理费与租金分别递增，可设置不同增长方式。' },
-  'operations.propertyFeeStepYears': { title: '管理费递增周期', formula: '阶梯递增：每 N 个运营年上调一次管理费', functions: ['INT', 'POWER'], role: '仅在管理费“每N年阶梯递增”模式下生效。' },
-  'operations.propertyFeeStepRate': { title: '管理费阶梯递增率', formula: '管理费因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '用于每N年调整一次商业管理费单价。' },
+  'operations.propertyFeeGrowth': { title: '物业管理费年递增率', formula: '每年复利：物业费 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：物业费 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '物业管理费与租金分别递增，可设置不同增长方式。' },
+  'operations.propertyFeeStepYears': { title: '物业管理费递增周期', formula: '阶梯递增：每 N 个运营年上调一次物业费', functions: ['INT', 'POWER'], role: '仅在物业费“每N年阶梯递增”模式下生效。' },
+  'operations.propertyFeeStepRate': { title: '物业管理费阶梯递增率', formula: '物业费因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '用于每N年调整一次物业管理费单价。' },
+  'operations.commercialManagementGrowth': { title: '商业管理费年递增率', formula: '每年复利：商管费 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：商管费 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '商业管理费可按委托管理合同独立调整，不跟随物业费增长。' },
+  'operations.commercialManagementStepYears': { title: '商业管理费递增周期', formula: '阶梯递增：每 N 个运营年上调一次商业管理费', functions: ['INT', 'POWER'], role: '仅在商业管理费“每N年阶梯递增”模式下生效。' },
+  'operations.commercialManagementStepRate': { title: '商业管理费阶梯递增率', formula: '商管费因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '用于每N年调整一次商业管理费单价。' },
+  'operations.centralAcGrowth': { title: '中央空调费年递增率', formula: '每年复利：空调费 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：空调费 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '中央空调使用费可按能耗、运维成本或合同约定独立调整。' },
+  'operations.centralAcStepYears': { title: '中央空调费递增周期', formula: '阶梯递增：每 N 个运营年上调一次中央空调费', functions: ['INT', 'POWER'], role: '仅在中央空调费“每N年阶梯递增”模式下生效。' },
+  'operations.centralAcStepRate': { title: '中央空调费阶梯递增率', formula: '空调费因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '用于每N年调整一次中央空调使用费单价。' },
   'operations.salesGrowth': { title: '联营销售额增长', formula: '联营扣点收入 = 销售基数 × 扣点率 × 销售额增长因子', functions: ['POWER', 'MAX'], role: '仅影响联营扣点收入；纯租金模式不产生此项。' },
   'operations.collectionRate': { title: '租金收缴率', formula: '坏账损失 = 不含税营业收入 ×（1 - 租金收缴率）', functions: ['SUM'], role: '收缴率越低，运营成本和现金流压力越大。' },
   'operations.renewalCycle': { title: '续租周期', formula: '续租佣金年度 = 运营年 MOD 续租周期 = 0', functions: ['MOD', 'IF'], role: '用于测算续租佣金和招商费用发生时点。' },
   'operations.commissionMonths': { title: '首开招商佣金', formula: '首开招商佣金 = 月租金 × 招商佣金月数 × 首年出租率', functions: ['SUM'], role: '该费用计入项目总投资中的招商及开办。' },
   'operations.renewalCommissionMonths': { title: '续租佣金', formula: '续租佣金 = 月租金 × 续租佣金月数 × 当年出租率', functions: ['MOD', 'IF'], role: '按续租周期进入运营期现金流。' },
   'operations.depositMonths': { title: '租赁保证金', formula: '租赁保证金 = 月租金 × 保证金月数', functions: ['SUM'], role: '作为招商期现金流入和期末退还的参考。' },
-  'revenues.propertyFee': { title: '物业管理费收入', formula: '物业费收入 = 可租赁面积 × 物业费单价 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '按可租赁面积计取，并计算物业费增值税。' },
+  'revenues.propertyFee': { title: '物业管理费单价', formula: '物业管理费收入 = Σ铺位计租面积 × 物业管理费单价（或铺位覆盖值）× 12 × 出租率 × 物业费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '物业管理费独立核算，不与商业管理费、中央空调费合并；可按楼栋或铺位覆盖单价。' },
+  'revenues.commercialManagementFee': { title: '商业管理费单价', formula: '商业管理费收入 = Σ铺位计租面积 × 商业管理费单价（或铺位覆盖值）× 12 × 出租率 × 商管费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '商业管理费独立核算，适用于商业运营管理服务；可与物业费设置不同单价和递增方式。' },
+  'revenues.centralAcFee': { title: '中央空调使用费单价', formula: '中央空调使用费收入 = Σ(收取楼栋铺位计租面积 × 楼栋空调单价) × 12 × 出租率 × 空调费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '只对已开启中央空调收费的楼栋或填写铺位覆盖单价的铺位计费，未开启楼栋按0核算。' },
   'revenues.otherIncomeRatio': { title: '多经收入', formula: '多经收入 = 租金收入 × 多经收入占比', functions: ['SUM'], role: '包含广告、场地、多经点位等收入。' },
   'revenues.parkingSpaces': { title: '停车收入', formula: '停车收入 = 车位数 × 停车月租 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '与停车月租共同决定停车收入。' },
   'revenues.parkingMonthly': { title: '停车月租', formula: '停车收入 = 车位数 × 停车月租 × 12 × 出租率 ÷ 10000', functions: ['SUM'], role: '与停车位数量共同决定停车收入。' },
@@ -135,7 +143,9 @@ const FIELD_FORMULAS = {
   'valuation.exitCapRate': { title: '资本化率退出法', formula: '退出价值 = 期末NOI ÷ 退出资本化率 ×（1 - 退出税费率）', functions: ['MAX', 'IF'], role: '在“公式参数”中选择NOI资本化率法时使用。' },
   'valuation.includeExit': { title: '期末退出价值', formula: '项目现金流 = NOI - 资本化改造 - 所得税 + 期末退出价值', functions: ['IF'], role: '关闭后不计算期末退出价值。' },
   'formulas.rentGrowthMode': { title: '租金增长方式', formula: '复利 = POWER(1+g,n)；单利 = 1 + g×n', functions: ['POWER', 'IF'], role: '决定租金和销售额随运营年份的增长曲线。' },
-  'formulas.propertyFeeGrowthMode': { title: '管理费增长方式', formula: '不复递增 / 每年复利 / 每年单利 / 每N年阶梯递增', functions: ['POWER', 'IF'], role: '管理费增长与租金增长分别设置，便于匹配物业服务合同。' },
+  'formulas.propertyFeeGrowthMode': { title: '物业管理费增长方式', formula: '不复递增 / 每年复利 / 每年单利 / 每N年阶梯递增', functions: ['POWER', 'IF'], role: '物业管理费增长与租金、商管费和空调费分别设置，便于匹配物业服务合同。' },
+  'formulas.commercialManagementGrowthMode': { title: '商业管理费增长方式', formula: '不复递增 / 每年复利 / 每年单利 / 每N年阶梯递增', functions: ['POWER', 'IF'], role: '商业管理费独立递增，可按商业管理委托合同设置不同周期。' },
+  'formulas.centralAcGrowthMode': { title: '中央空调费增长方式', formula: '不复递增 / 每年复利 / 每年单利 / 每N年阶梯递增', functions: ['POWER', 'IF'], role: '中央空调使用费独立递增，可按能源价格、设备运维成本或合同约定调整。' },
   'formulas.buildingDepreciationYears': { title: '建筑折旧年限', formula: '建筑年折旧 = 建筑工程投资 ÷ 建筑折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
   'formulas.fitoutDepreciationYears': { title: '装修折旧年限', formula: '装修年折旧 = 装修投资 ÷ 装修折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
   'formulas.equipmentDepreciationYears': { title: '设备折旧年限', formula: '设备年折旧 = 设备投资 ÷ 设备折旧年限', functions: ['SUM'], role: '影响税前利润、所得税和净利润。' },
@@ -312,7 +322,7 @@ function formulaGuideFor(path, info) {
   };
   if (path.startsWith('formulas.sensitivity')) return FORMULA_GUIDES.sensitivity;
   if (path.includes('DepreciationYears') || path.includes('taxLossCarryforwardYears')) return FORMULA_GUIDES.depreciation;
-  if (path.includes('propertyFeeGrowthMode')) return FORMULA_GUIDES.operations;
+  if (path.includes('propertyFeeGrowthMode') || path.includes('commercialManagementGrowthMode') || path.includes('centralAcGrowthMode')) return FORMULA_GUIDES.operations;
   if (path.includes('rentGrowthMode')) return FORMULA_GUIDES.operations;
   if (path.includes('loanRepaymentMethod')) return FORMULA_GUIDES.finance;
   if (path.includes('exitValueMethod') || path.includes('exitRevenueMultiple')) return FORMULA_GUIDES.valuation;
@@ -2481,22 +2491,28 @@ function renderFloorRentSummary(preview) {
     acc.leasableArea += Number(floor.leasableArea || 0);
     acc.rentArea += Number(floor.rentArea || 0);
     acc.monthly += Number(floor.monthlyRevenue || 0);
+    acc.property += Number(floor.monthlyPropertyFee || 0);
+    acc.commercial += Number(floor.monthlyCommercialManagementFee || 0);
+    acc.central += Number(floor.monthlyCentralAcFee || 0);
     return acc;
-  }, { buildingArea: 0, leasableArea: 0, rentArea: 0, monthly: 0 });
+  }, { buildingArea: 0, leasableArea: 0, rentArea: 0, monthly: 0, property: 0, commercial: 0, central: 0 });
   return `<div class="form-section floor-summary-section">
     <div class="section-title">楼栋及楼层面积与租金汇总</div>
     <div class="section-note">按“楼栋 → 楼层”统一汇总面积与租金收入。平均租金按各楼层实际计租面积加权，年租金按满租月租金 × 12 展示。</div>
     <div class="data-table-wrap">
       <table class="data-table floor-summary-table">
-        <thead><tr><th>楼栋</th><th>楼层</th><th>计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用面积（㎡）</th><th class="num">计租面积（㎡）</th><th class="num">平均租金（元/㎡/月）</th><th class="num">月租金收入（元）</th><th class="num">年租金收入（万元）</th><th class="num">收入占比</th></tr></thead>
+        <thead><tr><th>楼栋</th><th>楼层</th><th>计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用面积（㎡）</th><th class="num">计租面积（㎡）</th><th class="num">平均租金（元/㎡/月）</th><th class="num">月租金收入（元）</th><th class="num">月物业费（元）</th><th class="num">月商管费（元）</th><th class="num">月空调费（元）</th><th class="num">三费合计（元/月）</th><th class="num">年租金收入（万元）</th><th class="num">租金占比</th></tr></thead>
         <tbody>
           ${floors.map(floor => {
             const basisLabel = floor.rentAreaBasis === 'building' ? '建筑面积' : floor.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径';
             const monthly = Number(floor.monthlyRevenue || 0);
-            return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || '—')}</td><td><span class="tag">${basisLabel}</span></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmtArea(floor.rentArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(monthly)}</td><td class="num">${fmt(monthly * 12 / 10000, 1)}</td><td class="num">${fmtPct(total.monthly ? monthly / total.monthly : 0)}</td></tr>`;
+            const property = Number(floor.monthlyPropertyFee || 0);
+            const commercial = Number(floor.monthlyCommercialManagementFee || 0);
+            const central = Number(floor.monthlyCentralAcFee || 0);
+            return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || '—')}</td><td><span class="tag">${basisLabel}</span></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmtArea(floor.rentArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(monthly)}</td><td class="num">${fmt(property)}</td><td class="num">${fmt(commercial)}</td><td class="num">${fmt(central)}</td><td class="num"><strong>${fmt(property + commercial + central)}</strong></td><td class="num">${fmt(monthly * 12 / 10000, 1)}</td><td class="num">${fmtPct(total.monthly ? monthly / total.monthly : 0)}</td></tr>`;
           }).join('')}
         </tbody>
-        <tfoot><tr><td colspan="3"><strong>项目合计</strong></td><td class="num"><strong>${fmtArea(total.buildingArea)}</strong></td><td class="num"><strong>${fmtArea(total.leasableArea)}</strong></td><td class="num"><strong>${fmtArea(total.rentArea)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 1)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 1)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
+        <tfoot><tr><td colspan="3"><strong>项目合计</strong></td><td class="num"><strong>${fmtArea(total.buildingArea)}</strong></td><td class="num"><strong>${fmtArea(total.leasableArea)}</strong></td><td class="num"><strong>${fmtArea(total.rentArea)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 1)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.property)}</strong></td><td class="num"><strong>${fmt(total.commercial)}</strong></td><td class="num"><strong>${fmt(total.central)}</strong></td><td class="num"><strong>${fmt(total.property + total.commercial + total.central)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 1)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
       </table>
     </div>
   </div>`;
@@ -2522,7 +2538,7 @@ function renderDetailedPricing(m, shops, preview) {
   return `
     <div class="import-zone" id="import-zone">
       <div class="import-icon">${ICONS.upload}</div>
-      <div><h3>导入一铺一价电子表格</h3><p>支持 .xlsx、.xlsm、.csv。自动识别楼栋、铺位号、面积、楼层、业态、租金单价和铺位条件；元/㎡/天或元/㎡/年会自动换算为月租金。</p></div>
+      <div><h3>导入一铺一价电子表格</h3><p>支持 .xlsx、.xlsm、.csv。自动识别楼栋、铺位号、面积、楼层、业态、租金单价、三项费用覆盖单价和铺位条件；元/㎡/天或元/㎡/年会自动换算为月租金。</p></div>
       <div class="import-actions"><button class="btn btn-secondary" id="download-template">${ICONS.download}<span>下载模板</span></button><button class="btn btn-primary" id="choose-file">${ICONS.upload}<span>选择文件</span></button><input type="file" id="shop-file" accept=".xlsx,.xlsm,.csv" hidden></div>
     </div>
     ${state.importWarnings.length ? `<div class="warning-list">${state.importWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
@@ -2553,7 +2569,7 @@ function renderDetailedPricing(m, shops, preview) {
       <div style="display:flex;gap:8px"><button class="btn btn-secondary btn-sm" id="add-shop">${ICONS.plus}<span>新增铺位</span></button>${shops.length ? `<button class="btn btn-danger btn-sm" id="clear-shops">${ICONS.trash}<span>清空</span></button>` : ''}</div>
     </div>
       <div class="data-table-wrap">
-      <table class="data-table shop-detail-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">租金单价<br><small>元/㎡/月</small></th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
+      <table class="data-table shop-detail-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">租金单价<br><small>元/㎡/月</small></th><th class="num">物业/商管/空调<br><small>元/㎡/月</small></th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
         ${pageRows.length ? pageRows.map(shop => {
           const key = shopRecordKey(shop);
           const calc = previewShopMap.get(key);
@@ -2561,8 +2577,9 @@ function renderDetailedPricing(m, shops, preview) {
           const modeLabels = { rent:'纯租金', concession:'纯扣点', guarantee_or_concession:'保底/扣点取高' };
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
           const rentSource = shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0 ? '导入/指定' : '自动分配';
-          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)])}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${calc ? fmt(calc.rent, 2) : fmt(shop.rentOverride, 2)}</strong><small class="rent-source">${rentSource}</small></td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
-        }).join('') : `<tr><td colspan="14" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
+          const feeText = calc ? `物业 ${fmt(calc.propertyFee, 2)} / 商管 ${fmt(calc.commercialManagementFee, 2)} / 空调 ${fmt(calc.centralAcFee, 2)}<small class="rent-source">合计 ${fmt(calc.monthlyServiceFee, 2)} 元/月</small>` : '待计算';
+          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)])}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${calc ? fmt(calc.rent, 2) : fmt(shop.rentOverride, 2)}</strong><small class="rent-source">${rentSource}</small></td><td class="num">${feeText}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
+        }).join('') : `<tr><td colspan="15" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
       </tbody></table>
     </div>
     <div class="table-pagination"><button class="btn btn-ghost btn-sm" id="shop-prev" ${state.shopPage <= 1 ? 'disabled' : ''}>上一页</button><span>第 ${state.shopPage} / ${pageCount} 页，共 ${filtered.length} 个铺位，当前显示 ${pageRows.length} 条</span><label class="page-size-control">每页 <select id="shop-page-size">${[50,100,200,500,9999].map(size => `<option value="${size}" ${pageSize === size ? 'selected' : ''}>${size === 9999 ? '全部' : size}</option>`).join('')}</select></label><button class="btn btn-ghost btn-sm" id="shop-next" ${state.shopPage >= pageCount ? 'disabled' : ''}>下一页</button></div>`;
@@ -3548,18 +3565,74 @@ function updateOperatingReferenceValues() {
   document.querySelectorAll('[data-opex-category-row]').forEach(row => row.classList.toggle('selected', row.querySelector('input')?.checked));
 }
 
+function normalizeCentralAcBuildingConfigs(model) {
+  const revenues = model.revenues || (model.revenues = {});
+  const shops = Array.isArray(model.shops) ? model.shops : [];
+  const floors = Array.isArray(model.floors) ? model.floors : [];
+  const existing = Array.isArray(revenues.centralAcBuildings)
+    ? revenues.centralAcBuildings
+    : Object.entries(revenues.centralAcBuildings || {}).map(([building, value]) => ({ building, ...(value || {}) }));
+  const byBuilding = new Map(existing.map(item => [String(item?.building || '').trim(), item]).filter(([name]) => name));
+  const names = [...new Set([
+    ...shops.map(shop => String(shop.building || '1号楼').trim() || '1号楼'),
+    ...floors.map(floor => String(floor.building || '1号楼').trim() || '1号楼'),
+    ...byBuilding.keys(),
+  ])].sort((a, b) => a.localeCompare(b, 'zh-CN', { numeric: true }));
+  const configs = names.map(building => {
+    const current = byBuilding.get(building) || {};
+    return {
+      building,
+      enabled: Boolean(current.enabled),
+      fee: current.fee === null || current.fee === undefined ? Number(revenues.centralAcFee || 0) : Number(current.fee || 0),
+    };
+  });
+  revenues.centralAcBuildings = configs;
+  return configs;
+}
+
+function centralAcBuildingAreas(model) {
+  const areas = new Map();
+  const shops = Array.isArray(model.shops) ? model.shops : [];
+  if (shops.length) {
+    for (const shop of shops) {
+      const building = String(shop.building || '1号楼').trim() || '1号楼';
+      areas.set(building, (areas.get(building) || 0) + rentAreaFor(shop, model));
+    }
+    return areas;
+  }
+  for (const floor of model.floors || []) {
+    const building = String(floor.building || '1号楼').trim() || '1号楼';
+    areas.set(building, (areas.get(building) || 0) + rentAreaFor(floor, model));
+  }
+  return areas;
+}
+
 function renderRevenueAssumptionsSection() {
-  const rentGrowthMode = state.current.model.formulas?.rentGrowthMode || 'compound';
-  const propertyFeeGrowthMode = state.current.model.formulas?.propertyFeeGrowthMode || 'compound';
+  const model = state.current.model;
+  const formulas = model.formulas || (model.formulas = {});
+  const operations = model.operations || (model.operations = {});
+  const rentGrowthMode = formulas.rentGrowthMode || 'compound';
+  const propertyFeeGrowthMode = formulas.propertyFeeGrowthMode || 'compound';
+  const commercialManagementGrowthMode = formulas.commercialManagementGrowthMode || 'compound';
+  const centralAcGrowthMode = formulas.centralAcGrowthMode || 'compound';
   const growthOptions = [
     { value: 'none', label: '不递增' },
     { value: 'compound', label: '每年复利递增' },
     { value: 'simple', label: '每年单利递增' },
     { value: 'step', label: '每N年阶梯递增' },
   ];
+  const feeGrowthFields = (label, mode, modePath, growthPath, stepYearsPath, stepRatePath) => {
+    if (mode === 'step') {
+      return `${textField(`${label}递增周期`, stepYearsPath, { type: 'number', unit: '年' })}${textField(`${label}阶梯递增率`, stepRatePath, { type: 'number', unit: '%', scale: 0.01 })}`;
+    }
+    return textField(`${label}年递增率`, growthPath, { type: 'number', unit: '%', scale: 0.01 });
+  };
+  const configs = normalizeCentralAcBuildingConfigs(model);
+  const areas = centralAcBuildingAreas(model);
+  const occupancy = Math.max(0, Number(operations.stableOccupancy ?? 0.95));
   return `<div class="form-section">
     <div class="section-title">出租率、租金增长与租赁条款</div>
-    ${formulaPanel('出租率、租金及管理费递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子', ['IF', 'POWER', 'INT', 'SUM'], '租金和管理费分别设置增长方式；阶梯递增示例：每3年递增5%，第1—3年不变，第4年开始上调。')}
+    ${formulaPanel('出租率、租金及费用递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子', ['IF', 'POWER', 'INT', 'SUM'], '租金、物业管理费、商业管理费和中央空调费分别设置增长方式和递增率；阶梯递增示例：每3年递增5%，第1—3年不变，第4年开始上调。')}
     <div class="form-grid">
       ${textField('首年出租率', 'operations.occupancyY1', { type: 'number', unit: '%', scale: 0.01 })}
       ${textField('第二年出租率', 'operations.occupancyY2', { type: 'number', unit: '%', scale: 0.01 })}
@@ -3577,17 +3650,49 @@ function renderRevenueAssumptionsSection() {
     </div>
   </div>
   <div class="form-section">
-    <div class="section-title">物业管理费与其他收入</div>
+    <div class="section-title">物业管理费、商业管理费与中央空调费（独立核算）</div>
+    <div class="section-note">三类费用分别计算收入、递增和导出明细。物业费与商业管理费默认适用于全部铺位；中央空调费只在下方开启的楼栋收取，也可在铺位明细中用覆盖单价单独调整。</div>
+    ${formulaPanel('三项费用收入公式', '物业管理费 = Σ铺位计租面积 × 物业费单价 × 12 × 出租率 × 物业费递增因子\n商业管理费 = Σ铺位计租面积 × 商管费单价 × 12 × 出租率 × 商管费递增因子\n中央空调费 = Σ开启楼栋的铺位计租面积 × 楼栋空调单价 × 12 × 出租率 × 空调费递增因子\n三项费用合计 = 物业管理费 + 商业管理费 + 中央空调费', ['SUM', 'POWER', 'INT', 'IF'], '计租面积按铺位或楼层选择的建筑面积/实用面积口径计算；物业费和商管费可按铺位覆盖，中央空调费可按楼栋开启并设置独立单价。')}
     <div class="form-grid">
-      ${textField('首年物业管理费/商业管理费', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月', help: '作为第1年管理费单价，后续按管理费递增规则逐年调整' })}
-      ${selectField('管理费递增方式', 'formulas.propertyFeeGrowthMode', growthOptions, { help: '管理费与租金分开递增，便于分别匹配租赁合同和物业服务合同。' })}
-      ${propertyFeeGrowthMode === 'step'
-        ? `${textField('管理费递增周期', 'operations.propertyFeeStepYears', { type: 'number', unit: '年' })}${textField('管理费阶梯递增率', 'operations.propertyFeeStepRate', { type: 'number', unit: '%', scale: 0.01 })}`
-        : textField('管理费年递增率', 'operations.propertyFeeGrowth', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('首年物业管理费单价', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月', help: '物业服务合同或租赁合同约定的物业管理费；默认适用于所有铺位' })}
+      ${selectField('物业管理费递增方式', 'formulas.propertyFeeGrowthMode', growthOptions, { help: '物业管理费独立递增，不跟随租金或商管费。' })}
+      ${feeGrowthFields('物业管理费', propertyFeeGrowthMode, 'formulas.propertyFeeGrowthMode', 'operations.propertyFeeGrowth', 'operations.propertyFeeStepYears', 'operations.propertyFeeStepRate')}
+      ${textField('首年商业管理费单价', 'revenues.commercialManagementFee', { type: 'number', unit: '元/㎡/月', help: '商业运营管理服务费；如项目不收可填0' })}
+      ${selectField('商业管理费递增方式', 'formulas.commercialManagementGrowthMode', growthOptions, { help: '商业管理费按委托管理合同独立递增。' })}
+      ${feeGrowthFields('商业管理费', commercialManagementGrowthMode, 'formulas.commercialManagementGrowthMode', 'operations.commercialManagementGrowth', 'operations.commercialManagementStepYears', 'operations.commercialManagementStepRate')}
+      ${textField('默认中央空调使用费单价', 'revenues.centralAcFee', { type: 'number', unit: '元/㎡/月', help: '作为新建楼栋收费配置的参考单价；是否实际收取由下方楼栋开关决定' })}
+      ${selectField('中央空调费递增方式', 'formulas.centralAcGrowthMode', growthOptions, { help: '中央空调费按能耗、运维成本或合同约定独立递增。' })}
+      ${feeGrowthFields('中央空调费', centralAcGrowthMode, 'formulas.centralAcGrowthMode', 'operations.centralAcGrowth', 'operations.centralAcStepYears', 'operations.centralAcStepRate')}
       ${textField('多经收入占租金比例', 'revenues.otherIncomeRatio', { type: 'number', unit: '%', scale: 0.01 })}
       ${textField('停车位数量', 'revenues.parkingSpaces', { type: 'number', unit: '个', optional: true })}
       ${textField('停车月租', 'revenues.parkingMonthly', { type: 'number', unit: '元/位/月', optional: true })}
     </div>
+  </div>
+  <div class="form-section">
+    <div class="section-title">按楼栋设置中央空调收费</div>
+    <div class="section-note">只开启实际提供中央空调且向租户收费的楼栋。稳定期月收费按计租面积 × 楼栋空调单价 × 稳定期出租率估算；不收取的楼栋按0核算，并会在铺位明细和导出表显示为0。</div>
+    <div class="data-table-wrap" style="max-height:none">
+      <table class="data-table">
+        <thead><tr><th>楼栋</th><th>是否收取中央空调费</th><th class="num">计租面积（㎡）</th><th class="num">空调费单价（元/㎡/月）</th><th class="num">稳定期月收费（元）</th><th class="num">稳定期年收入（万元）</th><th>说明</th></tr></thead>
+        <tbody>
+          ${configs.map((config, index) => {
+            const area = Number(areas.get(config.building) || 0);
+            const fee = config.enabled ? Number(config.fee || 0) : 0;
+            const monthly = area * fee * occupancy;
+            return `<tr>
+              <td><strong>${escapeHtml(config.building)}</strong></td>
+              <td><label class="switch-line"><input type="checkbox" data-path="revenues.centralAcBuildings.${index}.enabled" data-type="bool" ${config.enabled ? 'checked' : ''} data-central-ac-toggle="true"><span>${config.enabled ? '收取' : '不收取'}</span></label></td>
+              <td class="num">${fmtArea(area)}</td>
+              <td class="num"><div class="input-affix compact"><input class="table-input" data-path="revenues.centralAcBuildings.${index}.fee" data-type="number" type="number" step="0.01" value="${Number(config.fee || 0).toFixed(2)}" ${config.enabled ? '' : 'disabled'}><span>元/㎡/月</span></div></td>
+              <td class="num"><strong>${fmt(monthly)}</strong></td>
+              <td class="num"><strong>${fmt(monthly * 12 / 10000, 2)}</strong></td>
+              <td>${config.enabled ? '独立计入中央空调使用费收入' : '该楼栋不产生空调费收入，仍计入物业费和商管费'}</td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="7" class="admin-empty">请先在商铺收益页添加楼栋或导入铺位明细。</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <div class="field-help">计算公式：稳定期月收费 = 楼栋计租面积 × 楼栋中央空调单价 × 稳定期出租率；稳定期年收入 = 月收费 × 12 ÷ 10000。首年及第二年实际收入还会按相应出租率和递增因子计算。</div>
   </div>`;
 }
 
@@ -4063,7 +4168,10 @@ function renderOperatingResultCards() {
         <div><span>企业人员成本</span><strong>${fmt(s.stableStaffCost, 2)} 万/年</strong></div>
         <div><span>办公行政</span><strong>${fmt(s.stableOfficeCost, 1)} 万/年</strong></div>
         <div><span>招商费用</span><strong>${fmt(s.stableLeasingCost, 1)} 万/年</strong></div>
-        <div><span>管理费收入</span><strong>${fmt(s.stablePropertyFeeIncome, 1)} 万/年</strong></div>
+        <div><span>物业管理费收入</span><strong>${fmt(s.stablePropertyManagementIncome, 1)} 万/年</strong></div>
+        <div><span>商业管理费收入</span><strong>${fmt(s.stableCommercialManagementIncome, 1)} 万/年</strong></div>
+        <div><span>中央空调费收入</span><strong>${fmt(s.stableCentralAcIncome, 1)} 万/年</strong></div>
+        <div><span>三项费用合计</span><strong>${fmt(s.stablePropertyFeeIncome, 1)} 万/年</strong></div>
         <div><span>营销费用</span><strong>${fmt(s.stableMarketingCost, 1)} 万/年</strong></div>
         <div><span>维保费用</span><strong>${fmt(s.stableMaintenanceCost, 1)} 万/年</strong></div>
       </div>
@@ -4150,7 +4258,13 @@ function bindStepInputs() {
         if (value === 'true') value = true;
         if (value === 'false') value = false;
       }
+      const previousCentralAcFee = path === 'revenues.centralAcFee' ? Number(getPath(state.current.model, path) || 0) : null;
       setPath(state.current.model, path, value);
+      if (path === 'revenues.centralAcFee' && Array.isArray(state.current.model.revenues?.centralAcBuildings)) {
+        state.current.model.revenues.centralAcBuildings.forEach(config => {
+          if (!config.enabled && Number(config.fee || 0) === previousCentralAcFee) config.fee = Number(value || 0);
+        });
+      }
       if (input.dataset.annualize === 'true') {
         const annualizedRow = input.closest('[data-annualized-row]');
         if (annualizedRow) annualizedRow.dataset.annualValue = String(value);
@@ -4162,7 +4276,14 @@ function bindStepInputs() {
         scheduleLivePreview();
         return;
       }
-      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode', 'formulas.rentGrowthMode', 'formulas.propertyFeeGrowthMode'].includes(path)) {
+      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode', 'formulas.rentGrowthMode', 'formulas.propertyFeeGrowthMode', 'formulas.commercialManagementGrowthMode', 'formulas.centralAcGrowthMode'].includes(path)) {
+        state.dirty = true;
+        state.preview = null;
+        renderWorkspace();
+        scheduleLivePreview();
+        return;
+      }
+      if (path.startsWith('revenues.centralAcBuildings.') && path.endsWith('.enabled')) {
         state.dirty = true;
         state.preview = null;
         renderWorkspace();
@@ -4798,6 +4919,9 @@ async function handleShopImport(file) {
       rentRecognizedCount: Number(payload.rentRecognizedCount || 0),
       rentMissingCount: Number(payload.rentMissingCount || 0),
       total: payload.shops?.length || 0,
+      propertyFeeOverrideCount: Number(payload.propertyFeeOverrideCount || 0),
+      commercialManagementFeeOverrideCount: Number(payload.commercialManagementFeeOverrideCount || 0),
+      centralAcFeeOverrideCount: Number(payload.centralAcFeeOverrideCount || 0),
     };
     state.importHints = payload.projectHints || {};
     applyImportHints(payload.projectHints || {});
@@ -4815,7 +4939,8 @@ async function handleShopImport(file) {
     }
     const importedCount = payload.shops?.length || 0;
     const recognizedRentCount = payload.rentRecognizedCount || 0;
-    toast(`已导入 ${importedCount} 个铺位，识别 ${recognizedRentCount} 个租金单价${importedCount && !recognizedRentCount ? '，请检查租金单价列' : ''}`, importedCount && recognizedRentCount ? 'success' : 'error');
+    const feeSummary = `物业费覆盖${payload.propertyFeeOverrideCount || 0}个、商管费覆盖${payload.commercialManagementFeeOverrideCount || 0}个、空调费覆盖${payload.centralAcFeeOverrideCount || 0}个`;
+    toast(`已导入 ${importedCount} 个铺位，识别 ${recognizedRentCount} 个租金单价；${feeSummary}${importedCount && !recognizedRentCount ? '，请检查租金单价列' : ''}`, importedCount && recognizedRentCount ? 'success' : 'error');
   } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
 }
 
@@ -4829,16 +4954,27 @@ function fileToBase64(file) {
 }
 
 function applyImportHints(hints) {
-  const p = state.current.model.project;
+  const model = state.current.model;
+  const project = model.project;
   const projectHints = hints.project || {};
-  const numeric = ['startYear', 'constructionYears', 'gbaOverride', 'landArea', 'landPrice', 'otherPreOpening', 'preOpeningMarketing'];
+  const revenueHints = hints.revenues || {};
+  const numeric = new Set(['startYear', 'constructionYears', 'gbaOverride', 'landArea', 'landPrice', 'otherPreOpening', 'preOpeningMarketing']);
   for (const [key, value] of Object.entries(projectHints)) {
     if (value === null || value === undefined || value === '') continue;
-    if (numeric.includes(key)) p[key] = Number(value) || 0;
-    else if (key === 'rentAreaBasis') p[key] = value;
-    else if (p[key] === '' || p[key] === null || p[key] === undefined) p[key] = value;
+    if (numeric.has(key)) project[key] = Number(value) || 0;
+    else if (['name', 'location', 'projectType', 'developmentType', 'rentAreaBasis'].includes(key)) project[key] = value;
+    else if (project[key] === '' || project[key] === null || project[key] === undefined) project[key] = value;
   }
-  if (Object.keys(projectHints).length) toast('已同步项目信息表中的基础字段', 'success');
+  model.revenues = model.revenues || {};
+  for (const key of ['propertyFee', 'commercialManagementFee', 'centralAcFee']) {
+    if (revenueHints[key] === null || revenueHints[key] === undefined || revenueHints[key] === '') continue;
+    model.revenues[key] = Math.max(0, Number(revenueHints[key]) || 0);
+  }
+  if (Array.isArray(hints.centralAcBuildings) && hints.centralAcBuildings.length) {
+    model.revenues.centralAcBuildings = hints.centralAcBuildings;
+  }
+  const syncedCount = Object.keys(projectHints).length + Object.keys(revenueHints).length + (hints.centralAcBuildings?.length || 0);
+  if (syncedCount) toast('已同步项目信息、三项收费单价和楼栋收费设置', 'success');
 }
 
 function openAddShopModal(editIndex = null) {

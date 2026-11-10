@@ -118,6 +118,9 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
         },
         "revenues": {
             "propertyFee": 18.0,
+            "commercialManagementFee": 0.0,
+            "centralAcFee": 0.0,
+            "centralAcBuildings": [],
             "otherIncomeRatio": 0.05,
             "parkingSpaces": 0,
             "parkingMonthly": 300.0,
@@ -129,6 +132,12 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "propertyFeeGrowth": 0.03,
             "propertyFeeStepYears": 3,
             "propertyFeeStepRate": 0.05,
+            "commercialManagementGrowth": 0.03,
+            "commercialManagementStepYears": 3,
+            "commercialManagementStepRate": 0.05,
+            "centralAcGrowth": 0.03,
+            "centralAcStepYears": 3,
+            "centralAcStepRate": 0.05,
             "occupancyY1": 0.70,
             "occupancyY2": 0.85,
             "stableOccupancy": 0.95,
@@ -302,6 +311,8 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
         "formulas": {
             "rentGrowthMode": "compound",
             "propertyFeeGrowthMode": "compound",
+            "commercialManagementGrowthMode": "compound",
+            "centralAcGrowthMode": "compound",
             "buildingDepreciationYears": 20,
             "fitoutDepreciationYears": 5,
             "equipmentDepreciationYears": 10,
@@ -511,6 +522,9 @@ def normalize_shop(shop: dict[str, Any]) -> dict[str, Any]:
         "category": str(shop.get("category", shop.get("业态", "零售")) or "零售").strip(),
         "status": str(shop.get("status", shop.get("状态", "营业")) or "营业").strip(),
         "rentOverride": optional_float(shop.get("rentOverride", shop.get("租金单价覆盖", None))),
+        "propertyFeeOverride": optional_float(shop.get("propertyFeeOverride", shop.get("物业管理费单价覆盖", None))),
+        "commercialManagementFeeOverride": optional_float(shop.get("commercialManagementFeeOverride", shop.get("商业管理费单价覆盖", None))),
+        "centralAcFeeOverride": optional_float(shop.get("centralAcFeeOverride", shop.get("中央空调费单价覆盖", None))),
         "rentAreaBasis": str(shop.get("rentAreaBasis") or shop.get("租金面积口径") or "inherit").strip(),
         "conditions": conditions,
         "note": str(shop.get("note", shop.get("备注", "")) or "").strip(),
@@ -776,6 +790,36 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     category_rent = {name: as_float(cat.get("rent")) for name, cat in category_data.items()}
     category_factor = {name: max(0.0, as_float(cat.get("factor"), 1.0)) for name, cat in category_data.items()}
     condition_map = {str(c.get("name", "")).strip(): max(0.0, as_float(c.get("premium"))) for c in model.get("conditionPremiums", []) if c.get("enabled", True)}
+    property_fee_unit = max(0.0, as_float(revenues.get("propertyFee")))
+    commercial_management_fee_unit = max(0.0, as_float(revenues.get("commercialManagementFee")))
+    default_central_ac_fee = max(0.0, as_float(revenues.get("centralAcFee")))
+    central_ac_configs: dict[str, dict[str, Any]] = {}
+    raw_central_ac_configs = revenues.get("centralAcBuildings", [])
+    if isinstance(raw_central_ac_configs, dict):
+        raw_central_ac_configs = [{"building": key, **(value if isinstance(value, dict) else {})} for key, value in raw_central_ac_configs.items()]
+    for item in raw_central_ac_configs if isinstance(raw_central_ac_configs, list) else []:
+        if not isinstance(item, dict):
+            continue
+        building_name = str(item.get("building") or "").strip()
+        if building_name:
+            central_ac_configs[building_name] = item
+
+    def service_rates_for(record: dict[str, Any]) -> dict[str, float | bool]:
+        building_name = str(record.get("building") or "1号楼").strip()
+        central_config = central_ac_configs.get(building_name, {})
+        central_enabled = bool(central_config.get("enabled")) or bool(record.get("centralAcEnabled"))
+        central_rate = as_float(central_config.get("fee"), default_central_ac_fee)
+        if record.get("centralAcFeeOverride") is not None:
+            central_rate = max(0.0, as_float(record.get("centralAcFeeOverride")))
+            central_enabled = central_rate > 0
+        property_rate = max(0.0, as_float(record.get("propertyFeeOverride"), property_fee_unit))
+        commercial_rate = max(0.0, as_float(record.get("commercialManagementFeeOverride"), commercial_management_fee_unit))
+        return {
+            "propertyFee": property_rate,
+            "commercialManagementFee": commercial_rate,
+            "centralAcFee": central_rate if central_enabled else 0.0,
+            "centralAcEnabled": bool(central_enabled and central_rate > 0),
+        }
 
     floor_calc: list[dict[str, Any]] = []
     shop_calc: list[dict[str, Any]] = []
@@ -783,6 +827,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     total_monthly_guarantee = 0.0
     total_monthly_concession = 0.0
     total_rent_area = 0.0
+    property_fee_base_monthly = 0.0
+    commercial_management_base_monthly = 0.0
+    central_ac_base_monthly = 0.0
 
     def settlement_revenue(guarantee_value: float, concession_value: float, settlement_mode: str) -> tuple[float, float, float]:
         if settlement_mode == "concession":
@@ -811,7 +858,29 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             total_monthly_concession += concession_part
             total_monthly_revenue += monthly
             total_rent_area += rent_area
-            floor_calc.append({**floor, "rentAreaBasis": rent_basis, "rentArea": rent_area, "guaranteeRevenue": guarantee_revenue, "concessionRevenue": concession_revenue, "monthlyRent": rent_part, "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, rent_area), "settlementMode": project_revenue_model})
+            service_rates = service_rates_for(floor)
+            monthly_property_fee = rent_area * as_float(service_rates.get("propertyFee"))
+            monthly_commercial_fee = rent_area * as_float(service_rates.get("commercialManagementFee"))
+            monthly_central_ac_fee = rent_area * as_float(service_rates.get("centralAcFee"))
+            property_fee_base_monthly += monthly_property_fee
+            commercial_management_base_monthly += monthly_commercial_fee
+            central_ac_base_monthly += monthly_central_ac_fee
+            floor_calc.append({
+                **floor,
+                "rentAreaBasis": rent_basis,
+                "rentArea": rent_area,
+                "guaranteeRevenue": guarantee_revenue,
+                "concessionRevenue": concession_revenue,
+                "monthlyRent": rent_part,
+                "monthlyRevenue": monthly,
+                "weightedRent": safe_div(monthly, rent_area),
+                "settlementMode": project_revenue_model,
+                **service_rates,
+                "monthlyPropertyFee": monthly_property_fee,
+                "monthlyCommercialManagementFee": monthly_commercial_fee,
+                "monthlyCentralAcFee": monthly_central_ac_fee,
+                "monthlyServiceFee": monthly_property_fee + monthly_commercial_fee + monthly_central_ac_fee,
+            })
     else:
         shop_building_area = sum(max(0.0, s["buildingArea"]) for s in shops)
         gla = sum(max(0.0, s["leasableArea"]) for s in shops)
@@ -857,6 +926,13 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             total_monthly_concession += concession_part
             total_monthly_revenue += monthly
             total_rent_area += rent_area
+            service_rates = service_rates_for(shop)
+            monthly_property_fee = rent_area * as_float(service_rates.get("propertyFee"))
+            monthly_commercial_fee = rent_area * as_float(service_rates.get("commercialManagementFee"))
+            monthly_central_ac_fee = rent_area * as_float(service_rates.get("centralAcFee"))
+            property_fee_base_monthly += monthly_property_fee
+            commercial_management_base_monthly += monthly_commercial_fee
+            central_ac_base_monthly += monthly_central_ac_fee
             shop_calc.append(
                 {
                     **shop,
@@ -873,6 +949,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                     "concessionRevenue": concession_revenue,
                     "monthlyRent": rent_part,
                     "monthlyRevenue": monthly,
+                    **service_rates,
+                    "monthlyPropertyFee": monthly_property_fee,
+                    "monthlyCommercialManagementFee": monthly_commercial_fee,
+                    "monthlyCentralAcFee": monthly_central_ac_fee,
+                    "monthlyServiceFee": monthly_property_fee + monthly_commercial_fee + monthly_central_ac_fee,
                     "firstYearRent": monthly * (12 - as_float(operations.get("rentFreeMonths"))) * as_float(operations.get("occupancyY1")) / 10000,
                     "commission": monthly * as_float(operations.get("commissionMonths")) * as_float(operations.get("occupancyY1")) / 10000,
                     "deposit": monthly * as_float(operations.get("depositMonths")) / 10000,
@@ -884,7 +965,25 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             group = [shop for shop in shop_calc if building_floor_key(shop) == key]
             rent_area = sum(shop["rentArea"] for shop in group) or rent_area_for(floor, project)
             monthly = sum(shop["monthlyRevenue"] for shop in group)
-            floor_calc.append({**floor, "rentAreaBasis": resolved_rent_area_basis(floor, project), "rentArea": rent_area, "monthlyRent": sum(shop["monthlyRent"] for shop in group), "monthlyConcession": sum(shop["concessionRevenue"] for shop in group), "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, rent_area)})
+            monthly_property_fee = sum(as_float(shop.get("monthlyPropertyFee")) for shop in group)
+            monthly_commercial_fee = sum(as_float(shop.get("monthlyCommercialManagementFee")) for shop in group)
+            monthly_central_ac_fee = sum(as_float(shop.get("monthlyCentralAcFee")) for shop in group)
+            floor_calc.append({
+                **floor,
+                "rentAreaBasis": resolved_rent_area_basis(floor, project),
+                "rentArea": rent_area,
+                "monthlyRent": sum(shop["monthlyRent"] for shop in group),
+                "monthlyConcession": sum(shop["concessionRevenue"] for shop in group),
+                "monthlyRevenue": monthly,
+                "weightedRent": safe_div(monthly, rent_area),
+                "propertyFee": safe_div(monthly_property_fee, rent_area),
+                "commercialManagementFee": safe_div(monthly_commercial_fee, rent_area),
+                "centralAcFee": safe_div(monthly_central_ac_fee, rent_area),
+                "monthlyPropertyFee": monthly_property_fee,
+                "monthlyCommercialManagementFee": monthly_commercial_fee,
+                "monthlyCentralAcFee": monthly_central_ac_fee,
+                "monthlyServiceFee": monthly_property_fee + monthly_commercial_fee + monthly_central_ac_fee,
+            })
         for key, group in factor_groups.items():
             if key in floor_names:
                 continue
@@ -1175,10 +1274,29 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             as_float(operations.get("propertyFeeStepYears"), 3.0),
             as_float(operations.get("propertyFeeStepRate")),
         )
+        commercial_management_growth_mode = str(formulas.get("commercialManagementGrowthMode") or "compound")
+        commercial_management_growth_factor = growth_factor_for_year(
+            op_year,
+            commercial_management_growth_mode,
+            as_float(operations.get("commercialManagementGrowth")),
+            as_float(operations.get("commercialManagementStepYears"), 3.0),
+            as_float(operations.get("commercialManagementStepRate")),
+        )
+        central_ac_growth_mode = str(formulas.get("centralAcGrowthMode") or "compound")
+        central_ac_growth_factor = growth_factor_for_year(
+            op_year,
+            central_ac_growth_mode,
+            as_float(operations.get("centralAcGrowth")),
+            as_float(operations.get("centralAcStepYears"), 3.0),
+            as_float(operations.get("centralAcStepRate")),
+        )
         guarantee_gross = total_monthly_guarantee * 12 * occupancy * free_factor * rent_growth_factor / 10000
         concession_gross = total_monthly_concession * 12 * occupancy * free_factor * sales_growth_factor / 10000
         rent_gross = guarantee_gross + concession_gross
-        property_gross = gla * as_float(revenues.get("propertyFee")) * 12 * occupancy * property_fee_growth_factor / 10000
+        property_management_gross = property_fee_base_monthly * 12 * occupancy * property_fee_growth_factor / 10000
+        commercial_management_gross = commercial_management_base_monthly * 12 * occupancy * commercial_management_growth_factor / 10000
+        central_ac_gross = central_ac_base_monthly * 12 * occupancy * central_ac_growth_factor / 10000
+        property_gross = property_management_gross + commercial_management_gross + central_ac_gross
         other_gross = (
             rent_gross * as_float(revenues.get("otherIncomeRatio"))
             + as_float(revenues.get("parkingSpaces")) * as_float(revenues.get("parkingMonthly")) * 12 * occupancy / 10000
@@ -1325,8 +1443,13 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "guaranteeRevenue": guarantee_gross,
                 "concessionRevenue": concession_gross,
                 "propertyRevenue": property_gross,
+                "propertyManagementRevenue": property_management_gross,
+                "commercialManagementRevenue": commercial_management_gross,
+                "centralAcRevenue": central_ac_gross,
                 "rentGrowthFactor": rent_growth_factor,
                 "propertyFeeGrowthFactor": property_fee_growth_factor,
+                "commercialManagementGrowthFactor": commercial_management_growth_factor,
+                "centralAcGrowthFactor": central_ac_growth_factor,
                 "otherRevenue": other_gross,
                 "operatingCost": operating_cost_net,
                 "propertyOpsCost": property_ops,
@@ -1385,6 +1508,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_noi = as_float(stable_row.get("noi"))
     stable_revenue = as_float(stable_row.get("revenue"))
     stable_property_fee_income = as_float(stable_row.get("propertyRevenue"))
+    stable_property_management_income = as_float(stable_row.get("propertyManagementRevenue"))
+    stable_commercial_management_income = as_float(stable_row.get("commercialManagementRevenue"))
+    stable_central_ac_income = as_float(stable_row.get("centralAcRevenue"))
     stable_staff_cost = as_float(stable_row.get("staffCost"))
     stable_office_cost = as_float(stable_row.get("officeCost"))
     stable_leasing_cost = as_float(stable_row.get("leasingCost"))
@@ -1686,6 +1812,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "investmentPerGla": safe_div(total_investment * 10000, gla),
             "stableRevenue": stable_revenue,
             "stablePropertyFeeIncome": stable_property_fee_income,
+            "stablePropertyManagementIncome": stable_property_management_income,
+            "stableCommercialManagementIncome": stable_commercial_management_income,
+            "stableCentralAcIncome": stable_central_ac_income,
             "stableNoi": stable_noi,
             "stableNoiMargin": safe_div(stable_noi, stable_revenue),
             "stableHeadcount": structured_headcount,
