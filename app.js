@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-sharefix9';
+import './backend.js?v=20261110-sharefix12';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.6';
+const APP_VERSION = '1.21.7';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -690,6 +690,7 @@ let previewTimer = null;
 let shareInboxSocket = null;
 let shareInboxHeartbeat = null;
 let shareInboxReconnect = null;
+let shareInboxPollTimer = null;
 let shareInboxUserId = '';
 const processedShareIds = new Set();
 
@@ -1783,6 +1784,14 @@ function buildWechatShareSegments(shareCode, chunkSize = 1800) {
   return Array.from({ length: count }, (_, index) => `DDP${format}-${index + 1}OF${count}:${payload.slice(index * chunkSize, (index + 1) * chunkSize)}`);
 }
 
+function inboxWireShareCode(shareCode) {
+  if (String(shareCode || '').startsWith('DD4.')) {
+    const compressed = chineseShareTextToBytes(String(shareCode).slice(4));
+    return `DD2.${bytesToBase64Url(compressed)}`;
+  }
+  return shareCode;
+}
+
 async function copyTextValue(text) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
   const textarea = document.createElement('textarea');
@@ -1801,13 +1810,58 @@ function cloudRealtimeConfig() {
 function stopShareInbox() {
   clearInterval(shareInboxHeartbeat);
   clearTimeout(shareInboxReconnect);
+  clearInterval(shareInboxPollTimer);
   shareInboxHeartbeat = null;
   shareInboxReconnect = null;
+  shareInboxPollTimer = null;
   shareInboxUserId = '';
   if (shareInboxSocket) {
     try { shareInboxSocket.close(); } catch {}
   }
   shareInboxSocket = null;
+}
+
+function shareInboxTopic(userId) {
+  return `duoduo-share-${String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '')}`;
+}
+
+async function pollShareInbox(userId = state.user?.id) {
+  if (!userId || state.user?.id !== userId) return;
+  const topic = shareInboxTopic(userId);
+  try {
+    const response = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}/json?poll=1&since=12h`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const body = await response.text();
+    for (const line of body.split('\n')) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.event !== 'message') continue;
+      try {
+        let raw = event.message;
+        if (event.attachment?.url) {
+          const attachment = await fetch(event.attachment.url, { cache: 'no-store' });
+          if (!attachment.ok) throw new Error(`附件读取失败（HTTP ${attachment.status}）`);
+          raw = await attachment.text();
+        }
+        const packed = JSON.parse(raw);
+        const data = packed.shareCode ? packed : {
+          shareId: packed.i,
+          recipientId: packed.r,
+          recipientUsername: packed.u,
+          senderId: packed.d,
+          senderUsername: packed.y,
+          senderName: packed.a,
+          note: packed.n || '',
+          shareCode: packed.s,
+        };
+        await receiveRealtimeProjectShare(data);
+      } catch (error) {
+        console.warn('站内收件箱消息处理失败', error);
+      }
+    }
+  } catch (error) {
+    console.warn('站内收件箱暂不可用', error);
+  }
 }
 
 async function receiveRealtimeProjectShare(data) {
@@ -1880,9 +1934,13 @@ function startShareInbox() {
     };
   };
   connect();
+  pollShareInbox(userId);
+  shareInboxPollTimer = setInterval(() => {
+    if (!document.hidden && state.user?.id === userId) pollShareInbox(userId);
+  }, 30000);
 }
 
-async function broadcastProjectShare({ recipientId, recipientUsername, recipientName, shareCode, note }) {
+async function sendProjectToInbox({ recipientId, recipientUsername, recipientName, shareCode, note }) {
   const config = cloudRealtimeConfig();
   if (!config) throw new Error('当前为本地模式，无法使用在线站内投递');
   const shareId = crypto.randomUUID();
@@ -1897,28 +1955,50 @@ async function broadcastProjectShare({ recipientId, recipientUsername, recipient
     note: note || '',
     shareCode,
   };
-  let restError = null;
+  const wirePayload = {
+    i: shareId,
+    r: recipientId,
+    u: recipientUsername,
+    d: state.user?.id || '',
+    y: state.user?.username || '',
+    a: state.user?.displayName || state.user?.username || '',
+    n: note || '',
+    s: inboxWireShareCode(shareCode),
+  };
+  let persisted = false;
+  let expiresAt = 0;
+  let persistenceError = null;
   try {
-    const response = await fetch(`${config.url.replace(/\/$/, '')}/realtime/v1/api/broadcast`, {
+    const response = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
       method: 'POST',
       headers: {
-        apikey: config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
-        'Content-Type': 'application/json',
+        Title: 'Duoduo Project Share',
+        Priority: '3',
+        Tags: 'briefcase',
+        'X-Cache': 'yes',
+        'Content-Type': 'text/plain; charset=utf-8',
       },
-      body: JSON.stringify({ messages: [{ topic, event: 'project_share', private: false, payload }] }),
+      body: JSON.stringify(wirePayload),
     });
-    if (response.ok) return { shareId, recipientName };
-    restError = new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const receipt = await response.json().catch(() => ({}));
+    expiresAt = Number(receipt.expires || 0);
+    persisted = true;
   } catch (error) {
-    restError = error;
+    persistenceError = error;
   }
-  try {
-    await publishRealtimeBroadcast(config, topic, 'project_share', payload);
-  } catch (error) {
-    throw new Error(`站内投递失败（${restError?.message || '广播接口不可用'}；${error.message}），请改用分享码或分享文件`);
+  let realtimeSent = false;
+  if (persisted) {
+    publishRealtimeBroadcast(config, topic, 'project_share', payload).catch(error => console.warn('实时提醒发送失败，已保存到站内收件箱', error));
+  } else {
+    try {
+      await publishRealtimeBroadcast(config, topic, 'project_share', payload);
+      realtimeSent = true;
+    } catch (error) {
+      throw new Error(`站内收件箱不可用（${persistenceError?.message || '持久化失败'}；${error.message}）`);
+    }
   }
-  return { shareId, recipientName };
+  return { shareId, recipientName, persisted, realtimeSent, expiresAt };
 }
 
 function publishRealtimeBroadcast(config, topic, eventName, payload) {
@@ -1991,7 +2071,7 @@ async function openShareProjectModal(projectId) {
           <div class="modal-body share-project-body">
             <div class="share-option-card">
               <div class="share-option-head"><strong>发送给系统内已审核用户</strong><span>对方收到的是独立副本，不会修改您的原项目。</span></div>
-              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}" data-name="${escapeHtml(user.displayName || user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>站内发送</span></button></div><div class="field-help">对方在线时可直接进入其项目工作台；若对方不在线，系统会提示改用下方分享码或分享文件。</div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前没有其他已审核用户。请先让对方注册并通过审核，或使用下方项目分享码。')}</div>`}
+              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}" data-name="${escapeHtml(user.displayName || user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>站内发送</span></button></div><div class="field-help">发送后进入对方站内收件箱：在线会立即提示，12小时内登录会自动接收项目副本。</div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前没有其他已审核用户。请先让对方注册并通过审核，或使用下方项目分享码。')}</div>`}
               <div id="share-direct-status" class="share-direct-status"></div>
             </div>
             <div class="share-divider"><span>或使用跨账号项目分享码</span></div>
@@ -2043,8 +2123,8 @@ async function openShareProjectModal(projectId) {
       } catch (error) {
         if (error.code === 'SHARE_REQUIRES_CODE' || /云端项目权限未开放/.test(error.message)) {
           try {
-            status.textContent = `正在向 ${option?.dataset.name || '接收用户'} 的在线收件箱投递…`;
-            await broadcastProjectShare({
+            status.textContent = `正在发送到 ${option?.dataset.name || '接收用户'} 的站内收件箱…`;
+            const delivery = await sendProjectToInbox({
               recipientId: select.value,
               recipientUsername: option?.dataset.username || '',
               recipientName: option?.dataset.name || option?.textContent || '接收用户',
@@ -2052,7 +2132,10 @@ async function openShareProjectModal(projectId) {
               note: document.getElementById('share-note').value.trim(),
             });
             status.classList.add('success');
-            status.textContent = `已向 ${option?.dataset.name || '接收用户'} 的在线收件箱发送。若对方当前未登录，请发送下方分享码或分享文件。`;
+            const retentionHours = delivery.expiresAt ? Math.max(1, Math.round((delivery.expiresAt - Date.now() / 1000) / 3600)) : 12;
+            status.textContent = delivery.persisted
+              ? `已发送到 ${option?.dataset.name || '接收用户'} 的站内收件箱，对方约${retentionHours}小时内登录会自动收到项目副本。`
+              : `已完成在线投递；若对方未立即收到，请稍后重试或使用分享码。`;
           } catch (broadcastError) {
             status.classList.add('warning');
             status.textContent = `${broadcastError.message} 可复制分享码或下载分享文件发送。`;
@@ -6537,6 +6620,10 @@ document.addEventListener('click', event => {
     event.preventDefault();
     openTermHelp(termButton.dataset.term);
   }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.user?.id && state.token) pollShareInbox(state.user.id);
 });
 
 applyFontScale(state.fontScale);
