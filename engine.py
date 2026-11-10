@@ -79,20 +79,20 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
                 "socialInsuranceRate": 0.28,
                 "recruitmentTrainingRate": 0.02,
                 "positions": [
-                    {"department": "项目筹备组", "position": "筹备负责人", "headcount": 0.0, "monthlySalary": 18000.0, "months": 6.0, "note": ""},
-                    {"department": "招商部", "position": "招商经理", "headcount": 0.0, "monthlySalary": 12000.0, "months": 6.0, "note": ""},
-                    {"department": "运营部", "position": "运营经理", "headcount": 0.0, "monthlySalary": 12000.0, "months": 4.0, "note": ""},
-                    {"department": "市场推广部", "position": "市场推广经理", "headcount": 0.0, "monthlySalary": 10000.0, "months": 4.0, "note": ""},
-                    {"department": "财务行政部", "position": "财务行政专员", "headcount": 0.0, "monthlySalary": 9000.0, "months": 6.0, "note": ""},
-                    {"department": "物业工程部", "position": "工程机电主管", "headcount": 0.0, "monthlySalary": 9000.0, "months": 6.0, "note": ""},
+                    {"department": "项目筹备组", "position": "筹备负责人", "headcount": 0.0, "monthlySalary": 18000.0, "months": 12.0, "note": ""},
+                    {"department": "招商部", "position": "招商经理", "headcount": 0.0, "monthlySalary": 12000.0, "months": 12.0, "note": ""},
+                    {"department": "运营部", "position": "运营经理", "headcount": 0.0, "monthlySalary": 12000.0, "months": 12.0, "note": ""},
+                    {"department": "市场推广部", "position": "市场推广经理", "headcount": 0.0, "monthlySalary": 10000.0, "months": 12.0, "note": ""},
+                    {"department": "财务行政部", "position": "财务行政专员", "headcount": 0.0, "monthlySalary": 9000.0, "months": 12.0, "note": ""},
+                    {"department": "物业工程部", "position": "工程机电主管", "headcount": 0.0, "monthlySalary": 9000.0, "months": 12.0, "note": ""},
                 ],
             },
             "property": {
                 "selfRecruitmentRate": 0.02,
                 "services": [
-                    {"key": "engineering", "name": "物业工程", "mode": "self", "headcount": 0.0, "monthlySalary": 8000.0, "months": 6.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
-                    {"key": "security", "name": "保安服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 5500.0, "months": 6.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
-                    {"key": "cleaning", "name": "保洁服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 4500.0, "months": 6.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+                    {"key": "engineering", "name": "物业工程", "mode": "self", "headcount": 0.0, "monthlySalary": 8000.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+                    {"key": "security", "name": "保安服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 5500.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
+                    {"key": "cleaning", "name": "保洁服务", "mode": "resident_outsourced", "headcount": 0.0, "monthlySalary": 4500.0, "months": 12.0, "nonResidentFactor": 0.70, "managementFeeRate": 0.12},
                 ],
                 "oneOffItems": [
                     {"key": "engineeringIntervention", "name": "工程介入", "amount": 0.0},
@@ -103,8 +103,8 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             },
             "admin": {
                 "items": [
-                    {"key": "officeRent", "name": "办公室租金", "amount": 0.0, "period": "monthly", "months": 6.0},
-                    {"key": "utilities", "name": "水电及通讯费", "amount": 0.0, "period": "monthly", "months": 6.0},
+                    {"key": "officeRent", "name": "办公室租金", "amount": 0.0, "period": "monthly", "months": 12.0},
+                    {"key": "utilities", "name": "水电及通讯费", "amount": 0.0, "period": "monthly", "months": 12.0},
                     {"key": "itSoftware", "name": "IT及软件服务", "amount": 0.0, "period": "total", "months": 0.0},
                     {"key": "officeSupplies", "name": "办公用品及家具", "amount": 0.0, "period": "total", "months": 0.0},
                     {"key": "recruitment", "name": "招聘及培训费", "amount": 0.0, "period": "total", "months": 0.0},
@@ -2183,6 +2183,24 @@ def build_diagnostics(
         for previous, current in zip(valid_periods, valid_periods[1:]):
             if current[0] <= previous[1]:
                 items.append({"level": "warning", "title": "招商调整期存在重叠", "detail": f"第{previous[2] + 1}段与第{current[2] + 1}段重叠，系统按起始年较早的规则优先计算；建议拆分为连续但不重叠的阶段。"})
+    preopening_budget = model.get("preOpeningBudget") if isinstance(model.get("preOpeningBudget"), dict) else {}
+    total_preopening_months = max(0, as_float(model.get("project", {}).get("leasingPeriodMonths"), 12))
+    if str(preopening_budget.get("mode") or "summary") == "detailed" and total_preopening_months > 0:
+        team_positions = preopening_budget.get("team", {}).get("positions", []) if isinstance(preopening_budget.get("team"), dict) else []
+        property_services = preopening_budget.get("property", {}).get("services", []) if isinstance(preopening_budget.get("property"), dict) else []
+        admin_items = preopening_budget.get("admin", {}).get("items", []) if isinstance(preopening_budget.get("admin"), dict) else []
+        month_checks = [
+            *[(str(item.get("position") or "筹备岗位"), item.get("months")) for item in team_positions if isinstance(item, dict)],
+            *[(str(item.get("name") or "物业服务"), item.get("months")) for item in property_services if isinstance(item, dict)],
+            *[(str(item.get("name") or "行政月度费用"), item.get("months")) for item in admin_items if isinstance(item, dict) and item.get("period") == "monthly"],
+        ]
+        overrun = [(name, as_float(months)) for name, months in month_checks if as_float(months) > total_preopening_months + 1e-9]
+        if overrun:
+            items.append({
+                "level": "warning",
+                "title": "筹备明细月数超过筹备招商总周期",
+                "detail": f"总周期为{total_preopening_months:.1f}个月，以下项目超过总周期：{'、'.join(f'{name}{months:.1f}个月' for name, months in overrun[:8])}。请统一口径或延长总周期。",
+            })
     if mode == "preliminary":
         if not floor_calc:
             items.append({"level": "error", "title": "尚未建立楼层测算", "detail": "请先添加楼层，并填写建筑面积、可租赁面积和楼层平均月租金。"})

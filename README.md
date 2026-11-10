@@ -99,3 +99,13 @@ python3 -m http.server 8899
 ```
 
 浏览器打开 `http://127.0.0.1:8899/`。
+
+## 一致性审计
+
+```bash
+python3 scripts/audit_consistency.py
+node --check app.js
+node --check backend.js
+```
+
+每次推送和拉取请求都会由 `.github/workflows/consistency-audit.yml` 自动执行页面、计算引擎、Excel模板、单位、税费、面积和函数注解的一致性检查。

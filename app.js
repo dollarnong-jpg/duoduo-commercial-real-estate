@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-sharefix12';
+import './backend.js?v=20261110-consistency5';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.7';
+const APP_VERSION = '1.21.8';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -62,7 +62,7 @@ const FIELD_FORMULAS = {
   'preOpeningBudget.team.recruitmentTrainingRate': { title: '筹备团队招聘培训费率', formula: '招聘培训 =（税前工资 + 单位社保）× 招聘培训费率', functions: ['SUM'], role: '用于开业前招聘、培训和团队建设。' },
   'preOpeningBudget.property.selfRecruitmentRate': { title: '自营物业招聘培训费率', formula: '自营服务成本 = 岗位工资 + 单位社保 + 自营招聘培训', functions: ['SUM'], role: '仅自营模式使用。' },
   'project.preOpeningPropertyCost': { title: '筹备期物业成本', formula: '筹备期物业成本 = 工程介入 + 开荒保洁 + 临时保安 + 物业顾问', functions: ['SUM'], role: '用于开业前物业介入和开荒，不重复计入运营期物业服务成本。' },
-  'project.leasingPeriodMonths': { title: '筹备招商期', formula: '开业时间 = 建设期 + 筹备招商期；筹备费用在筹备招商期内形成现金流出', functions: ['SUM'], role: '让招商期和建设期、运营期在现金流时间轴上分开。' },
+  'project.leasingPeriodMonths': { title: '筹备招商总周期', formula: '开业时间 = 建设期 + 筹备招商总周期；岗位、物业和月度行政费用的参与月数默认继承总周期', functions: ['SUM'], role: '总周期用于资金计划和现金流分期；明细参与月数可因晚进场或提前撤场单独调整，但不得超过总周期。' },
   'project.startupReserveMonths': { title: '启动资金安全垫', formula: '建议启动资金 = 资本金累计资金缺口峰值 + 稳定期月均运营成本 × 安全垫月数', functions: ['MAX','SUM'], role: '用于覆盖招商爬坡和开业初期不确定性的额外资金准备。' },
   'project.contingencyRate': { title: '预备费', formula: '预备费 = 直接工程费 × 预备费费率', functions: ['SUM', 'ROUND'], role: '直接工程费包括前期、建安、公共配套、装修、设备和其他工程。' },
   'project.constructionYears': { title: '建设期与贷款提款', formula: '总测算期 = 建设期 + 运营期；建设期按0.55、0.45比例提款', functions: ['SUM', 'INDEX'], role: '建设期影响首笔经营年度、利息资本化与现金流时点。' },
@@ -4125,8 +4125,22 @@ function bindPreOpeningActions() {
     if (event.dataTransfer.files[0]) importPreOpeningBudget(event.dataTransfer.files[0]);
   });
   document.querySelectorAll('[data-add-preop-team]').forEach(button => button.addEventListener('click', () => {
-    budget.team.positions.push({ department: '新增部门', position: '新增岗位', headcount: 1, monthlySalary: 8000, months: Number(state.current.model.project.leasingPeriodMonths || 6), note: '' });
+    budget.team.positions.push({ department: '新增部门', position: '新增岗位', headcount: 1, monthlySalary: 8000, months: Number(state.current.model.project.leasingPeriodMonths || 12), note: '' });
     syncPreOpeningBudgetTotals(model); state.dirty = true; state.preview = null; renderWorkspace(); scheduleLivePreview();
+  }));
+  document.querySelectorAll('[data-sync-preopening-months]').forEach(button => button.addEventListener('click', () => {
+    const totalMonths = Math.max(0, Number(model.project?.leasingPeriodMonths || 12));
+    const budget = normalizePreOpeningBudget(model);
+    budget.team.positions.forEach(position => { if (position) position.months = totalMonths; });
+    budget.property.services.forEach(service => { if (service) service.months = totalMonths; });
+    budget.admin.items.forEach(item => { if (item?.period === 'monthly') item.months = totalMonths; });
+    budget.monthsVersion = 2;
+    syncPreOpeningBudgetTotals(model);
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast(`已将全部筹备明细月数同步为${totalMonths}个月`, 'success');
   }));
   document.querySelectorAll('[data-remove-preop-team]').forEach(button => button.addEventListener('click', () => {
     budget.team.positions.splice(Number(button.dataset.removePreopTeam), 1);
@@ -4633,7 +4647,25 @@ function normalizePreOpeningBudget(model) {
   budget.property.oneOffItems = Array.isArray(budget.property.oneOffItems) ? budget.property.oneOffItems : [];
   budget.admin ||= {};
   budget.admin.items = Array.isArray(budget.admin.items) ? budget.admin.items : [];
+  const totalMonths = Math.max(0, Number(model.project?.leasingPeriodMonths ?? 12));
+  if (Number(budget.monthsVersion || 0) < 2) {
+    budget.team.positions.forEach(position => { if (position) position.months = totalMonths; });
+    budget.property.services.forEach(service => { if (service) service.months = totalMonths; });
+    budget.admin.items.forEach(item => { if (item?.period === 'monthly') item.months = totalMonths; });
+    budget.monthsVersion = 2;
+  }
   return budget;
+}
+
+function syncPreOpeningMonthsWithLeasingPeriod(model, previousMonths, nextMonths) {
+  const budget = normalizePreOpeningBudget(model);
+  const previous = Number(previousMonths || 0);
+  const next = Math.max(0, Number(nextMonths || 0));
+  const shouldSync = months => months === 0 || !Number.isFinite(previous) || previous <= 0 || Number(months) === previous;
+  budget.team.positions.forEach(position => { if (position && shouldSync(position.months)) position.months = next; });
+  budget.property.services.forEach(service => { if (service && shouldSync(service.months)) service.months = next; });
+  budget.admin.items.forEach(item => { if (item?.period === 'monthly' && shouldSync(item.months)) item.months = next; });
+  budget.monthsVersion = 2;
 }
 
 function preOpeningDetailedAnalysis(model) {
@@ -4802,12 +4834,13 @@ function renderPreOpeningDetailedSections(analysis) {
     ${renderPreOpeningBudgetImport()}
     <div class="form-section">
       <div class="section-title">筹备团队人力资源明细</div>
-      <div class="section-note">按“部门—岗位—编制—税前月薪—筹备月数”核算。工资、单位社保和招聘培训只计入筹备期，不重复进入运营期人员成本。</div>
+      <div class="section-note">按“部门—岗位—编制—税前月薪—参与月数”核算。参与月数默认继承“筹备招商期”总周期；只有岗位晚进场或提前撤场时才单独修改。</div>
+      <div class="budget-toolbar"><span>筹备招商总周期：<strong>${Number(state.current.model.project?.leasingPeriodMonths || 12)}个月</strong></span><button class="btn btn-secondary btn-sm" type="button" data-sync-preopening-months>${ICONS.copy}<span>全部同步为总周期</span></button></div>
       <div class="form-grid">
         ${textField('单位社保公积金综合比例', 'preOpeningBudget.team.socialInsuranceRate', { type: 'number', unit: '%', scale: 0.01 })}
         ${textField('招聘培训费率', 'preOpeningBudget.team.recruitmentTrainingRate', { type: 'number', unit: '%', scale: 0.01 })}
       </div>
-      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>部门</th><th>岗位</th><th class="num">编制</th><th class="num">税前月薪（元）</th><th class="num">筹备月数</th><th class="num">税前工资（万元）</th><th class="num">单位社保（万元）</th><th class="num">招聘培训（万元）</th><th class="num">合计（万元）</th><th>说明</th><th></th></tr></thead><tbody>
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>部门</th><th>岗位</th><th class="num">编制</th><th class="num">税前月薪（元）</th><th class="num">参与月数（默认=总周期）</th><th class="num">税前工资（万元）</th><th class="num">单位社保（万元）</th><th class="num">招聘培训（万元）</th><th class="num">合计（万元）</th><th>说明</th><th></th></tr></thead><tbody>
         ${analysis.teamPositions.map((item, index) => `<tr>
           <td><input class="table-input" data-path="preOpeningBudget.team.positions.${index}.department" data-type="text" value="${escapeHtml(item.department || '')}"></td>
           <td><input class="table-input" data-path="preOpeningBudget.team.positions.${index}.position" data-type="text" value="${escapeHtml(item.position || '')}"></td>
@@ -4825,7 +4858,7 @@ function renderPreOpeningDetailedSections(analysis) {
       <div class="section-title">筹备期物业工程、保安、保洁明细</div>
       <div class="section-note">自营按岗位工资和单位社保；第三方常驻另计综合管理费；第三方非常驻先按折算比例计算岗位成本，再计综合管理费。工程介入、开荒保洁等单列在下方一次性费用。</div>
       <div class="form-grid">${textField('自营招聘培训费率', 'preOpeningBudget.property.selfRecruitmentRate', { type: 'number', unit: '%', scale: 0.01 })}</div>
-      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>服务类别</th><th>服务模式</th><th class="num">编制</th><th class="num">参考月薪（元）</th><th class="num">服务月数</th><th class="num">非驻场折算</th><th class="num">综合管理费率</th><th class="num">服务成本（万元）</th></tr></thead><tbody>
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>服务类别</th><th>服务模式</th><th class="num">编制</th><th class="num">参考月薪（元）</th><th class="num">服务月数（默认=总周期）</th><th class="num">非驻场折算</th><th class="num">综合管理费率</th><th class="num">服务成本（万元）</th></tr></thead><tbody>
         ${analysis.propertyServices.map((item, index) => `<tr>
           <td><strong>${escapeHtml(item.name)}</strong></td>
           <td><select class="table-select" data-path="preOpeningBudget.property.services.${index}.mode" data-type="text">${modes.map(mode => `<option value="${mode.value}" ${item.mode === mode.value ? 'selected' : ''}>${mode.label}</option>`).join('')}</select></td>
@@ -4845,7 +4878,7 @@ function renderPreOpeningDetailedSections(analysis) {
     <div class="form-section">
       <div class="section-title">行政办公及开办费用明细</div>
       <div class="section-note">每项可按“每月 × 月数”或“一次性总额”录入。证照、尽调、咨询、招聘、差旅等均可单列。</div>
-      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>费用科目</th><th class="num">金额（元）</th><th>金额口径</th><th class="num">月数</th><th class="num">核算金额（万元）</th><th>说明</th><th></th></tr></thead><tbody>
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>费用科目</th><th class="num">金额（元）</th><th>金额口径</th><th class="num">月数（月度项默认=总周期）</th><th class="num">核算金额（万元）</th><th>说明</th><th></th></tr></thead><tbody>
         ${analysis.adminItems.map((item, index) => `<tr>
           <td><input class="table-input" data-path="preOpeningBudget.admin.items.${index}.name" data-type="text" value="${escapeHtml(item.name || '')}"></td>
           <td class="num"><input class="table-input" data-path="preOpeningBudget.admin.items.${index}.amount" data-type="number" type="number" step="100" value="${Number(item.amount || 0)}"></td>
@@ -4879,7 +4912,7 @@ function renderPreOpeningCostStep() {
       ${formulaPanel('筹备期成本公式', '首开招商佣金 = 满租月租金 × 佣金月数 × 首年出租率 ÷ 10000\n筹备团队成本 = Σ（编制 × 税前月薪 × 筹备月数 + 单位社保 + 招聘培训）\n筹备物业成本 = Σ各服务模式岗位成本 + 第三方管理费 + 物业一次性费用\n行政开办费用 = Σ（每月金额 × 月数 或 一次性总额）\n筹备期非工程费用 = 团队 + 物业 + 行政 + 首开佣金 + 筹备营销', ['SUM','IF'], '明细预算会自动回写团队、物业和其他开办三项汇总；快速总额模式适合项目初筛。')}
       <div class="form-grid">
         ${textField('首开招商佣金月数', 'operations.commissionMonths', { type: 'number', unit: '月', help: '按满租月租金和首年出租率计算首开招商佣金' })}
-        ${textField('筹备招商期', 'project.leasingPeriodMonths', { type: 'number', unit: '月', help: '建设完成后至正式开业之间的招商筹备期，用于资金计划和现金流分期' })}
+        ${textField('筹备招商总周期', 'project.leasingPeriodMonths', { type: 'number', unit: '月', help: '建设完成后至正式开业之间的总周期。岗位、物业和月度行政费用的参与月数默认继承该周期，可单独调整晚进场或提前撤场月份' })}
         ${textField('启动资金安全垫', 'project.startupReserveMonths', { type: 'number', unit: '月', help: '在资金缺口峰值之外额外准备的稳定期运营月数' })}
         ${selectField('筹备成本录入方式', 'preOpeningBudget.mode', [{ value: 'summary', label: '快速总额（适合初筛）' }, { value: 'detailed', label: '明细预算（岗位与服务核算）' }], { help: '切换到明细预算后，团队、物业和行政开办总额由明细自动汇总。' })}
         ${textField('筹备期营销费用', 'project.preOpeningMarketing', { type: 'number', unit: '万元', help: '开业前品牌发布、招商推广、市场预热及媒体费用；营销明细在运营期营销模板中维护' })}
@@ -5540,7 +5573,14 @@ function bindStepInputs() {
         if (value === 'false') value = false;
       }
       const previousCentralAcFee = path === 'revenues.centralAcFee' ? Number(getPath(state.current.model, path) || 0) : null;
+      const previousLeasingPeriodMonths = path === 'project.leasingPeriodMonths' ? Number(getPath(state.current.model, path) || 0) : null;
       setPath(state.current.model, path, value);
+      if (path === 'project.leasingPeriodMonths') {
+        syncPreOpeningMonthsWithLeasingPeriod(state.current.model, previousLeasingPeriodMonths, value);
+        document.querySelectorAll('[data-path^="preOpeningBudget."][data-path$=".months"]').forEach(monthInput => {
+          if (Number(monthInput.value) === Number(previousLeasingPeriodMonths)) monthInput.value = roundDisplayValue(value, 2);
+        });
+      }
       if (path === 'revenues.centralAcFee' && Array.isArray(state.current.model.revenues?.centralAcBuildings)) {
         state.current.model.revenues.centralAcBuildings.forEach(config => {
           if (!config.enabled && Number(config.fee || 0) === previousCentralAcFee) config.fee = Number(value || 0);

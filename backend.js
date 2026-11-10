@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-sharefix12', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-consistency5', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1105,7 +1105,7 @@ const MAINTENANCE_BUDGET_DEFS = [
 ];
 const PREOPENING_DEFS = [
   { label: '首开招商佣金月数', path: 'operations.commissionMonths', unit: '月', scale: 1, value: 1 },
-  { label: '筹备招商期', path: 'project.leasingPeriodMonths', unit: '月', scale: 1, value: 12 },
+  { label: '筹备招商总周期', path: 'project.leasingPeriodMonths', unit: '月', scale: 1, value: 12 },
   { label: '启动资金安全垫', path: 'project.startupReserveMonths', unit: '月', scale: 1, value: 3 },
   { label: '筹备期团队成本', path: 'project.preOpeningTeamCost', unit: '万元', scale: 1, value: 0 },
   { label: '筹备期物业成本', path: 'project.preOpeningPropertyCost', unit: '万元', scale: 1, value: 0 },
@@ -1252,22 +1252,22 @@ function preopeningBudgetTemplate() {
     ['单位社保公积金综合比例（%）', 28, '单位承担的社保和公积金综合比例，正式申报应按属地政策复核'],
     ['招聘培训费率（%）', 2, '按筹备团队工资与单位社保合计计提'],
     ['自营物业招聘培训费率（%）', 2, '用于自营物业工程、保安、保洁岗位'],
-    ['默认筹备月数', 6, '新增岗位或行政月度费用时可参考'],
+    ['默认筹备月数', 12, '新增岗位或行政月度费用默认继承筹备招商总周期'],
   ], [32, 18, 72]);
   addSheet(wb, '筹备团队', [
     ['部门', '岗位', '编制人数', '税前月薪（元/月）', '筹备月数', '岗位职责/说明'],
-    ['项目筹备组', '筹备负责人', 0, 18000, 6, '填写实际编制人数后计入；0表示不纳入'],
-    ['招商部', '招商经理', 0, 12000, 6, '负责首开招商、品牌储备和商务谈判'],
-    ['运营部', '运营经理', 0, 12000, 4, '负责筹备运营制度、动线和租户进场'],
-    ['市场推广部', '市场推广经理', 0, 10000, 4, '负责开业推广、媒体和美陈'],
-    ['财务行政部', '财务行政专员', 0, 9000, 6, '负责预算、合同、人事和行政'],
-    ['物业工程部', '工程机电主管', 0, 9000, 6, '负责工程介入、机电和物业筹备'],
+    ['项目筹备组', '筹备负责人', 0, 18000, 12, '填写实际编制人数后计入；0表示不纳入'],
+    ['招商部', '招商经理', 0, 12000, 12, '负责首开招商、品牌储备和商务谈判'],
+    ['运营部', '运营经理', 0, 12000, 12, '负责筹备运营制度、动线和租户进场'],
+    ['市场推广部', '市场推广经理', 0, 10000, 12, '负责开业推广、媒体和美陈'],
+    ['财务行政部', '财务行政专员', 0, 9000, 12, '负责预算、合同、人事和行政'],
+    ['物业工程部', '工程机电主管', 0, 9000, 12, '负责工程介入、机电和物业筹备'],
   ], [18, 20, 14, 24, 14, 56]);
   addSheet(wb, '物业服务', [
     ['服务类别', '服务模式', '编制人数', '参考月薪（元/月）', '服务月数', '非驻场折算比例（%）', '综合管理费率（%）', '说明'],
-    ['物业工程', '自营（自行招聘）', 0, 8000, 6, 70, 12, '工程介入、机电、消防、强弱电等'],
-    ['保安服务', '第三方常驻外包', 0, 5500, 6, 70, 12, '筹备期门岗、巡逻和现场秩序'],
-    ['保洁服务', '第三方常驻外包', 0, 4500, 6, 70, 12, '筹备期日常保洁和开业前开荒配合'],
+    ['物业工程', '自营（自行招聘）', 0, 8000, 12, 70, 12, '工程介入、机电、消防、强弱电等'],
+    ['保安服务', '第三方常驻外包', 0, 5500, 12, 70, 12, '筹备期门岗、巡逻和现场秩序'],
+    ['保洁服务', '第三方常驻外包', 0, 4500, 12, 70, 12, '筹备期日常保洁和开业前开荒配合'],
   ], [18, 26, 14, 24, 14, 24, 24, 56]);
   addSheet(wb, '物业一次性费用', [
     ['费用项目', '金额（万元）', '说明'],
@@ -1303,6 +1303,7 @@ function parsePreopeningBudgetWorkbook(base64, filename) {
   const warnings = [];
   const budget = {
     mode: 'detailed',
+    monthsVersion: 2,
     team: { socialInsuranceRate: 0.28, recruitmentTrainingRate: 0.02, positions: [] },
     property: { selfRecruitmentRate: 0.02, services: [], oneOffItems: [] },
     admin: { items: [] },
