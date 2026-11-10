@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-flowfunding1';
+import './backend.js?v=20261110-leverage1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.17.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3929,6 +3929,7 @@ function renderResultsStep() {
       ${kpiCard('NOI回报率', fmtPct(s.noiYield), 'NOI / 总投资', kpiClass(s.noiYield))}
       ${kpiCard('静态回收期', s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 1)}年`, '按项目现金流', '')}
     </div>
+    ${renderInvestmentOverviewCard()}
     <div class="dashboard-grid">
       <div class="card"><h3>${fmt(state.result?.annual?.length || state.current?.model?.project?.operationYears || 20)}年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
       <div class="card"><h3>投资构成</h3><div class="donut-wrap"><canvas id="cost-donut"></canvas><div class="donut-legend">${state.result.investmentBreakdown.map((item, i) => `<div class="donut-item"><i style="background:${donutColor(i)}"></i><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)}万</strong></div>`).join('')}</div></div></div>
@@ -3936,6 +3937,7 @@ function renderResultsStep() {
     ${renderOperatingResultCards()}
     ${renderPhaseCostCard()}
     ${renderFundingPlanCard()}
+    ${renderLeverageProfitCard()}
     <div class="analysis-panel">
       <div class="card"><h3>分析结论</h3><ul class="analysis-list">${analysis.bullets.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul></div>
       <div class="card"><h3>建议与下一步</h3>${analysis.recommendations.map((text, i) => `<div class="recommendation"><div class="num">${i + 1}</div><p>${escapeHtml(text)}</p></div>`).join('')}</div>
@@ -3946,6 +3948,53 @@ function renderResultsStep() {
     </div>
     ${renderFloorResultTable()}
     <div class="export-bar"><div><strong>生成汇报材料</strong><span>Excel用于继续分析；PPT用于内部评审和项目汇报。</span></div><div class="export-actions"><button class="btn btn-secondary" id="export-excel">${ICONS.excel}<span>导出Excel</span></button><button class="btn btn-primary" id="export-ppt">${ICONS.ppt}<span>导出PPT汇报</span></button></div></div>`;
+}
+
+function renderInvestmentOverviewCard() {
+  const result = state.result;
+  const s = result?.summary || {};
+  const project = result?.model?.project || {};
+  const investmentRows = result?.investmentBreakdown || [];
+  const landBuildInvestment = investmentRows
+    .filter(item => !['招商及开办', '铺底流动资金'].includes(item.name))
+    .reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const preparationCost = Number(s.preOpeningTeamCost || 0) + Number(s.preOpeningPropertyCost || 0) + Number(s.preOpeningMarketingCost || 0) + Number(s.preOpeningOtherCost || 0) + Number(s.preOpeningCommission || 0);
+  const rightsLabel = PROPERTY_RIGHTS_OPTIONS.find(item => item.value === project.propertyRightsStatus)?.label || '未填写';
+  const statusLabel = BUILDING_STATUS_OPTIONS.find(item => item.value === project.buildingStatus)?.label || '未填写';
+  const checks = result?.confidenceChecks || [];
+  const confidenceScore = Number(s.confidenceScore || 0);
+  const confidenceClass = confidenceScore >= 85 ? 'high' : confidenceScore >= 60 ? 'medium' : 'low';
+  return `<div class="card investment-overview-card">
+    <div class="investment-overview-head"><div><span class="eyebrow">Investment decision overview</span><h3>项目投资判断总览</h3><p>五个问题快速回答：项目条件、建设投入、启动资金、运营利润和整体回报。</p></div><div class="confidence-score ${confidenceClass}"><strong>${fmt(confidenceScore)}</strong><span>/100</span><em>测算数据完备度 · ${escapeHtml(s.confidenceLevel || '偏低')}</em></div></div>
+    <div class="investment-overview-grid">
+      <div><span>01 项目条件</span><strong>${escapeHtml(s.projectName || '未命名项目')}</strong><small>${escapeHtml(rightsLabel)} · ${escapeHtml(statusLabel)}<br>${fmtArea(s.grossFloorArea)}㎡ / 可租 ${fmtArea(s.leasableArea)}㎡</small></div>
+      <div><span>02 土地与建设投入</span><strong>${fmt(landBuildInvestment, 2)} 万元</strong><small>土地、前期、建安、装修、设备和预备费</small></div>
+      <div><span>03 筹备与启动资金</span><strong>${fmt(s.recommendedStartupCapital, 2)} 万元</strong><small>筹备期非工程费用 ${fmt(preparationCost, 2)} 万元；资金缺口峰值 ${fmt(s.peakEquityFundingRequirement, 2)} 万元</small></div>
+      <div><span>04 开业后运营利润</span><strong>${fmt(s.stableNoi, 2)} 万元/年</strong><small>稳定收入 ${fmt(s.stableRevenue, 2)} 万元；NOI率 ${fmtPct(s.stableNoiMargin)}</small></div>
+      <div><span>05 项目整体收益</span><strong>${s.projectIrr == null ? '不适用' : fmtPct(s.projectIrr)}</strong><small>NPV ${fmt(s.projectNpv, 2)} 万元；回收期 ${s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 2)}年`}</small></div>
+    </div>
+    <div class="confidence-check-grid">${checks.map(item => `<div class="${item.complete ? 'complete' : 'pending'}"><span>${item.complete ? '✓' : '!'}</span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail)}</small></div></div>`).join('')}</div>
+    <div class="overview-disclaimer">完备度表示当前测算数据是否充分，不代表项目必然盈利。正式决策仍需补充合同、市场调研、税务意见、工程概算和融资条件。</div>
+  </div>`;
+}
+
+function renderLeverageProfitCard() {
+  const s = state.result?.summary || {};
+  const profitClass = Number(s.equityNetCashProfit || 0) >= 0 ? 'positive' : 'negative';
+  return `<div class="card leverage-profit-card">
+    <div class="leverage-head"><div><span class="eyebrow">Capital leverage & profit</span><h3>资本金杠杆与整体盈利</h3><p>用自有资本金撬动项目总投资，并区分项目净现金收益与股东资本金净收益。</p></div><div class="leverage-formula-pill">${fmt(s.equityCapital, 2)} 万元资本金 × ${fmt(s.leverageMultiple, 2)} 倍杠杆 → 总投 ${fmt(s.totalInvestment, 2)} 万元</div></div>
+    <div class="leverage-kpis">
+      <div><span>自有资本金</span><strong>${fmt(s.equityCapital, 2)}</strong><em>万元</em></div>
+      <div><span>债务融资</span><strong>${fmt(s.loanAmount, 2)}</strong><em>万元</em></div>
+      <div><span>杠杆倍数</span><strong>${fmt(s.leverageMultiple, 2)}</strong><em>倍</em></div>
+      <div><span>项目净现金收益</span><strong class="${profitClass}">${fmt(s.projectNetCashProfit, 2)}</strong><em>万元</em></div>
+      <div><span>资本金净收益</span><strong class="${profitClass}">${fmt(s.equityNetCashProfit, 2)}</strong><em>万元</em></div>
+      <div><span>资本金回报倍数</span><strong>${fmt(s.equityReturnMultiple, 2)}</strong><em>倍</em></div>
+      <div><span>资本金净收益率</span><strong class="${profitClass}">${fmtPct(s.equityProfitRate)}</strong><em>全周期现金口径</em></div>
+      <div><span>股权IRR</span><strong>${s.equityIrr == null ? '不适用' : fmtPct(s.equityIrr)}</strong><em>融资后</em></div>
+    </div>
+    <div class="leverage-note">示例理解：若自有资本金300万元、项目总投3亿元，则杠杆倍数为100倍。系统会进一步计算项目整体盈利，以及扣除融资、利息和还款后的资本金净收益。杠杆越高，收益放大和偿债风险也会同时放大。</div>
+  </div>`;
 }
 
 function renderFundingPlanCard() {

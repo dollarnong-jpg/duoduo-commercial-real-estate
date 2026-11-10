@@ -1463,6 +1463,13 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     cash_flow_break_even_month = next((row.get("month") for row in monthly_funding_plan[peak_month_index + 1:] if as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_month_index >= 0 else None
     peak_annual_index = min(range(len(annual_rows)), key=lambda index: as_float(annual_rows[index].get("cumulativeProjectCashFlow"))) if annual_rows else -1
     cash_flow_break_even_row = next((row for row in annual_rows[peak_annual_index + 1:] if row.get("opYear", 0) > 0 and as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_annual_index >= 0 else None
+    equity_investment = max(0.0, total_investment - loan_amount)
+    project_net_cash_profit = sum(project_cash_flows)
+    equity_net_cash_profit = sum(equity_cash_flows)
+    leverage_multiple = safe_div(total_investment, equity_investment)
+    project_return_multiple = safe_div(total_investment + project_net_cash_profit, total_investment)
+    equity_return_multiple = safe_div(equity_investment + equity_net_cash_profit, equity_investment)
+    equity_profit_rate = safe_div(equity_net_cash_profit, equity_investment)
     service_breakdown_base_total = sum(as_float(item.get("serviceCost")) for item in property_service_base)
     service_breakdown_stable_total = sum(as_float(stable_row.get(item.get("costField"))) for item in property_service_base)
     service_breakdown_scale = safe_div(service_breakdown_stable_total, service_breakdown_base_total) if staff_cost_mode == "organization" else 0.0
@@ -1579,6 +1586,52 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     sensitivity = build_sensitivity(model, discount_rate) if include_sensitivity else {"rentSteps": [], "capexSteps": [], "npvMatrix": [], "discountRate": discount_rate}
     break_even = build_break_even(model, discount_rate) if include_sensitivity else {"rentMultiplier": None, "rentUplift": None, "capexMultiplier": None, "capexReduction": None}
     market_summary = summarize_market_comps(model, average_rent_leasable)
+    confidence_checks = [
+        {
+            "name": "项目基本条件",
+            "weight": 15,
+            "complete": bool(project.get("location") and gba > 0 and project.get("propertyRightsStatus") and project.get("buildingStatus")),
+            "detail": "项目位置、面积、产权状态和建设/经营状态",
+        },
+        {
+            "name": "土地与建设投资",
+            "weight": 15,
+            "complete": as_float(costs.get("constructionRate")) > 0 and as_float(costs.get("fitoutRate")) > 0 and as_float(costs.get("equipmentRate")) > 0,
+            "detail": "建安、装修、设备和工程其他费用单价",
+        },
+        {
+            "name": "商铺收益依据",
+            "weight": 15,
+            "complete": (calculation_mode == "detailed" and shops_count >= 5) or (calculation_mode == "preliminary" and floor_count >= 2),
+            "detail": "楼层均价或一铺一价、面积和租金假设",
+        },
+        {
+            "name": "市场与竞品租金",
+            "weight": 15,
+            "complete": int(market_summary.get("count", 0) or 0) >= 3 or bool(model.get("market", {}).get("lastAnalysis")),
+            "detail": "周边3–5公里商业分析和竞品租金样本",
+        },
+        {
+            "name": "筹备期资金预算",
+            "weight": 10,
+            "complete": (preopening_team + preopening_property + preopening_marketing + preopening_other_direct + commission) > 0,
+            "detail": "筹备团队、物业、招商佣金、营销及其他开办费",
+        },
+        {
+            "name": "运营期成本预算",
+            "weight": 15,
+            "complete": structured_headcount > 0 and structured_office_cost > 0 and annual_marketing_total > 0 and structured_maintenance_cost > 0,
+            "detail": "组织架构、办公、招商、营销和维保预算",
+        },
+        {
+            "name": "税费与融资参数",
+            "weight": 15,
+            "complete": as_float(taxes.get("corporateTax")) > 0 and as_float(valuation.get("discountRate")) > 0 and as_float(taxes.get("vatRent")) > 0,
+            "detail": "增值税、所得税、折现率和融资假设",
+        },
+    ]
+    confidence_score = sum(item["weight"] for item in confidence_checks if item["complete"])
+    confidence_level = "较高" if confidence_score >= 85 else "中等" if confidence_score >= 60 else "偏低"
 
     return {
         "model": model,
@@ -1621,6 +1674,13 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "cashFlowBreakEvenMonth": cash_flow_break_even_month,
             "cashFlowBreakEvenYear": cash_flow_break_even_row.get("calendarYear") if cash_flow_break_even_row else None,
             "equityInvestment": total_investment - loan_amount,
+            "equityCapital": equity_investment,
+            "leverageMultiple": leverage_multiple,
+            "projectNetCashProfit": project_net_cash_profit,
+            "equityNetCashProfit": equity_net_cash_profit,
+            "projectReturnMultiple": project_return_multiple,
+            "equityReturnMultiple": equity_return_multiple,
+            "equityProfitRate": equity_profit_rate,
             "loanAmount": loan_amount,
             "investmentPerGba": safe_div(total_investment * 10000, gba),
             "investmentPerGla": safe_div(total_investment * 10000, gla),
@@ -1678,7 +1738,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "dynamicPayback": payback_dynamic,
             "exitValue": sum(as_float(row.get("exitValue")) for row in annual_rows),
             "status": analysis["status"],
+            "confidenceScore": confidence_score,
+            "confidenceLevel": confidence_level,
         },
+        "confidenceChecks": confidence_checks,
         "investmentBreakdown": investment_breakdown,
         "phaseCostBreakdown": phase_cost_breakdown,
         "phaseCashFlowSummary": phase_cash_flow_summary,

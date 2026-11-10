@@ -609,6 +609,43 @@ a { color: inherit; }
 .funding-monthly-table { min-width:760px; }
 .funding-monthly-table td.pos { color:var(--green); }
 .funding-monthly-table td.neg { color:#a4493f; }
+.investment-overview-card { margin-bottom:16px; }
+.investment-overview-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+.investment-overview-head h3 { margin:4px 0 5px; }
+.investment-overview-head p { margin:0; color:var(--muted); font-size:var(--fs-9); }
+.confidence-score { flex:0 0 180px; padding:12px 14px; border-radius:12px; background:#f7faf8; border:1px solid #e1e9e5; text-align:right; }
+.confidence-score strong { color:var(--navy); font-size:var(--fs-25); }
+.confidence-score span { color:var(--muted); font-size:var(--fs-10); }
+.confidence-score em { display:block; margin-top:3px; color:var(--muted); font-size:var(--fs-8); font-style:normal; }
+.confidence-score.high { border-color:#b8d8c9; background:#edf7f1; }
+.confidence-score.medium { border-color:#e1cf9f; background:#fbf5e8; }
+.confidence-score.low { border-color:#e3b8b1; background:#fff2ef; }
+.investment-overview-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin:14px 0; }
+.investment-overview-grid > div { padding:12px; border:1px solid #e1e9e5; border-radius:10px; background:#fbfcfa; }
+.investment-overview-grid span { display:block; color:var(--green); font-size:var(--fs-8); font-weight:700; }
+.investment-overview-grid strong { display:block; margin-top:6px; color:var(--navy); font-size:var(--fs-13); }
+.investment-overview-grid small { display:block; margin-top:5px; color:var(--muted); font-size:var(--fs-8); line-height:1.55; }
+.confidence-check-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+.confidence-check-grid > div { display:flex; align-items:flex-start; gap:7px; padding:8px 9px; border-radius:8px; border:1px solid #e3e9e5; background:#fff; }
+.confidence-check-grid > div > span { display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center; border-radius:50%; color:#fff; font-size:var(--fs-8); font-weight:800; flex:0 0 18px; background:#b5a06a; }
+.confidence-check-grid > div.complete > span { background:var(--green); }
+.confidence-check-grid > div.pending > span { background:#b86658; }
+.confidence-check-grid strong { display:block; color:var(--navy); font-size:var(--fs-9); }
+.confidence-check-grid small { display:block; margin-top:2px; color:var(--muted); font-size:var(--fs-8); line-height:1.4; }
+.overview-disclaimer { margin-top:10px; padding:9px 10px; border-radius:8px; background:#fbf5e8; color:#76591c; font-size:var(--fs-8); line-height:1.55; }
+.leverage-profit-card { margin-bottom:16px; }
+.leverage-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.leverage-head h3 { margin:4px 0 5px; }
+.leverage-head p { margin:0; color:var(--muted); font-size:var(--fs-9); }
+.leverage-formula-pill { flex:0 0 auto; padding:10px 12px; border-radius:10px; background:var(--green-soft); color:var(--green); font-size:var(--fs-9); font-weight:700; }
+.leverage-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:14px; }
+.leverage-kpis > div { padding:11px 12px; border:1px solid #e3e9e5; border-radius:10px; background:#fbfcfa; }
+.leverage-kpis span { display:block; color:var(--muted); font-size:var(--fs-8); }
+.leverage-kpis strong { display:block; margin-top:5px; color:var(--navy); font-size:var(--fs-15); }
+.leverage-kpis strong.positive { color:var(--green); }
+.leverage-kpis strong.negative { color:#a4493f; }
+.leverage-kpis em { display:block; margin-top:3px; color:var(--muted); font-size:var(--fs-8); font-style:normal; }
+.leverage-note { margin-top:10px; padding:10px 11px; border-radius:8px; background:#fbf5e8; color:#76591c; font-size:var(--fs-8); line-height:1.6; }
 .org-structure-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0 0; padding:10px 12px; border:1px solid #d8e5de; border-radius:10px; background:#f4f9f6; }
 .org-structure-tools span { color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
 .org-structure-tools .btn { flex:0 0 auto; }
@@ -986,9 +1023,9 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .payroll-result-card { grid-column:1 / -1; }
 .marketing-allocation-card { margin-bottom:16px; }
 @media (max-width:760px) { .payroll-summary-grid { grid-template-columns:1fr 1fr; } }
-@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid { grid-template-columns:1fr 1fr; } .phase-cost-grid { grid-template-columns:1fr; } }
+@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid, .investment-overview-grid { grid-template-columns:1fr 1fr; } .phase-cost-grid { grid-template-columns:1fr; } .leverage-head { flex-direction:column; } .leverage-kpis { grid-template-columns:1fr 1fr; } .confidence-check-grid { grid-template-columns:1fr 1fr; } }
 @media (max-width:900px) { .share-direct-row, .compare-select-grid { grid-template-columns:1fr; } .compare-insight-grid { grid-template-columns:1fr; } }
-@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid { grid-template-columns:1fr; } .compare-summary-head { grid-template-columns:1fr; text-align:left; } .compare-summary-head > div:last-child { justify-content:flex-start; text-align:left; } .project-intro-actions { width:100%; } .project-intro-actions .btn { flex:1; } }
+@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid, .investment-overview-grid, .leverage-kpis, .confidence-check-grid { grid-template-columns:1fr; } .compare-summary-head { grid-template-columns:1fr; text-align:left; } .compare-summary-head > div:last-child { justify-content:flex-start; text-align:left; } .project-intro-actions { width:100%; } .project-intro-actions .btn { flex:1; } }
 .market-detection-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:9px; margin:18px 0; }
 .market-detection-stats > div { padding:12px; border-radius:11px; border:1px solid var(--line); background:#fffdf9; }
 .market-detection-stats span { display:block; color:var(--muted); font-size: var(--fs-8); }

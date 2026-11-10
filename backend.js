@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-flowfunding1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-leverage1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1475,6 +1475,14 @@ function exportExcel(result) {
     ['资本金缺口峰值（万元）', s.peakEquityFundingRequirement || 0],
     ['累计现金流转正月份', s.cashFlowBreakEvenMonth || '未在月度计划内转正'],
     ['累计现金流转正年份', s.cashFlowBreakEvenYear || '未在测算期内转正'],
+    ['自有资本金（万元）', s.equityCapital || 0],
+    ['债务融资（万元）', s.loanAmount || 0],
+    ['杠杆倍数', s.leverageMultiple || 0],
+    ['项目净现金收益（万元）', s.projectNetCashProfit || 0],
+    ['资本金净收益（万元）', s.equityNetCashProfit || 0],
+    ['资本金回报倍数', s.equityReturnMultiple || 0],
+    ['资本金净收益率', s.equityProfitRate || 0],
+    ['股权IRR', s.equityIrr == null ? '不适用' : s.equityIrr],
     [''],
     ['阶段', '项目净现金流（万元）', '资本金净现金流（万元）'],
     ...(result.phaseCashFlowSummary || []).map(x => [x.phase, x.projectCashFlow, x.equityCashFlow]),
@@ -1659,7 +1667,7 @@ async function exportPPT(result) {
   slide.addText(`金额单位：万元/年。月薪按税前应发口径；社保公积金按税前月薪×12个月×配置比例估算。第三方综合管理费合计 ${(result.summary.annualOutsourcedManagementFee || 0).toFixed(2)} 万元；比例、基数及物业服务合同须按属地政策和实际条款复核。`, { x: 0.55, y: 6.55, w: 12.2, h: 0.32, fontFace: 'Microsoft YaHei', fontSize: 7.2, color: '66736F' });
 
   slide = pptx.addSlide();
-  addSlideTitle(slide, '项目启动资金与阶段现金流', `建议启动资金 ${(result.summary.recommendedStartupCapital || 0).toFixed(2)} 万元｜建设期 ${result.summary.constructionPeriodMonths || 0} 个月｜筹备招商期 ${result.summary.leasingPeriodMonths || 0} 个月`);
+  addSlideTitle(slide, '项目启动资金与资本金杠杆', `建议启动资金 ${(result.summary.recommendedStartupCapital || 0).toFixed(2)} 万元｜资本金 ${(result.summary.equityCapital || 0).toFixed(2)} 万元×${(result.summary.leverageMultiple || 0).toFixed(2)}倍｜资本金净收益 ${(result.summary.equityNetCashProfit || 0).toFixed(2)} 万元`);
   const fundingCards = [
     ['建议启动资金', result.summary.recommendedStartupCapital || 0, '含资金缺口峰值及安全垫'],
     ['项目资金缺口峰值', result.summary.peakProjectFundingRequirement || 0, '项目口径'],
