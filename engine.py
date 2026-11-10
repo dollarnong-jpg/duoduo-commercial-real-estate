@@ -203,6 +203,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "rampY1": 0.80,
             "rampY2": 0.90,
             "annualCostAdjustments": {},
+            "leasingAdjustmentPeriods": [],
             "annualCostOverrides": {
                 "propertyOps": 0.0,
                 "energy": 0.0,
@@ -1242,6 +1243,29 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         extra_cost = as_float(adjustment.get("extraCost"))
         return leasing_factor, operations_factor, extra_cost
 
+    leasing_adjustment_periods: list[dict[str, Any]] = []
+    raw_leasing_periods = operations.get("leasingAdjustmentPeriods") if isinstance(operations.get("leasingAdjustmentPeriods"), list) else []
+    for index, period in enumerate(raw_leasing_periods):
+        if not isinstance(period, dict):
+            continue
+        start_year = min(operation_years, max(1, int(as_float(period.get("startYear"), 1))))
+        end_year = max(start_year, int(as_float(period.get("endYear"), start_year)))
+        leasing_adjustment_periods.append({
+            "index": index,
+            "id": str(period.get("id") or f"leasing_stage_{index + 1}"),
+            "name": str(period.get("name") or f"招商调整期{index + 1}").strip() or f"招商调整期{index + 1}",
+            "startYear": start_year,
+            "endYear": min(end_year, operation_years),
+            "rentAdjustmentRate": as_float(period.get("rentAdjustmentRate")),
+            "targetOccupancy": min(1.0, max(0.0, as_float(period.get("targetOccupancy")))),
+            "oneOffLeasingCost": max(0.0, as_float(period.get("oneOffLeasingCost"))),
+            "note": str(period.get("note") or ""),
+        })
+    leasing_adjustment_periods.sort(key=lambda item: (item["startYear"], item["endYear"], item["index"]))
+
+    def leasing_stage_for_year(operation_year: int) -> dict[str, Any] | None:
+        return next((period for period in leasing_adjustment_periods if period["startYear"] <= operation_year <= period["endYear"]), None)
+
     for idx in range(total_periods):
         period = idx + 1
         op_year = idx - construction_years - leasing_years + 1
@@ -1296,17 +1320,22 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             annual_rows[-1]["cumulativeEquityCashFlow"] = cumulative_equity
             continue
 
+        leasing_stage = leasing_stage_for_year(op_year)
         occupancy = occupancy_for_year(op_year, operations)
+        if leasing_stage and leasing_stage["targetOccupancy"] > 0:
+            occupancy = leasing_stage["targetOccupancy"]
         free_factor = 1 - as_float(operations.get("rentFreeMonths")) / 12 if op_year == 1 else 1
         growth_mode = str(formulas.get("rentGrowthMode") or "compound")
         rent_growth_periods = op_year - 1
-        rent_growth_factor = growth_factor_for_year(
+        base_rent_growth_factor = growth_factor_for_year(
             op_year,
             growth_mode,
             as_float(operations.get("rentGrowth")),
             as_float(operations.get("rentStepYears"), 3.0),
             as_float(operations.get("rentStepRate")),
         )
+        stage_rent_adjustment_factor = 1 + as_float(leasing_stage.get("rentAdjustmentRate")) if leasing_stage else 1.0
+        rent_growth_factor = base_rent_growth_factor * stage_rent_adjustment_factor
         sales_growth_mode = growth_mode if growth_mode in {"simple", "compound", "none"} else "compound"
         sales_growth_factor = growth_factor_for_year(
             op_year,
@@ -1419,10 +1448,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         cleaning_team *= operations_adjustment_factor
         recruitment_training *= operations_adjustment_factor
         leasing *= leasing_adjustment_factor
-        operating_cost_gross = property_ops + energy + staff + admin + leasing + marketing + repair + insurance + bad_debt + other_opex + owner_rent + extra_operating_cost
+        leasing_stage_cost = leasing_stage["oneOffLeasingCost"] if leasing_stage and op_year == leasing_stage["startYear"] else 0.0
+        operating_cost_gross = property_ops + energy + staff + admin + leasing + marketing + repair + insurance + bad_debt + other_opex + owner_rent + extra_operating_cost + leasing_stage_cost
         input_vat = min(
             output_vat,
-            (property_ops + energy + staff + admin + leasing + marketing + repair + insurance + other_opex + owner_rent)
+            (property_ops + energy + staff + admin + leasing + marketing + repair + insurance + other_opex + owner_rent + leasing_stage_cost)
             * as_float(taxes.get("inputVatShare"))
             * safe_div(as_float(taxes.get("inputVatRate")), 1 + as_float(taxes.get("inputVatRate"))),
         )
@@ -1508,6 +1538,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "commercialManagementRevenue": commercial_management_gross,
                 "centralAcRevenue": central_ac_gross,
                 "rentGrowthFactor": rent_growth_factor,
+                "baseRentGrowthFactor": base_rent_growth_factor,
+                "leasingStageIndex": leasing_stage["index"] if leasing_stage else None,
+                "leasingStageName": leasing_stage["name"] if leasing_stage else "",
+                "leasingStageRentFactor": stage_rent_adjustment_factor,
+                "leasingStageTargetOccupancy": leasing_stage["targetOccupancy"] if leasing_stage else 0.0,
+                "leasingStageCost": leasing_stage_cost,
                 "propertyFeeGrowthFactor": property_fee_growth_factor,
                 "commercialManagementGrowthFactor": commercial_management_growth_factor,
                 "centralAcGrowthFactor": central_ac_growth_factor,
@@ -1598,6 +1634,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_owner_land_rent_cost = as_float(stable_row.get("ownerLandRent"))
     stable_owner_property_rent_cost = as_float(stable_row.get("ownerPropertyRent"))
     stable_extra_operating_cost = as_float(stable_row.get("extraOperatingCost"))
+    stable_leasing_stage_name = str(stable_row.get("leasingStageName") or "")
+    stable_leasing_stage_cost = as_float(stable_row.get("leasingStageCost"))
+    stable_leasing_stage_rent_factor = as_float(stable_row.get("leasingStageRentFactor"), 1.0)
     stable_operating_cost = as_float(stable_row.get("operatingCost"))
     stable_taxes = as_float(stable_row.get("taxes"))
     stable_output_vat = as_float(stable_row.get("outputVat"))
@@ -1787,6 +1826,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "土地租赁支出", "value": stable_owner_land_rent_cost},
         {"name": "物业租赁支出", "value": stable_owner_property_rent_cost},
         {"name": "年度成本调整额", "value": stable_extra_operating_cost},
+        {"name": "阶段招商调整成本", "value": stable_leasing_stage_cost},
         {"name": "税费", "value": stable_taxes},
     ]
     operating_cost_share_total = sum(max(0.0, as_float(item.get("value"))) for item in operating_cost_breakdown)
@@ -1951,6 +1991,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableOfficeCost": stable_office_cost,
             "monthlyOfficeCost": stable_office_cost / 12,
             "stableLeasingCost": stable_leasing_cost,
+            "stableLeasingStageName": stable_leasing_stage_name,
+            "stableLeasingStageCost": stable_leasing_stage_cost,
+            "stableLeasingStageRentFactor": stable_leasing_stage_rent_factor,
             "annualChannelFee": stable_channel_fee_annual,
             "monthlyChannelFee": stable_channel_fee_annual / 12,
             "channelCalculationMode": channel_leasing_item.get("calculationMode", "amount"),
@@ -2123,6 +2166,23 @@ def build_diagnostics(
     items: list[dict[str, str]] = []
     shops = model.get("shops", [])
     mode = str(model.get("calculationMode") or "preliminary")
+    leasing_periods = model.get("operations", {}).get("leasingAdjustmentPeriods", [])
+    if isinstance(leasing_periods, list):
+        valid_periods = []
+        for index, period in enumerate(leasing_periods):
+            if not isinstance(period, dict):
+                continue
+            start_year = int(as_float(period.get("startYear"), 1))
+            end_year = int(as_float(period.get("endYear"), start_year))
+            operation_years = int(as_float(model.get("project", {}).get("operationYears"), 20))
+            if start_year < 1 or end_year < start_year or start_year > operation_years:
+                items.append({"level": "warning", "title": f"招商调整期{index + 1}年份无效", "detail": "请确保起止运营年在项目运营期内，且结束年不早于起始年。"})
+                continue
+            valid_periods.append((start_year, end_year, index))
+        valid_periods.sort()
+        for previous, current in zip(valid_periods, valid_periods[1:]):
+            if current[0] <= previous[1]:
+                items.append({"level": "warning", "title": "招商调整期存在重叠", "detail": f"第{previous[2] + 1}段与第{current[2] + 1}段重叠，系统按起始年较早的规则优先计算；建议拆分为连续但不重叠的阶段。"})
     if mode == "preliminary":
         if not floor_calc:
             items.append({"level": "error", "title": "尚未建立楼层测算", "detail": "请先添加楼层，并填写建筑面积、可租赁面积和楼层平均月租金。"})

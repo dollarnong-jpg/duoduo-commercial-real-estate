@@ -810,6 +810,9 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .share-segment-details summary { cursor:pointer; color:var(--navy); font-size:var(--fs-10); font-weight:700; }
 .share-segment-details p { margin:8px 0; color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
 .share-segment-grid { display:flex; flex-wrap:wrap; gap:8px; }
+.leasing-stage-table { min-width:1180px; }
+.leasing-stage-table td:first-child { min-width:150px; }
+.leasing-stage-table td:last-child { min-width:64px; }
 .import-share-modal { width:min(680px,100%); }
 .compare-projects-modal { width:min(1180px,100%); }
 .compare-select-grid { display:grid; grid-template-columns:1fr 1fr auto; align-items:end; gap:10px; }

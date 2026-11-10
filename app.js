@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-sharefix6';
+import './backend.js?v=20261110-stage3';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.3';
+const APP_VERSION = '1.21.4';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -84,7 +84,7 @@ const FIELD_FORMULAS = {
   'operations.stableOccupancy': { title: '稳定期出租率', formula: '稳定期出租率 = 输入值；运营年 ≥ 稳定起始年时启用', functions: ['IF'], role: '决定稳定期NOI和退出价值。' },
   'operations.stableYear': { title: '稳定期起始年', formula: 'IF(运营年 < 稳定期起始年, 第二年出租率, 稳定期出租率)', functions: ['IF'], role: '控制出租率爬坡持续时间。' },
   'operations.rentFreeMonths': { title: '首年免租', formula: '首年有效租金 = 满租租金 × 出租率 ×（1 - 免租月数 ÷ 12）', functions: ['IF'], role: '仅影响首个运营年，不改变合同租金单价。' },
-  'operations.rentGrowth': { title: '租金年递增率', formula: '每年复利：租金 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：租金 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '用于每年复利或每年单利递增；阶梯递增使用单独的递增周期和递增率。' },
+  'operations.rentGrowth': { title: '租金年递增率', formula: '每年复利：租金 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：租金 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '用于基础年度递增；阶段性招商调整会再叠加在基础递增因子之上。' },
   'operations.rentStepYears': { title: '租金递增周期', formula: '阶梯递增：每 N 个运营年上调一次租金', functions: ['INT', 'POWER'], role: '例如填3，表示第1—3年不变，第4年开始按阶梯递增率上调。' },
   'operations.rentStepRate': { title: '租金阶梯递增率', formula: '租金因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '仅在“每N年阶梯递增”模式下生效。' },
   'operations.propertyFeeGrowth': { title: '物业管理费年递增率', formula: '每年复利：物业费 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：物业费 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '物业管理费与租金分别递增，可设置不同增长方式。' },
@@ -262,7 +262,7 @@ const FORMULA_GUIDES = {
     adjust: '以造价咨询、工程量清单、已签合同或同类项目对标为依据。先调整建安和装修单价，再调整预备费和非必要公共投入，比较投资变化对NPV和IRR的影响。'
   },
   operations: {
-    how: '先确定出租率和租金增长，再按面积、业态系数、铺位条件计算租金；管理费单价按独立的管理费递增规则逐年计算，再叠加停车和多经收入。运营成本按面积、单价、出租率和爬坡系数计算，最后得到NOI和年度现金流。',
+    how: '先确定出租率和基础租金增长，再按面积、业态系数、铺位条件计算租金；阶段性招商调整期可在此基础上叠加品牌升级、业态优化或换租后的租金提升和目标出租率。管理费单价按独立规则逐年计算，再叠加停车和多经收入。运营成本按面积、单价、出租率和爬坡系数计算，最后得到NOI和年度现金流。',
     adjust: '出租率按招商计划，租金和管理费分别按合同递增条款设置。每年复利/单利适合逐年调整，每N年阶梯递增适合“每3年上调5%”之类的合同。每次只调整一个变量，并比较NPV敏感性结果。'
   },
   taxes: {
@@ -369,6 +369,7 @@ const TERM_DEFINITIONS = {
   '扣点率': { category: '招商租赁', definition: '联营扣点收入占租户销售额的比例。', why: '扣点率决定销售增长能在多大程度上转化为项目收入。', how: '先在联营基准面板选择购物中心、百货或奥莱行业常规，再结合本地品牌谈判、同类商场扣点和租户承受能力调整。系统给出的是行业区间与地区修正，不是品牌实测流水。' },
   '销售基数': { category: '招商租赁', definition: '用于测算联营扣点收入的单位面积月销售额参考值。', why: '销售基数越高，在相同扣点率下项目收入越高。', how: '系统按业态行业常规、项目城市能级及3–5公里商业侦测做初步修正；正式决策应再以同类项目、品牌方流水或授权市场数据校准。' },
   '出租率': { category: '招商租赁', definition: '已出租面积或已营业面积占可租赁面积的比例。', why: '出租率同时影响租金、物业费、停车和运营成本。', how: '首年、爬坡期和稳定期应分别设置，结合招商计划和同类项目开业爬坡情况。' },
+  '阶段性招商调整期': { category: '招商租赁', definition: '在运营期内为品牌升级、业态优化或租约到期换租设置的阶段性租金、出租率和招商投入调整规则。', why: '商业项目租金通常不是一条直线增长，主动调整业态和品牌后，租金可能出现阶段性跃升。', how: '设置起止运营年、租金调整幅度、目标出租率和一次性招商成本；租金调整幅度会叠加在正常年度递增之上，结果自动进入NOI、IRR和NPV。' },
   '免租期': { category: '招商租赁', definition: '租户在合同开始阶段无需支付租金的月数。', why: '免租期会减少首年现金流，但不一定降低合同租金单价。', how: '按装修期和招商谈判填写，并关注免租期后的现金流恢复。' },
   '招商佣金': { category: '招商租赁', definition: '支付给招商团队、渠道或代理机构的租赁成交佣金。', why: '属于招商成本，影响项目总投资和运营期现金流。', how: '区分首开佣金、续租佣金和渠道年度预算，避免重复计算。' },
   '业主租金': { category: '招商租赁', definition: '项目运营方向物业业主支付的租赁费用，常见于租赁经营、轻资产和存量商业项目。', why: '业主租金是运营期固定现金支出，会直接降低NOI；业主租金上涨可能显著压缩项目收益。', how: '按合同录入月租金、支付月数、递增方式和递增率，并核对免租期、支付节奏、发票税率和解约条款。' },
@@ -3965,6 +3966,34 @@ function bindPreOpeningActions() {
 function bindOperationsBudgets() {
   const model = state.current.model;
   const budgetFile = document.getElementById('budget-file');
+  document.querySelectorAll('[data-add-leasing-stage]').forEach(button => button.addEventListener('click', () => {
+    model.operations ||= {};
+    model.operations.leasingAdjustmentPeriods ||= [];
+    const operationYears = Math.max(1, Number(model.project?.operationYears || 20));
+    const stableYear = Math.max(1, Number(model.operations.stableYear || 3));
+    const startYear = Math.min(operationYears, stableYear + 1);
+    model.operations.leasingAdjustmentPeriods.push({
+      id: crypto.randomUUID(),
+      name: `第${model.operations.leasingAdjustmentPeriods.length + 1}次招商调整期`,
+      startYear,
+      endYear: Math.min(operationYears, startYear + 2),
+      rentAdjustmentRate: 0.05,
+      targetOccupancy: Number(model.operations.stableOccupancy || 0.94),
+      oneOffLeasingCost: 0,
+      note: '品牌升级、业态优化或到期换租',
+    });
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  }));
+  document.querySelectorAll('[data-remove-leasing-stage]').forEach(button => button.addEventListener('click', () => {
+    model.operations?.leasingAdjustmentPeriods?.splice(Number(button.dataset.removeLeasingStage), 1);
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  }));
   document.getElementById('download-budget-template')?.addEventListener('click', () => downloadFile('/api/templates/operating-budget', '商业地产运营成本预算导入模板.xlsx'));
   document.getElementById('choose-budget-file')?.addEventListener('click', () => budgetFile.click());
   budgetFile?.addEventListener('change', () => budgetFile.files[0] && importOperatingBudget(budgetFile.files[0]));
@@ -4262,6 +4291,66 @@ function centralAcBuildingAreas(model) {
   return areas;
 }
 
+function normalizedLeasingAdjustmentPeriods(model) {
+  const operations = model.operations || (model.operations = {});
+  operations.leasingAdjustmentPeriods = Array.isArray(operations.leasingAdjustmentPeriods) ? operations.leasingAdjustmentPeriods : [];
+  const operationYears = Math.max(1, Number(model.project?.operationYears || 20));
+  return operations.leasingAdjustmentPeriods.map((period, index) => {
+    const startYear = Math.min(operationYears, Math.max(1, Number(period.startYear || Math.min(operationYears, Number(operations.stableYear || 3) + 1))));
+    return {
+      ...period,
+      id: period.id || `leasing_stage_${index + 1}`,
+      name: period.name || `招商调整期${index + 1}`,
+      startYear,
+      endYear: Math.min(operationYears, Math.max(startYear, Number(period.endYear || startYear + 2))),
+      rentAdjustmentRate: Number(period.rentAdjustmentRate || 0),
+      targetOccupancy: Math.min(1, Math.max(0, Number(period.targetOccupancy || 0))),
+      oneOffLeasingCost: Math.max(0, Number(period.oneOffLeasingCost || 0)),
+      note: period.note || '',
+    };
+  });
+}
+
+function frontendRentGrowthFactor(model, opYear) {
+  const formulas = model.formulas || {};
+  const operations = model.operations || {};
+  const mode = formulas.rentGrowthMode || 'compound';
+  const periods = Math.max(0, Number(opYear || 1) - 1);
+  if (mode === 'none') return 1;
+  if (mode === 'simple') return 1 + Number(operations.rentGrowth || 0) * periods;
+  if (mode === 'step') return Math.pow(1 + Number(operations.rentStepRate || 0), Math.floor(periods / Math.max(1, Math.floor(Number(operations.rentStepYears || 3)))));
+  return Math.pow(1 + Number(operations.rentGrowth || 0), periods);
+}
+
+function renderLeasingAdjustmentSection(model, preview) {
+  const periods = normalizedLeasingAdjustmentPeriods(model);
+  const baseAverageRent = Number(preview?.summary?.averageRent || estimatedProjectAverageRent(model, preview) || 0);
+  return `<div class="subsection-heading" style="margin-top:22px"><div><strong>阶段性招商调整期</strong><span>在正常年度递增之外，按运营阶段统一调整租金、出租率和招商投入</span></div><button class="btn btn-secondary btn-sm" type="button" data-add-leasing-stage>${ICONS.plus}<span>新增招商调整阶段</span></button></div>
+  ${formulaPanel('阶段性招商调整公式', '阶段适用租金因子 = 基础年度递增因子 ×（1 + 阶段租金调整率）\n阶段有效出租率 = IF(阶段目标出租率>0, 阶段目标出租率, 原出租率)\n阶段一次性招商成本 = 仅在阶段起始运营年计入运营成本\n阶段租金收入 = 满租月租金 × 12 × 阶段有效出租率 × 免租系数 × 阶段适用租金因子', ['IF','POWER','INT','SUM'], '租金调整幅度正数表示上调、负数表示下调，并叠加在原租金递增规则之上。建议按每3–5年设置品牌升级、业态优化或到期换租阶段；各阶段不要重叠。')}
+  <div class="data-table-wrap" style="max-height:none">
+    <table class="data-table leasing-stage-table">
+      <thead><tr><th>阶段名称</th><th class="num">起始运营年</th><th class="num">结束运营年</th><th class="num">租金调整幅度</th><th class="num">目标出租率</th><th class="num">一次性招商成本（万元）</th><th class="num">起始年参考均价</th><th>调整说明</th><th>操作</th></tr></thead>
+      <tbody>
+        ${periods.map((period, index) => {
+          const referenceRent = baseAverageRent * frontendRentGrowthFactor(model, period.startYear) * (1 + Number(period.rentAdjustmentRate || 0));
+          return `<tr>
+            <td><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.name" data-type="text" value="${escapeHtml(period.name)}"></td>
+            <td class="num"><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.startYear" data-type="number" type="number" min="1" max="${Number(model.project?.operationYears || 20)}" step="1" value="${Number(period.startYear)}"></td>
+            <td class="num"><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.endYear" data-type="number" type="number" min="1" max="${Number(model.project?.operationYears || 20)}" step="1" value="${Number(period.endYear)}"></td>
+            <td class="num"><div class="input-affix compact"><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.rentAdjustmentRate" data-type="number" data-scale="0.01" type="number" step="0.1" value="${roundDisplayValue(Number(period.rentAdjustmentRate) * 100, 2)}"><span>%</span></div></td>
+            <td class="num"><div class="input-affix compact"><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.targetOccupancy" data-type="number" data-scale="0.01" type="number" min="0" max="100" step="0.1" value="${roundDisplayValue(Number(period.targetOccupancy) * 100, 2)}"><span>%</span></div><small class="range-hint">0表示沿用原出租率</small></td>
+            <td class="num"><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.oneOffLeasingCost" data-type="number" type="number" min="0" step="0.1" value="${roundDisplayValue(Number(period.oneOffLeasingCost), 2)}"></td>
+            <td class="num"><strong>${baseAverageRent > 0 ? `${fmt(referenceRent, 2)} 元/㎡/月` : '待计算'}</strong><small class="range-hint">按当前平均租金与递增规则估算</small></td>
+            <td><input class="table-input text-left" data-path="operations.leasingAdjustmentPeriods.${index}.note" data-type="text" value="${escapeHtml(period.note || '')}" placeholder="例如：品牌升级、业态优化、到期换租"></td>
+            <td><button class="btn btn-ghost btn-sm" type="button" data-remove-leasing-stage="${index}">${ICONS.trash}</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="9" class="admin-empty">尚未设置招商调整阶段。新增后可模拟品牌升级、业态优化或租约到期换租对租金和回报的影响。</td></tr>'}
+      </tbody>
+    </table>
+  </div>
+  <div class="field-help">建议阶段连续但不重叠，例如：第4–6年“品牌升级期”租金上调5%，第10–12年“业态优化期”租金上调8%。一次性招商成本只计入阶段起始年。</div>`;
+}
+
 function renderRevenueAssumptionsSection() {
   const model = state.current.model;
   const formulas = model.formulas || (model.formulas = {});
@@ -4303,6 +4392,7 @@ function renderRevenueAssumptionsSection() {
       ${textField('续租周期', 'operations.renewalCycle', { type: 'number', unit: '年' })}
       ${textField('租赁保证金月数', 'operations.depositMonths', { type: 'number', unit: '月' })}
     </div>
+    ${renderLeasingAdjustmentSection(model, state.preview)}
   </div>
   <div class="form-section">
     <div class="section-title">物业管理费、商业管理费与中央空调费（独立核算）</div>
@@ -5035,6 +5125,7 @@ function renderResultsStep() {
       ${kpiCard('NOI回报率', fmtPct(s.noiYield), 'NOI / 总投资', kpiClass(s.noiYield))}
       ${kpiCard('静态回收期', s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 1)}年`, '按项目现金流', '')}
     </div>
+    ${renderLeasingStageResultCard()}
     ${renderInvestmentOverviewCard()}
     <div class="dashboard-grid">
       <div class="card"><h3>${fmt(state.result?.annual?.length || state.current?.model?.project?.operationYears || 20)}年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
@@ -5054,6 +5145,16 @@ function renderResultsStep() {
     </div>
     ${renderFloorResultTable()}
     <div class="export-bar"><div><strong>生成汇报材料</strong><span>Excel用于继续分析；PPT用于内部评审和项目汇报。</span></div><div class="export-actions"><button class="btn btn-secondary" id="export-excel">${ICONS.excel}<span>导出Excel</span></button><button class="btn btn-primary" id="export-ppt">${ICONS.ppt}<span>导出PPT汇报</span></button></div></div>`;
+}
+
+function renderLeasingStageResultCard() {
+  const periods = normalizedLeasingAdjustmentPeriods(state.current?.model || {});
+  if (!periods.length) return '';
+  const annual = state.result?.annual || [];
+  return `<div class="card" style="margin-bottom:16px"><h3>阶段性招商调整</h3><p class="field-help">阶段租金调整已叠加在正常年度递增之上；一次性招商成本只计入阶段起始年。</p><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>阶段</th><th>运营年</th><th class="num">租金调整</th><th class="num">目标出租率</th><th class="num">起始年租金因子</th><th class="num">一次性招商成本（万元）</th></tr></thead><tbody>${periods.map(period => {
+    const startRow = annual.find(row => Number(row.opYear) === Number(period.startYear)) || {};
+    return `<tr><td><strong>${escapeHtml(period.name)}</strong><small class="range-hint">${escapeHtml(period.note || '')}</small></td><td>第${period.startYear}–${period.endYear}年</td><td class="num">${fmtPct(period.rentAdjustmentRate)}</td><td class="num">${period.targetOccupancy > 0 ? fmtPct(period.targetOccupancy) : '沿用原出租率'}</td><td class="num">×${fmt(startRow.rentGrowthFactor || (1 + period.rentAdjustmentRate), 3)}</td><td class="num">${fmt(period.oneOffLeasingCost, 2)}</td></tr>`;
+  }).join('')}</tbody></table></div></div>`;
 }
 
 function renderInvestmentOverviewCard() {
@@ -5966,6 +6067,35 @@ function ensureFloorsFromShops(model, options = {}) {
 }
 
 function bindShopsStep() {
+  const model = state.current.model;
+  document.querySelectorAll('[data-add-leasing-stage]').forEach(button => button.addEventListener('click', () => {
+    model.operations ||= {};
+    model.operations.leasingAdjustmentPeriods ||= [];
+    const operationYears = Math.max(1, Number(model.project?.operationYears || 20));
+    const stableYear = Math.max(1, Number(model.operations.stableYear || 3));
+    const startYear = Math.min(operationYears, stableYear + 1);
+    model.operations.leasingAdjustmentPeriods.push({
+      id: crypto.randomUUID(),
+      name: `第${model.operations.leasingAdjustmentPeriods.length + 1}次招商调整期`,
+      startYear,
+      endYear: Math.min(operationYears, startYear + 2),
+      rentAdjustmentRate: 0.05,
+      targetOccupancy: Number(model.operations.stableOccupancy || 0.94),
+      oneOffLeasingCost: 0,
+      note: '品牌升级、业态优化或到期换租',
+    });
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  }));
+  document.querySelectorAll('[data-remove-leasing-stage]').forEach(button => button.addEventListener('click', () => {
+    model.operations?.leasingAdjustmentPeriods?.splice(Number(button.dataset.removeLeasingStage), 1);
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  }));
   const applyBenchmark = (presetKey, overwrite = false) => {
     const preset = SETTLEMENT_PRESETS[presetKey];
     if (!preset) return;

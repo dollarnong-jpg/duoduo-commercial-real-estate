@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-sharefix6', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-stage3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1134,12 +1134,13 @@ function operatingBudgetTemplate() {
   addSheet(wb, '使用说明', [
     ['多多 · 商业地产运营成本预算导入模板'],
     ['请在黄色或空白单元格中填写，不要修改工作表名称和表头。'],
-    ['导入后会覆盖当前项目的组织架构、办公、招商、营销和维保预算；不填写的工作表保持原值。'],
+    ['导入后会覆盖当前项目的组织架构、办公、招商、招商调整阶段、营销和维保预算；不填写的工作表保持原值。'],
     ['费用优先按金额填写，权重和占比由系统自动计算，无需手工凑100%。办公预算按“元/期”填写；招商、营销和维保按“万元/年”填写；工资单位为元/月。'],
     ['办公预算和招商预算可按年或按月录入：按年录入时系统自动÷12得到月均；按月录入时自动×12得到年度金额。'],
     ['组织架构中的“税前应发基本月薪”是员工税前工资，不是实发工资。系统会继续计算个人社保公积金、个人所得税、实发工资、单位社保公积金和企业人员成本。'],
     ['社保公积金比例、个税起征点和专项附加扣除必须按项目属地最新政策及员工实际情况调整；模板默认值仅为测算示例。'],
     ['物业服务模式表可分别设置物业工程、保安、保洁为自营、第三方常驻外包或第三方非常驻服务；三种模式均以岗位成本为基础，第三方模式另计综合管理费。'],
+    ['招商调整阶段表用于设置运营期内的品牌升级、业态优化或换租阶段；填写阶段名称即启用，起止年不要重叠。'],
   ], [20, 100]);
   addSheet(wb, '基础参数', [
     ['参数', '填写值', '单位', '说明'],
@@ -1215,6 +1216,10 @@ function operatingBudgetTemplate() {
     ['首年月租金倍数', 1, '个月', '1表示1个月租金，1.5表示1.5个月租金'],
     ['说明', '渠道及代理费=项目总建筑面积×渠道面积比例×首年月租金单价×月租金倍数÷10000', '', '页面默认带出项目均价并允许人工调整；首开招商佣金已在项目投资中单列，如为同一笔合同请勿重复计入。'],
   ], [30, 24, 18, 100]);
+  addSheet(wb, '招商调整阶段', [
+    ['阶段名称', '起始运营年', '结束运营年', '租金调整幅度（%）', '目标出租率（%）', '一次性招商成本（万元）', '调整说明'],
+    ['', 4, 6, 5, 94, 0, '如需启用，请填写阶段名称；租金调整幅度正数上调、负数下调，填0表示沿用原出租率'],
+  ], [24, 16, 16, 22, 20, 26, 78]);
   addSheet(wb, '营销常规预算', [
     ['营销类别', '年度金额（万元）', '费用内容'],
     ['营销推广', 80, '节庆活动、主题推广、异业合作及日常营销执行'],
@@ -1509,6 +1514,44 @@ function parseOperatingBudgetWorkbook(base64, filename) {
     }
   }
 
+  const leasingStageRows = getTemplateRows(wb, '招商调整阶段');
+  const leasingStageHeader = findHeaderRow(leasingStageRows, {
+    name: ['阶段名称'],
+    start: ['起始运营年', '起始年'],
+    end: ['结束运营年', '结束年'],
+    rent: ['租金调整幅度'],
+    occupancy: ['目标出租率'],
+    cost: ['一次性招商成本'],
+    note: ['调整说明', '说明'],
+  }, ['name', 'start', 'end']);
+  if (leasingStageHeader >= 0) {
+    const indexes = headerIndexes(leasingStageRows[leasingStageHeader], {
+      name: ['阶段名称'],
+      start: ['起始运营年', '起始年'],
+      end: ['结束运营年', '结束年'],
+      rent: ['租金调整幅度'],
+      occupancy: ['目标出租率'],
+      cost: ['一次性招商成本'],
+      note: ['调整说明', '说明'],
+    });
+    const periods = leasingStageRows.slice(leasingStageHeader + 1).map((row, index) => {
+      const name = String(rowValue(row, indexes, 'name') || '').trim();
+      if (!name) return null;
+      const startYear = Math.max(1, Math.round(safeNumber(rowValue(row, indexes, 'start'))));
+      return {
+        id: `imported_leasing_stage_${index + 1}`,
+        name,
+        startYear,
+        endYear: Math.max(startYear, Math.round(safeNumber(rowValue(row, indexes, 'end')) || startYear)),
+        rentAdjustmentRate: safeNumber(rowValue(row, indexes, 'rent')) / 100,
+        targetOccupancy: Math.min(1, Math.max(0, safeNumber(rowValue(row, indexes, 'occupancy'))) / 100),
+        oneOffLeasingCost: Math.max(0, safeNumber(rowValue(row, indexes, 'cost'))),
+        note: String(rowValue(row, indexes, 'note') || '').trim(),
+      };
+    }).filter(Boolean);
+    if (periods.length) operations.leasingAdjustmentPeriods = periods;
+  }
+
   const preopeningRows = getTemplateRows(wb, '筹备期成本');
   const preopeningHeader = findHeaderRow(preopeningRows, { label: ['参数'], value: ['填写值'] }, ['label', 'value']);
   if (preopeningHeader >= 0) {
@@ -1607,6 +1650,7 @@ function exportExcel(result) {
     ['成本', '前期工程单价（元/㎡）', model.costs.preconstructionRate], ['成本', '土建工程单价（元/㎡）', model.costs.constructionRate],
     ['成本', '装修单价（元/㎡）', model.costs.fitoutRate], ['成本', '设备单价（元/㎡）', model.costs.equipmentRate],
     ['运营', '首年出租率', model.operations.occupancyY1], ['运营', '第二年出租率', model.operations.occupancyY2],
+    ['运营', '阶段性招商调整期数量', Array.isArray(model.operations?.leasingAdjustmentPeriods) ? model.operations.leasingAdjustmentPeriods.length : 0],
     ['运营', '稳定期出租率', model.operations.stableOccupancy], ['运营', '租金递增方式', growthModeLabels[formulas.rentGrowthMode] || formulas.rentGrowthMode],
     ['运营', '租金年递增率', model.operations.rentGrowth], ['运营', '租金递增周期（阶梯）', model.operations.rentStepYears],
     ['运营', '租金阶梯递增率', model.operations.rentStepRate],
@@ -1860,6 +1904,7 @@ function exportExcel(result) {
     ['面积', '总建筑面积', '手动总建筑面积；若为0：一铺一价=商铺建筑面积合计×(1+公区系数)，初步测算=楼层建筑面积合计', ['IF','SUM'], '先判断是否手动填写总建筑面积；没有则按商铺面积和公区系数推算；结果进入建设投资和单位投资指标计算。', '优先填规划面积或测绘面积；没有时用商铺面积反推。调整公区系数后观察总投资和单位投资变化。', 'project.commonAreaFactor', model.project.commonAreaFactor, '公区系数增加会同步增加建安、装修、设备和规费。'],
     ['租金', '有效出租率', 'IF(运营年=1,首年出租率,IF(运营年<稳定年,第二年出租率,稳定出租率))', ['IF'], '按运营年份选择出租率：首年、爬坡第二年或稳定期；再乘租金、物业费和停车收入。', '出租率按招商计划和同类项目爬坡速度设置。先看首年出租率，再调稳定出租率；两者都会影响NOI和NPV。', 'operations.occupancyY1', model.operations.occupancyY1, '首年出租率影响首年现金流和招商佣金。'],
     ['租金', '租金递增因子', '不递增=1；每年复利=(1+年递增率)^(运营年-1)；每年单利=1+年递增率×(运营年-1)；每N年阶梯=(1+阶梯递增率)^INT((运营年-1)÷N)', ['POWER','INT','IF'], '按所选模式逐年计算租金增长因子，再乘首年满租租金。阶梯模式只在每个N年周期到达时上调。', '有租约递增条款时按条款设置，例如“每3年递增5%”选择阶梯模式并填周期3、递增率5%。租金与销售扣点增长分开管理。', 'formulas.rentGrowthMode', formulas.rentGrowthMode, '增长方式会显著影响后期NOI和退出价值。'],
+    ['租金', '阶段性招商调整', '阶段租金因子=基础年度递增因子×(1+阶段租金调整率)；阶段有效出租率=IF(目标出租率>0,目标出租率,原出租率)；阶段招商成本仅在起始年计入', ['IF','POWER','INT','SUM'], '在正常年度递增之外，按阶段叠加品牌升级、业态优化或换租后的租金调整，并可设置阶段目标出租率和一次性招商成本。', '建议每3–5年设置一次阶段，起止年连续但不重叠。正数上调、负数下调；一次性招商成本按实际预算填写。', 'operations.leasingAdjustmentPeriods', '按阶段设置', '阶段租金和出租率影响NOI、现金流、IRR和NPV；阶段招商成本影响起始年利润。'],
     ['租金', '首年免租调整', '首年租金×出租率×(1-免租月数÷12)', ['IF','SUM'], '首年免租系数将免租月数换算成年化扣减比例，只影响首年租金收入。', '按实际免租期和装修期填写；免租越长，首年现金流越低，但不改变合同单价。', 'operations.rentFreeMonths', model.operations.rentFreeMonths, '仅影响首年收入及现金流的低点。'],
     ['联营', '保底与扣点取高', 'IF(纯租金,保底,IF(纯扣点,扣点,MAX(保底,扣点)))', ['IF','MAX'], '先按项目或业态选择结算方式；取高模式逐铺比较保底收入和扣点收入，选较高者。', '百货和奥特莱斯常用取高模式；纯租金项目不要重复叠加扣点。先核对每种业态的扣点率和销售基数。', 'project.revenueModel', model.project.revenueModel, '结算方式改变会直接改变租金收入和租户风险分担。'],
     ['投资', '分项工程投资', '总建筑面积×分项单价÷10000', ['SUM','ROUND'], '将前期、建安、装修、设备和其他工程分别按面积乘单价，再汇总为直接工程费。', '以目标成本、造价咨询或合同金额为准。先调建安和装修，再调其他工程；每次调整后查看总投资和NPV。', 'costs.constructionRate', model.costs.constructionRate, '建安单价是最主要的投资敏感项。'],
@@ -1913,6 +1958,24 @@ function exportExcel(result) {
   const exportShopWs = addSheet(wb, '商铺明细', [['楼栋', '铺位号', '楼层', '计租口径', '业态', '状态', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '租金单价（元/㎡/月）', '物业管理费（元/㎡/月）', '商业管理费（元/㎡/月）', '中央空调费（元/㎡/月）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '条件', '满租月租金收益（万元）'], ...(result.shops || []).map(x => [x.building || '1号楼', x.id, x.floor, x.rentAreaBasis === 'building' ? '建筑面积' : '实用面积', x.category, x.status || '', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.rent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), Number(x.monthlyPropertyFee || 0), Number(x.monthlyCommercialManagementFee || 0), Number(x.monthlyCentralAcFee || 0), Number(x.monthlyServiceFee || 0), Number(x.monthlyServiceFee || 0) * 12 / 10000, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [12, 16, 10, 14, 16, 12, 18, 18, 18, 22, 24, 24, 24, 22, 22, 22, 26, 24, 24, 24]);
 
   setSheetColumnNumberFormat(exportShopWs, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], '0.00');
+  const leasingAdjustmentPeriodsExport = Array.isArray(model.operations?.leasingAdjustmentPeriods) ? model.operations.leasingAdjustmentPeriods : [];
+  addSheet(wb, '招商调整阶段', [
+    ['阶段性招商调整规则'],
+    ['阶段名称', '起始运营年', '结束运营年', '租金调整幅度', '目标出租率', '一次性招商成本（万元）', '调整说明'],
+    ...leasingAdjustmentPeriodsExport.map(item => [item.name || '', Number(item.startYear || 0), Number(item.endYear || 0), Number(item.rentAdjustmentRate || 0), Number(item.targetOccupancy || 0), Number(item.oneOffLeasingCost || 0), item.note || '']),
+    [''],
+    ['年度阶段核算结果'],
+    ['运营年', '阶段名称', '阶段租金调整因子', '基础租金递增因子', '最终租金递增因子', '有效出租率', '阶段招商成本（万元）', '租金收入（万元）', 'NOI（万元）'],
+    ...(result.annual || []).filter(x => Number(x.opYear) > 0 && x.leasingStageName).map(x => [x.opYear, x.leasingStageName || '', Number(x.leasingStageRentFactor || 1), Number(x.baseRentGrowthFactor || 1), Number(x.rentGrowthFactor || 1), Number(x.occupancy || 0), Number(x.leasingStageCost || 0), Number(x.rentRevenue || 0), Number(x.noi || 0)]),
+    [''],
+    ['计算口径', '阶段租金因子 = 基础年度递增因子 ×（1 + 阶段租金调整幅度）；目标出租率填0时沿用原出租率；一次性招商成本只计入阶段起始年。'],
+  ], [24, 16, 16, 20, 18, 26, 56]);
+  const leasingStageWs = wb.Sheets['招商调整阶段'];
+  leasingAdjustmentPeriodsExport.forEach((_, index) => {
+    const row = 3 + index;
+    for (const column of ['B', 'C', 'F']) if (leasingStageWs[`${column}${row}`]) leasingStageWs[`${column}${row}`].z = '0.00';
+    for (const column of ['D', 'E']) if (leasingStageWs[`${column}${row}`]) leasingStageWs[`${column}${row}`].z = '0.00%';
+  });
   addSheet(wb, '租赁联营规则', [
     ['业态', '结算方式', '当前保底租金（元/㎡/月）', '保底租金常规区间', '当前销售基数（元/㎡/月）', '销售基数常规区间（元/㎡/月）', '当前扣点率', '扣点率常规区间', '扣点收益（元/㎡/月）', '业态系数', '行业基准方案', '基准版本', '销售修正系数', '数据来源'],
     ...(model.categories || []).map(item => {
@@ -1957,7 +2020,7 @@ function exportExcel(result) {
   ], [22, 30, 70]);
   addSheet(wb, '竞品租金样本', [['样本名称', '地址', '楼层', '业态', '可租赁面积（㎡）', '月租金（元/㎡/月）', '数据日期', '距项目（km）', '备注'], ...(model.market?.comparables || []).map(x => [x.name, x.address, x.floor, x.category, x.leasableArea, x.rent, x.date, x.distanceKm, x.note])], [24, 30, 10, 16, 18, 22, 14, 14, 28]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
-  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '租金收入', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.phase || '运营期', x.calendarYear, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.rentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.projectIncomeTax, x.taxCashOutflow, x.equityIncomeTax || x.incomeTax || 0, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,16,10,14,16,16,16,16,20,20,20,18,16,14,14,16,14,14,14,14,14,16,16,18,18,22,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
+  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '招商调整阶段', '阶段租金调整因子', '基础租金递增因子', '最终租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '租金收入', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '阶段招商成本', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.phase || '运营期', x.calendarYear, x.leasingStageName || '', x.leasingStageRentFactor || 1, x.baseRentGrowthFactor || x.rentGrowthFactor, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.rentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.projectIncomeTax, x.taxCashOutflow, x.equityIncomeTax || x.incomeTax || 0, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.leasingStageCost || 0, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - (x.leasingStageCost || 0) - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,16,10,14,16,16,16,16,20,20,20,18,16,14,14,16,14,14,14,14,14,16,16,18,18,22,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
 
   addSheet(wb, '敏感性分析', [['租金变化 ↓ / 投资变化 →', ...(result.sensitivity.capexSteps || []).map(v => (v * 100).toFixed(0) + '%')], ...(result.sensitivity.rentSteps || []).map((rent, i) => [(rent * 100).toFixed(0) + '%', ...(result.sensitivity.npvMatrix[i] || [])])], [24, 14, 14, 14, 14, 14]);
   addSheet(wb, '分析结论', [['类型', '内容'], ...(result.analysis.bullets || []).map(x => ['分析结论', x]), ...(result.analysis.recommendations || []).map(x => ['建议', x]), ...(result.diagnostics || []).map(x => [x.level, `${x.title}：${x.detail}`])], [18, 100]);
@@ -2120,6 +2183,7 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
     ['面积', 'GBA = 手动值；若为0：一铺一价=商铺面积×(1+公区系数)，初步测算=楼层建筑面积合计', 'IF / SUM'],
     ['租金', '有效出租率 = IF(首年, 首年出租率, IF(稳定前, 第二年出租率, 稳定出租率))', 'IF'],
     ['租金', '租金收入 = 满租月租金×12×出租率×免租系数×租金递增因子', 'POWER / INT / SUM'],
+    ['租金', '阶段租金 = 满租月租金×12×阶段出租率×免租系数×基础递增因子×(1+阶段调整率)', 'IF / POWER / INT / SUM'],
     ['物业费', '物业管理费收入 = Σ计租面积×物业费单价×12×出租率×物业费递增因子', 'POWER / INT / SUM'],
     ['商管费', '商业管理费收入 = Σ计租面积×商管费单价×12×出租率×商管费递增因子', 'POWER / INT / SUM'],
     ['空调费', '中央空调费收入 = Σ开启楼栋计租面积×楼栋空调单价×12×出租率×空调费递增因子', 'IF / POWER / INT / SUM'],
