@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-sharefix7';
+import './backend.js?v=20261110-sharefix9';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.5';
+const APP_VERSION = '1.21.6';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1558,6 +1558,44 @@ function base64UrlToBytes(value) {
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
 
+const SHARE_TEXT_BASE = 0x4e00;
+const SHARE_TEXT_MASK = 0x3fff;
+
+function bytesToChineseShareText(bytes) {
+  let buffer = 0;
+  let bits = 0;
+  let output = '';
+  for (const byte of bytes) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 14) {
+      bits -= 14;
+      output += String.fromCharCode(SHARE_TEXT_BASE + ((buffer >> bits) & SHARE_TEXT_MASK));
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  if (bits > 0) output += String.fromCharCode(SHARE_TEXT_BASE + ((buffer << (14 - bits)) & SHARE_TEXT_MASK));
+  return output;
+}
+
+function chineseShareTextToBytes(text) {
+  let buffer = 0;
+  let bits = 0;
+  const output = [];
+  for (const character of String(text || '')) {
+    const value = character.codePointAt(0) - SHARE_TEXT_BASE;
+    if (value < 0 || value > SHARE_TEXT_MASK) throw new Error('分享码包含无效字符，请完整复制后重试');
+    buffer = (buffer << 14) | value;
+    bits += 14;
+    while (bits >= 8) {
+      bits -= 8;
+      output.push((buffer >> bits) & 0xff);
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  return Uint8Array.from(output);
+}
+
 function buildModelPatch(base, current) {
   if (Array.isArray(current) || current?.__shareTable || current === null || typeof current !== 'object') {
     return { changed: JSON.stringify(base) !== JSON.stringify(current), value: current };
@@ -1674,7 +1712,7 @@ async function encodeProjectShareCode(payload) {
     try {
       const stream = new Blob([json], { type: 'application/json' }).stream().pipeThrough(new CompressionStream('gzip'));
       const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
-      return `DD2.${bytesToBase64Url(compressed)}`;
+      return `DD4.${bytesToChineseShareText(compressed)}`;
     } catch (error) {
       console.warn('分享码压缩失败，使用兼容格式', error);
     }
@@ -1684,14 +1722,20 @@ async function encodeProjectShareCode(payload) {
 
 async function decodeProjectShareCode(code) {
   let clean = String(code || '').replace(/\s+/g, '');
-  const segmented = [...clean.matchAll(/DDP(\d+)OF(\d+):([A-Za-z0-9_-]+?)(?=DDP\d+OF\d+:|$)/gi)].map(match => ({ index: Number(match[1]), total: Number(match[2]), payload: match[3] }));
+  const modernSegmented = [...clean.matchAll(/DDP([24])-(\d+)OF(\d+):([\s\S]+?)(?=DDP[24]-\d+OF\d+:|$)/gi)].map(match => ({ format: match[1], index: Number(match[2]), total: Number(match[3]), payload: match[4] }));
+  const segmented = modernSegmented.length ? modernSegmented : [...clean.matchAll(/DDP(\d+)OF(\d+):([A-Za-z0-9_-]+?)(?=DDP\d+OF\d+:|$)/gi)].map(match => ({ format: '2', index: Number(match[1]), total: Number(match[2]), payload: match[3] }));
   if (segmented.length) {
     const total = segmented[0].total;
     if (segmented.length !== total || new Set(segmented.map(item => item.index)).size !== total) throw new Error('微信分段分享码不完整，请把全部分段一起粘贴');
-    clean = `DD2.${segmented.sort((a, b) => a.index - b.index).map(item => item.payload).join('')}`;
+    clean = `DD${segmented[0].format}.${segmented.sort((a, b) => a.index - b.index).map(item => item.payload).join('')}`;
   }
   let payload = null;
-  if (clean.startsWith('DD2.')) {
+  if (clean.startsWith('DD4.')) {
+    if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持新版分享码，请升级浏览器后重试');
+    const compressed = chineseShareTextToBytes(clean.slice(4));
+    const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+    payload = JSON.parse(new TextDecoder().decode(new Uint8Array(await new Response(stream).arrayBuffer())));
+  } else if (clean.startsWith('DD2.')) {
     if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持新版分享码，请升级浏览器后重试');
     const compressed = base64UrlToBytes(clean.slice(4));
     const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
@@ -1700,7 +1744,7 @@ async function decodeProjectShareCode(code) {
     const bytes = base64UrlToBytes(clean.slice('DDPROJECT1.'.length));
     payload = JSON.parse(new TextDecoder().decode(bytes));
   } else {
-    throw new Error('分享码格式不正确，请粘贴完整的 DD2. 分享码');
+    throw new Error('分享码格式不正确，请粘贴完整的 DD4. 分享码');
   }
   if (payload?.project?.modelFormat === 'delta-v1') {
     const defaults = await api('/api/default-model');
@@ -1730,11 +1774,13 @@ function downloadShareCodeFile(shareCode, projectName) {
   URL.revokeObjectURL(url);
 }
 
-function buildWechatShareSegments(shareCode, chunkSize = 1400) {
-  if (!shareCode.startsWith('DD2.') || shareCode.length <= chunkSize) return [];
+function buildWechatShareSegments(shareCode, chunkSize = 1800) {
+  const match = shareCode.match(/^(DD[24])\./);
+  if (!match || shareCode.length <= chunkSize) return [];
+  const format = match[1].slice(2);
   const payload = shareCode.slice(4);
   const count = Math.ceil(payload.length / chunkSize);
-  return Array.from({ length: count }, (_, index) => `DDP${index + 1}OF${count}:${payload.slice(index * chunkSize, (index + 1) * chunkSize)}`);
+  return Array.from({ length: count }, (_, index) => `DDP${format}-${index + 1}OF${count}:${payload.slice(index * chunkSize, (index + 1) * chunkSize)}`);
 }
 
 async function copyTextValue(text) {
@@ -1953,7 +1999,7 @@ async function openShareProjectModal(projectId) {
               <div class="share-option-head"><strong>微信分享码 / 分享文件</strong><span>分享码已压缩。代码较长时直接下载分享文件，通过微信发送给B用户，再由B在“接收项目”中导入。</span></div>
               <textarea class="share-code-text" id="share-code-text" readonly>${escapeHtml(shareCode)}</textarea>
               <div class="share-code-actions"><button class="btn btn-secondary" id="copy-share-code">${ICONS.copy}<span>复制完整分享码</span></button><button class="btn btn-secondary" id="download-share-code">${ICONS.download}<span>下载分享文件</span></button><span id="share-code-size">${shareCode.length.toLocaleString('zh-CN')} 个字符${wechatSegments.length ? ' · 可分段发送' : ''}</span><span id="copy-share-status"></span></div>
-              ${wechatSegments.length ? `<details class="share-segment-details"><summary>微信分段发送：共 ${wechatSegments.length} 段，每段约 1,400 字符</summary><p>依次复制并发送每一段。对方把所有分段一起粘贴到“接收项目”，系统会自动合并识别。</p><div class="share-segment-grid">${wechatSegments.map((_, index) => `<button class="btn btn-secondary btn-sm" type="button" data-copy-share-segment="${index}">${ICONS.copy}<span>复制第 ${index + 1} 段</span></button>`).join('')}</div></details>` : ''}
+              ${wechatSegments.length ? `<details class="share-segment-details"><summary>微信分段发送：共 ${wechatSegments.length} 段，每段约 1,800 字符</summary><p>依次复制并发送每一段。对方把所有分段一起粘贴到“接收项目”，系统会自动合并识别。</p><div class="share-segment-grid">${wechatSegments.map((_, index) => `<button class="btn btn-secondary btn-sm" type="button" data-copy-share-segment="${index}">${ICONS.copy}<span>复制第 ${index + 1} 段</span></button>`).join('')}</div></details>` : ''}
             </div>
           </div>
           <div class="modal-foot"><span class="admin-readonly-note">建议发送后由接收方另存为独立方案，再基于同一项目进行对比。</span><button class="btn btn-secondary" id="share-project-done">关闭</button></div>
@@ -2033,7 +2079,7 @@ function openImportShareModal() {
         <div class="modal-head"><div><span class="eyebrow">Import shared project</span><h2>接收项目</h2><p>粘贴其他用户发送的项目分享码，系统将生成独立副本。</p></div><button class="modal-close" id="import-share-close">×</button></div>
         <form id="import-share-form">
           <div class="modal-body">
-            <div class="field"><label>项目分享码</label><textarea class="share-code-text" name="shareCode" required placeholder="粘贴 DD2. 开头的分享码或旧版分享码"></textarea></div>
+            <div class="field"><label>项目分享码</label><textarea class="share-code-text" name="shareCode" required placeholder="粘贴 DD4. 开头的微信短码（旧版DD2也支持）"></textarea></div>
             <div class="field"><label>或者选择分享文件</label><input class="input" type="file" id="share-file-input" accept=".txt,.ddshare,text/plain"><div class="field-help">支持对方通过微信发送的“项目分享.ddshare.txt”文件。</div></div>
             <div id="import-share-status" class="share-direct-status"></div>
           </div>
