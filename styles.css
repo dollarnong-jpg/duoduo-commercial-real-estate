@@ -583,6 +583,16 @@ a { color: inherit; }
 .channel-calculation-results em { margin-left:3px; color:var(--muted); font-size:var(--fs-8); font-style:normal; }
 .channel-amount-mode-note { margin-top:11px; padding:9px 10px; border-radius:8px; background:#edf5f1; color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
 .formula-period-tag { display:inline-flex; padding:4px 8px; border-radius:999px; background:var(--green-soft); color:var(--green); font-size:var(--fs-8); font-weight:700; }
+.phase-cost-card { margin-bottom:16px; }
+.phase-cost-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; margin:12px 0 16px; }
+.phase-cost-kpis > div { padding:11px 12px; border:1px solid #e3e9e5; border-radius:10px; background:#f7faf8; }
+.phase-cost-kpis > div.highlight { border-color:#d9c38e; background:#fbf5e8; }
+.phase-cost-kpis span { display:block; color:var(--muted); font-size:var(--fs-8); }
+.phase-cost-kpis strong { display:inline-block; margin-top:5px; color:var(--navy); font-size:var(--fs-15); }
+.phase-cost-kpis em { margin-left:4px; color:var(--muted); font-size:var(--fs-8); font-style:normal; }
+.phase-cost-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.phase-cost-grid .subsection-heading { margin-top:0; padding-top:0; border-top:0; }
+.phase-cost-grid .data-table { min-width:420px; }
 .org-structure-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0 0; padding:10px 12px; border:1px solid #d8e5de; border-radius:10px; background:#f4f9f6; }
 .org-structure-tools span { color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
 .org-structure-tools .btn { flex:0 0 auto; }
@@ -862,6 +872,8 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .budget-table .text-left { min-width:130px; text-align:left; }
 .budget-table td strong { color:var(--navy); font-size: var(--fs-10); }
 .cost-method-label { display:block; margin-top:4px; color:var(--muted); font-size:var(--fs-8); line-height:1.4; }
+.cost-structure-table { min-width:780px; }
+.cost-structure-table td:nth-child(2) { line-height:1.65; }
 .budget-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:11px; color:var(--muted); font-size: var(--fs-10); }
 .budget-toolbar strong { color:var(--navy); font-size: var(--fs-12); }
 .auto-weight { display:inline-flex; align-items:center; justify-content:center; min-width:64px; padding:5px 8px; border-radius:999px; background:var(--green-soft); color:var(--green); font-size:var(--fs-9); font-weight:700; }
@@ -915,8 +927,8 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .payroll-result-card { grid-column:1 / -1; }
 .marketing-allocation-card { margin-bottom:16px; }
 @media (max-width:760px) { .payroll-summary-grid { grid-template-columns:1fr 1fr; } }
-@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } }
-@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } }
+@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } .phase-cost-kpis { grid-template-columns:1fr 1fr; } .phase-cost-grid { grid-template-columns:1fr; } }
+@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } .phase-cost-kpis { grid-template-columns:1fr; } }
 .market-detection-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:9px; margin:18px 0; }
 .market-detection-stats > div { padding:12px; border-radius:11px; border:1px solid var(--line); background:#fffdf9; }
 .market-detection-stats span { display:block; color:var(--muted); font-size: var(--fs-8); }

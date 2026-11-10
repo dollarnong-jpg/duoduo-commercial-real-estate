@@ -328,7 +328,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-period1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-structure1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1299,10 +1299,13 @@ function exportExcel(result) {
   const growthModeLabels = { none: '不递增', compound: '每年复利递增', simple: '每年单利递增', step: '每N年阶梯递增' };
   const ownerRentGrowthLabels = { none: '不复递增', compound: '按比例复利递增', simple: '按比例单利递增', fixed_amount: '每年固定金额递增', step: '每N年阶梯递增' };
   const ownerRentLeaseLabels = { land: '仅土地租赁', property: '仅物业租赁', land_and_property: '土地+物业租赁' };
+  const propertyRightsLabels = { owned: '自有产权', leased: '租赁物业', equity: '股权持有', government: '政府划拨/合作持有', other: '其他产权安排' };
+  const acquisitionMethodLabels = { market_auction: '招拍挂/市场竞得', negotiated_transfer: '协议转让', equity_acquisition: '股权收购', government_allocation: '政府划拨/定向供应', lease: '租赁取得', other: '其他方式' };
+  const buildingStatusLabels = { under_construction: '在建/待建', completed_unopened: '已竣工未开业', operating: '已开业运营中', renovation_pending: '待改造/停业改造' };
   const wb = XLSX.utils.book_new();
   addSheet(wb, '项目概览', [
     ['多多 · 商业地产投资测算'], [''],
-    ['项目名称', s.projectName], ['项目位置', s.location], ['项目开发状态', developmentLabels[s.developmentType] || s.developmentType || '新建项目'], ['商业项目形态', model.project.projectType], ['租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
+    ['项目名称', s.projectName], ['项目位置', s.location], ['项目开发状态', developmentLabels[s.developmentType] || s.developmentType || '新建项目'], ['商业项目形态', model.project.projectType], ['产权状态', propertyRightsLabels[model.project.propertyRightsStatus] || '自有产权'], ['取得方式', acquisitionMethodLabels[model.project.acquisitionMethod] || '招拍挂/市场竞得'], ['建设/经营状态', buildingStatusLabels[model.project.buildingStatus] || '在建/待建'], ['租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
     ['总建筑面积（㎡）', s.grossFloorArea], ['可租赁面积（㎡）', s.leasableArea], ['商铺/楼层数量', s.calculationMode === 'preliminary' ? s.floorCount : s.shopsCount],
     ['项目总投资（万元）', s.totalInvestment], ['稳定期营业收入（万元/年）', s.stableRevenue], ['业主租金支出（万元/年）', s.stableOwnerRentCost || 0], ['稳定期NOI（万元/年）', s.stableNoi],
     ['NOI回报率', s.noiYield], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback],
@@ -1311,6 +1314,7 @@ function exportExcel(result) {
   addSheet(wb, '核心参数', [
     ['参数大类', '参数', '数值'],
     ['项目', '开发状态', developmentLabels[model.project.developmentType] || model.project.developmentType || '新建项目'], ['项目', '起始年份', model.project.startYear], ['项目', '建设期（年）', model.project.constructionYears],
+    ['项目', '产权状态', propertyRightsLabels[model.project.propertyRightsStatus] || '自有产权'], ['项目', '取得方式', acquisitionMethodLabels[model.project.acquisitionMethod] || '招拍挂/市场竞得'], ['项目', '建设/经营状态', buildingStatusLabels[model.project.buildingStatus] || '在建/待建'],
     ['项目', '招商运营年限（年）', model.project.operationYears], ['项目', '租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['项目', '建筑面积调节系数', model.project.commonAreaFactor],
     ['业主租金', '是否支付', model.ownerRent?.enabled ? '是' : '否'], ['业主租金', '租赁标的', ownerRentLeaseLabels[model.ownerRent?.leaseType] || '仅物业租赁'],
     ['业主租金', '土地计价方式', model.ownerRent?.landPricingMode === 'unit' ? '按面积单价' : '按月度总额'],
@@ -1424,6 +1428,18 @@ function exportExcel(result) {
     ['成本项目','年度金额（万元）','占运营成本及税费比例'],
     ...(result.operatingCostBreakdown || []).map(x => [x.name, x.value, operatingCostTotalForExport ? Number(x.value || 0) / operatingCostTotalForExport : 0])
   ], [32, 20, 24]);
+  const phaseTotal = Number(s.fullCycleCostExcludingFinancing || 0);
+  addSheet(wb, '阶段成本汇总', [
+    ['阶段', '成本项目', '金额（万元）', '占全周期成本比例'],
+    ...(result.phaseCostBreakdown || []).map(x => [x.stage, x.name, x.value, phaseTotal ? Number(x.value || 0) / phaseTotal : 0]),
+    [''],
+    ['筹备期', '筹备期投入合计', s.preOpeningInvestment || 0, phaseTotal ? Number(s.preOpeningInvestment || 0) / phaseTotal : 0],
+    ['运营期', '运营期经营成本合计', s.operationPeriodOperatingCost || 0, phaseTotal ? Number(s.operationPeriodOperatingCost || 0) / phaseTotal : 0],
+    ['运营期', '运营期税费合计', s.operationPeriodTaxes || 0, phaseTotal ? Number(s.operationPeriodTaxes || 0) / phaseTotal : 0],
+    ['全周期', '全周期成本（不含融资）', phaseTotal, 1],
+    ['融资', '运营期融资利息（参考）', s.operationPeriodInterest || 0, ''],
+    ['全周期', '含融资现金成本（参考）', s.fullCycleCashCostIncludingFinancing || 0, ''],
+  ], [16, 36, 22, 24]);
   const formulaRows = [
     ['面积', '总建筑面积', 'IF(手动总建筑面积=0,商铺建筑面积合计×(1+公区系数),手动总建筑面积)', ['IF','SUM'], '先判断是否手动填写总建筑面积；没有则按商铺面积和公区系数推算；结果进入建设投资和单位投资指标计算。', '优先填规划面积或测绘面积；没有时用商铺面积反推。调整公区系数后观察总投资和单位投资变化。', 'project.commonAreaFactor', model.project.commonAreaFactor, '公区系数增加会同步增加建安、装修、设备和规费。'],
     ['租金', '有效出租率', 'IF(运营年=1,首年出租率,IF(运营年<稳定年,第二年出租率,稳定出租率))', ['IF'], '按运营年份选择出租率：首年、爬坡第二年或稳定期；再乘租金、物业费和停车收入。', '出租率按招商计划和同类项目爬坡速度设置。先看首年出租率，再调稳定出租率；两者都会影响NOI和NPV。', 'operations.occupancyY1', model.operations.occupancyY1, '首年出租率影响首年现金流和招商佣金。'],
@@ -1433,6 +1449,7 @@ function exportExcel(result) {
     ['投资', '分项工程投资', '总建筑面积×分项单价÷10000', ['SUM','ROUND'], '将前期、建安、装修、设备和其他工程分别按面积乘单价，再汇总为直接工程费。', '以目标成本、造价咨询或合同金额为准。先调建安和装修，再调其他工程；每次调整后查看总投资和NPV。', 'costs.constructionRate', model.costs.constructionRate, '建安单价是最主要的投资敏感项。'],
     ['投资', '预备费', '直接工程费×预备费费率', ['SUM'], '直接工程费汇总后乘预备费费率，作为不可预见费用。', '通常3%–8%；方案深度越浅、建设风险越高，预备费应越充分。', 'project.contingencyRate', model.project.contingencyRate, '预备费增加会提高总投资和折旧基数。'],
     ['投资', '铺底流动资金', '稳定运营成本估算×铺底比例', ['SUM','MAX'], '先估算稳定期物业、能耗、商管、行政和维修成本，再乘铺底比例。', '按运营资金周转需求设置；通常3%左右，招商爬坡慢时可适当提高。', 'costs.workingCapitalRate', model.costs.workingCapitalRate, '流动资金属于总投资但不形成长期资产。'],
+    ['阶段成本', '筹备期与运营期成本', '筹备期投入=项目总投资；运营期成本=Σ各运营年度经营成本+税费；全周期成本（不含融资）=筹备期投入+运营期成本', ['SUM'], '按项目推进阶段分别汇总，避免把筹备期资本投入与运营期经营成本混在一起。', '核对筹备期工程和开办费是否完整，再检查运营期人员、物业、招商、营销、维保和税费；融资利息单独列示。', 'project.operationYears', model.project.operationYears, '用于判断投资峰值、运营成本和全周期现金流压力。'],
     ['收入', '物业管理费收入', '可租赁面积×首年管理费单价×12×出租率×管理费递增因子÷10000', ['SUM','POWER','INT','IF'], '先按首年管理费单价和出租率计算基础收入，再按独立的管理费递增模式逐年调整。', '按物业服务或商业管理合同设置管理费递增周期和递增率，可与租金递增不同；管理费单独计算增值税。', 'formulas.propertyFeeGrowthMode', formulas.propertyFeeGrowthMode, '管理费递增会提高后期收入、销项税和NOI。'],
     ['收入', '多经与停车收入', '租金×多经比例+车位数×月租×12×出租率÷10000', ['SUM'], '多经收入按租金比例计算，停车收入按车位数量和月租计算，两者相加进入营业收入。', '按广告、场地、临时点位和停车收费方案调整；没有数据时可保守设置为0。', 'revenues.otherIncomeRatio', model.revenues.otherIncomeRatio, '属于其他收入，需单独计算增值税。'],
     ['运营', '运营成本', '物业+能耗+商管+行政+营销+维修+保险+坏账+其他+业主租金', ['SUM','MIN'], '各成本分项按面积、收入或资产原值计算，汇总后扣减可抵扣进项税，形成不含税运营成本。', '按运营预算和物业合同调整。先核对人员编制、能耗和维保，再调营销、其他费用和业主租金。', 'operations.propertyOpsCost', model.operations.propertyOpsCost, '运营成本直接扣减NOI。'],

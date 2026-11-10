@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-period1';
+import './backend.js?v=20261110-structure1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -50,6 +50,9 @@ const FIELD_FORMULAS = {
   'project.commonAreaFactor': { title: '公区分摊系数', formula: '总建筑面积 = 商铺建筑面积合计 ×（1 + 公共部位及设备房分摊系数）', functions: ['SUM'], role: '提高该系数会增加总建筑面积，进而增加按面积计取的建设投资。' },
   'project.landArea': { title: '占地面积与土地使用税', formula: '城镇土地使用税 = 占地面积 × 单位土地税额 ÷ 10000', functions: ['ROUND'], role: '仅影响城镇土地使用税，不影响土地价款。' },
   'project.landPrice': { title: '土地价款与契税', formula: '土地取得成本 = 土地价款 + 土地价款 × 契税率', functions: ['SUM'], role: '土地价款同时进入项目总投资和融资基数。' },
+  'project.propertyRightsStatus': { title: '产权状态', formula: '自有产权/租赁物业/股权持有/政府合作', functions: ['IF'], role: '不同产权状态决定土地、物业租赁、收购对价和运营边界的核算方式。' },
+  'project.acquisitionMethod': { title: '取得方式', formula: '招拍挂/协议转让/股权收购/政府划拨/租赁取得', functions: ['IF'], role: '用于识别税费、尽调、交易对价和前期风险。' },
+  'project.buildingStatus': { title: '建设与经营状态', formula: '在建/竣工未开业/运营中/待改造', functions: ['IF'], role: '决定建设投资、改造投入、筹备成本和运营接续成本的核算重点。' },
   'project.otherPreOpening': { title: '其他前期及开办费用', formula: '项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金', functions: ['SUM'], role: '该金额直接计入招商及开办投资。' },
   'project.preOpeningMarketing': { title: '筹备期营销费用', formula: '招商及开办 = 招商佣金 + 筹备期营销费用 + 其他前期费用', functions: ['SUM'], role: '该金额直接计入项目总投资。' },
   'project.contingencyRate': { title: '预备费', formula: '预备费 = 直接工程费 × 预备费费率', functions: ['SUM', 'ROUND'], role: '直接工程费包括前期、建安、公共配套、装修、设备和其他工程。' },
@@ -569,6 +572,30 @@ const DEVELOPMENT_TYPE_OPTIONS = [
 ];
 
 const DEVELOPMENT_TYPE_LABELS = Object.fromEntries(DEVELOPMENT_TYPE_OPTIONS.map(item => [item.value, item.label]));
+
+const PROPERTY_RIGHTS_OPTIONS = [
+  { value: 'owned', label: '自有产权' },
+  { value: 'leased', label: '租赁物业' },
+  { value: 'equity', label: '股权持有' },
+  { value: 'government', label: '政府划拨 / 合作持有' },
+  { value: 'other', label: '其他产权安排' },
+];
+
+const ACQUISITION_METHOD_OPTIONS = [
+  { value: 'market_auction', label: '招拍挂 / 市场竞得' },
+  { value: 'negotiated_transfer', label: '协议转让' },
+  { value: 'equity_acquisition', label: '股权收购' },
+  { value: 'government_allocation', label: '政府划拨 / 定向供应' },
+  { value: 'lease', label: '租赁取得' },
+  { value: 'other', label: '其他方式' },
+];
+
+const BUILDING_STATUS_OPTIONS = [
+  { value: 'under_construction', label: '在建 / 待建' },
+  { value: 'completed_unopened', label: '已竣工未开业' },
+  { value: 'operating', label: '已开业运营中' },
+  { value: 'renovation_pending', label: '待改造 / 停业改造' },
+];
 
 const COST_REFERENCE_PROFILES = {
   new_build: {
@@ -1967,6 +1994,9 @@ function renderProjectStep() {
         ${locationField()}
         ${selectField('项目开发状态', 'project.developmentType', DEVELOPMENT_TYPE_OPTIONS, { help: '不同状态会自动匹配新建土建、旧改改造或运营提升的参考造价' })}
         ${selectField('商业项目形态', 'project.projectType', ['购物中心', '百货商场', '奥特莱斯', '街区商业', '社区商业', '商业综合体', '其他'])}
+        ${selectField('产权状态', 'project.propertyRightsStatus', PROPERTY_RIGHTS_OPTIONS, { help: '区分自有、租赁、股权或政府合作等产权安排，影响投资和运营边界。' })}
+        ${selectField('取得方式', 'project.acquisitionMethod', ACQUISITION_METHOD_OPTIONS, { help: '用于识别招拍挂、协议转让、股权收购、租赁取得等不同前期风险。' })}
+        ${selectField('物业建设 / 经营状态', 'project.buildingStatus', BUILDING_STATUS_OPTIONS, { help: '用于区分在建、竣工未开业、运营中和待改造项目的成本重点。' })}
         ${selectField('租金核算面积口径', 'project.rentAreaBasis', [{value:'leasable',label:'实用面积（套内/租赁面积）'},{value:'building',label:'建筑面积'}], { help:'楼层和铺位可单独覆盖项目默认口径' })}
         ${selectField('项目计租方式', 'project.revenueModel', [{value:'rent',label:'纯租金'},{value:'concession',label:'纯联营扣点'},{value:'guarantee_or_concession',label:'保底与联营扣点取高'}], { help: '业态可在铺位数据页单独覆盖项目规则' })}
         ${textField('建设起始年份', 'project.startYear', { type: 'number', unit: '年' })}
@@ -2020,6 +2050,19 @@ function renderCostStep() {
         ${textField('设施设备', 'costs.equipmentRate', { type: 'number', unit: '元/㎡' })}
         ${textField('铺底流动资金率', 'costs.workingCapitalRate', { type: 'number', unit: '%', scale: 0.01 })}
       </div>
+    </div>
+    <div class="form-section cost-structure-section">
+      <div class="section-title">成本结构口径映射</div>
+      <div class="section-note">以下按商业地产财务测算的常用成本结构展示各细分项当前归入的系统字段，避免咨询、设计、外立面、配套和设备费用遗漏。</div>
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table cost-structure-table"><thead><tr><th>成本大类</th><th>应包含的细分内容</th><th>当前核算字段 / 方法</th></tr></thead><tbody>
+        <tr><td><strong>土地及契税</strong></td><td>土地出让金、转让价款、契税及相关取得费用</td><td>土地取得价款 + 契税税率</td></tr>
+        <tr><td><strong>工程前期费</strong></td><td>咨询、策划、规划、设计、报建、勘察、检测等</td><td>前期工程费单价 × 总建筑面积</td></tr>
+        <tr><td><strong>建安及配套</strong></td><td>土建、机电、消防、水电气网、排油烟、排污、隔油池</td><td>建安工程费 + 其他工程费 + 公共规费</td></tr>
+        <tr><td><strong>装修装饰</strong></td><td>公区精装、内部装修、外立面、亮化、导视及精装商铺</td><td>公共区域精装单价 × 总建筑面积</td></tr>
+        <tr><td><strong>设施设备</strong></td><td>中央空调、电梯、消防、智能化、运营设备及后厨设备</td><td>设施设备单价 × 总建筑面积</td></tr>
+        <tr><td><strong>市政及规费</strong></td><td>市政基础设施配套、人防易地建设及其他属地公共规费</td><td>按项目属地单价 × 总建筑面积</td></tr>
+        <tr><td><strong>预备费与开办</strong></td><td>不可预见费、招商佣金、筹备营销、筹备团队及其他开办费</td><td>预备费按直接工程费计提；开办费按项目金额计入</td></tr>
+      </tbody></table></div>
     </div>
     <div class="form-section">
       <div class="section-title">项目所在地公共费用</div>
@@ -3540,6 +3583,7 @@ function renderResultsStep() {
       <div class="card"><h3>投资构成</h3><div class="donut-wrap"><canvas id="cost-donut"></canvas><div class="donut-legend">${state.result.investmentBreakdown.map((item, i) => `<div class="donut-item"><i style="background:${donutColor(i)}"></i><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)}万</strong></div>`).join('')}</div></div></div>
     </div>
     ${renderOperatingResultCards()}
+    ${renderPhaseCostCard()}
     <div class="analysis-panel">
       <div class="card"><h3>分析结论</h3><ul class="analysis-list">${analysis.bullets.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul></div>
       <div class="card"><h3>建议与下一步</h3>${analysis.recommendations.map((text, i) => `<div class="recommendation"><div class="num">${i + 1}</div><p>${escapeHtml(text)}</p></div>`).join('')}</div>
@@ -3550,6 +3594,32 @@ function renderResultsStep() {
     </div>
     ${renderFloorResultTable()}
     <div class="export-bar"><div><strong>生成汇报材料</strong><span>Excel用于继续分析；PPT用于内部评审和项目汇报。</span></div><div class="export-actions"><button class="btn btn-secondary" id="export-excel">${ICONS.excel}<span>导出Excel</span></button><button class="btn btn-primary" id="export-ppt">${ICONS.ppt}<span>导出PPT汇报</span></button></div></div>`;
+}
+
+function renderPhaseCostCard() {
+  const result = state.result;
+  const s = result?.summary;
+  const rows = result?.phaseCostBreakdown || [];
+  if (!rows.length) return '';
+  const preparation = rows.filter(item => item.stage === '筹备期');
+  const operation = rows.filter(item => item.stage === '运营期');
+  const tableRows = (items, total) => items.filter(item => Number(item.value || 0) > 0).map(item => `<tr><td>${escapeHtml(item.name)}</td><td class="num">${fmt(item.value, 2)}万</td><td class="num">${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</td></tr>`).join('') || '<tr><td colspan="3" class="empty-table-cell">暂无数据</td></tr>';
+  const prepTotal = Number(s.preOpeningInvestment || 0);
+  const operationTotal = Number(s.operationPeriodOperatingCost || 0) + Number(s.operationPeriodTaxes || 0);
+  return `<div class="card phase-cost-card">
+    <h3>筹备期与运营期成本结构</h3>
+    <div class="phase-cost-kpis">
+      <div><span>筹备期投入</span><strong>${fmt(prepTotal, 2)}</strong><em>万元</em></div>
+      <div><span>运营期经营成本</span><strong>${fmt(s.operationPeriodOperatingCost, 2)}</strong><em>万元</em></div>
+      <div><span>运营期税费</span><strong>${fmt(s.operationPeriodTaxes, 2)}</strong><em>万元</em></div>
+      <div class="highlight"><span>全周期成本（不含融资）</span><strong>${fmt(s.fullCycleCostExcludingFinancing, 2)}</strong><em>万元</em></div>
+    </div>
+    <div class="phase-cost-grid">
+      <div><div class="subsection-heading"><div><strong>筹备期投入构成</strong><span>土地、工程、装修设备、规费、招商开办及流动资金</span></div></div><table class="data-table"><thead><tr><th>成本项目</th><th class="num">金额</th><th class="num">占比</th></tr></thead><tbody>${tableRows(preparation, prepTotal)}</tbody></table></div>
+      <div><div class="subsection-heading"><div><strong>运营期成本构成</strong><span>${fmt(state.result?.annual?.length || 0)}个运营年度累计</span></div></div><table class="data-table"><thead><tr><th>成本项目</th><th class="num">金额</th><th class="num">占比</th></tr></thead><tbody>${tableRows(operation, operationTotal)}</tbody></table></div>
+    </div>
+    <span class="table-subnote">筹备期投入包含项目总投资及铺底流动资金；运营期成本为各运营年度经营成本与税费合计，不含融资利息。包含融资的现金成本为 ${fmt(s.fullCycleCashCostIncludingFinancing, 2)} 万元。</span>
+  </div>`;
 }
 
 function renderOperatingResultCards() {

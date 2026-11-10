@@ -53,6 +53,9 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "locationSource": "",
             "projectType": "购物中心",
             "developmentType": "new_build",
+            "propertyRightsStatus": "owned",
+            "acquisitionMethod": "market_auction",
+            "buildingStatus": "under_construction",
             "rentAreaBasis": "leasable",
             "revenueModel": "rent",
             "startYear": datetime.now().year + 1,
@@ -1365,6 +1368,26 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_extra_operating_cost = as_float(stable_row.get("extraOperatingCost"))
     stable_operating_cost = as_float(stable_row.get("operatingCost"))
     stable_taxes = as_float(stable_row.get("taxes"))
+    operation_rows = [row for row in annual_rows if row.get("opYear", 0) > 0]
+    operation_period_operating_cost = sum(as_float(row.get("operatingCost")) for row in operation_rows)
+    operation_period_taxes = sum(as_float(row.get("taxes")) for row in operation_rows)
+    operation_period_interest = sum(as_float(row.get("interest")) for row in operation_rows)
+    preopening_investment = total_investment
+    full_cycle_cost_excluding_financing = preopening_investment + operation_period_operating_cost + operation_period_taxes
+    full_cycle_cash_cost_including_financing = full_cycle_cost_excluding_financing + operation_period_interest
+    phase_cost_breakdown = [
+        {**item, "stage": "筹备期"} for item in investment_breakdown
+    ] + [
+        {"stage": "运营期", "name": "物业基础运营", "value": sum(as_float(row.get("propertyOpsCost")) for row in operation_rows)},
+        {"stage": "运营期", "name": "公共能耗", "value": sum(as_float(row.get("energyCost")) for row in operation_rows)},
+        {"stage": "运营期", "name": "人员及物业服务成本", "value": sum(as_float(row.get("staffCost")) for row in operation_rows)},
+        {"stage": "运营期", "name": "办公行政", "value": sum(as_float(row.get("officeCost")) for row in operation_rows)},
+        {"stage": "运营期", "name": "招商及租赁费用", "value": sum(as_float(row.get("leasingCost")) + as_float(row.get("ownerRent")) for row in operation_rows)},
+        {"stage": "运营期", "name": "营销推广", "value": sum(as_float(row.get("marketingCost")) for row in operation_rows)},
+        {"stage": "运营期", "name": "维保与保险", "value": sum(as_float(row.get("maintenanceCost")) + as_float(row.get("insuranceCost")) for row in operation_rows)},
+        {"stage": "运营期", "name": "坏账及其他运营费用", "value": sum(as_float(row.get("badDebtCost")) + as_float(row.get("otherOpexCost")) + as_float(row.get("extraOperatingCost")) for row in operation_rows)},
+        {"stage": "运营期", "name": "税费", "value": operation_period_taxes},
+    ]
     service_breakdown_base_total = sum(as_float(item.get("serviceCost")) for item in property_service_base)
     service_breakdown_stable_total = sum(as_float(stable_row.get(item.get("costField"))) for item in property_service_base)
     service_breakdown_scale = safe_div(service_breakdown_stable_total, service_breakdown_base_total) if staff_cost_mode == "organization" else 0.0
@@ -1504,6 +1527,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "totalMonthlyConcession": total_monthly_concession,
             "revenueModel": project_revenue_model,
             "totalInvestment": total_investment,
+            "preOpeningInvestment": preopening_investment,
+            "operationPeriodOperatingCost": operation_period_operating_cost,
+            "operationPeriodTaxes": operation_period_taxes,
+            "operationPeriodInterest": operation_period_interest,
+            "fullCycleCostExcludingFinancing": full_cycle_cost_excluding_financing,
+            "fullCycleCashCostIncludingFinancing": full_cycle_cash_cost_including_financing,
             "equityInvestment": total_investment - loan_amount,
             "loanAmount": loan_amount,
             "investmentPerGba": safe_div(total_investment * 10000, gba),
@@ -1564,6 +1593,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "status": analysis["status"],
         },
         "investmentBreakdown": investment_breakdown,
+        "phaseCostBreakdown": phase_cost_breakdown,
         "organizationBreakdown": organization_breakdown,
         "positionBreakdown": position_breakdown,
         "propertyServiceBreakdown": property_service_breakdown,
@@ -1775,6 +1805,12 @@ def build_analysis(
     owner_rent_config = model.get("ownerRent") if isinstance(model.get("ownerRent"), dict) else {}
     if owner_rent_config.get("enabled"):
         recommendations.append("项目已计入土地或物业租赁支出，应分别核对租期、免租期、支付节奏、递增条款、发票税率及提前解约责任，并单独测算土地和物业租金上涨情景。")
+    rights_status = str(model.get("project", {}).get("propertyRightsStatus") or "owned")
+    acquisition_method = str(model.get("project", {}).get("acquisitionMethod") or "market_auction")
+    if rights_status in {"leased", "government"} or acquisition_method == "lease":
+        recommendations.append("当前项目涉及租赁或非自有产权安排，应单独核对租赁期限、租金递增、续租权、解约补偿、装修改造归属和到期资产处置，避免按自有物业口径高估残值。")
+    if rights_status == "equity" or acquisition_method == "equity_acquisition":
+        recommendations.append("当前项目涉及股权持有或股权收购，应将股权对价、历史债务、税务风险、诉讼担保、人员安置和资产权属纳入尽调，不能只按土地及建安成本判断投资额。")
     cost_adjustment_config = model.get("operations", {}).get("annualCostAdjustments", {}) if isinstance(model.get("operations"), dict) else {}
     if isinstance(cost_adjustment_config, dict) and any(
         isinstance(item, dict) and (item.get("leasingFactor") not in (None, 1, 1.0, "1", "100%") or item.get("operationsFactor") not in (None, 1, 1.0, "1", "100%") or as_float(item.get("extraCost")) != 0)
