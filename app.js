@@ -1,7 +1,7 @@
-import './backend.js?v=20261110-stage3';
+import './backend.js?v=20261110-sharefix7';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.4';
+const APP_VERSION = '1.21.5';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1840,33 +1840,83 @@ async function broadcastProjectShare({ recipientId, recipientUsername, recipient
   const config = cloudRealtimeConfig();
   if (!config) throw new Error('当前为本地模式，无法使用在线站内投递');
   const shareId = crypto.randomUUID();
-  const response = await fetch(`${config.url.replace(/\/$/, '')}/realtime/v1/api/broadcast`, {
-    method: 'POST',
-    headers: {
-      apikey: config.anonKey,
-      Authorization: `Bearer ${state.token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messages: [{
-        topic: `duoduo-share-${recipientId}`,
-        event: 'project_share',
-        private: false,
-        payload: {
-          shareId,
-          recipientId,
-          recipientUsername,
-          senderId: state.user?.id || '',
-          senderUsername: state.user?.username || '',
-          senderName: state.user?.displayName || state.user?.username || '',
-          note: note || '',
-          shareCode,
-        },
-      }],
-    }),
-  });
-  if (!response.ok) throw new Error(`站内投递失败（HTTP ${response.status}），请改用分享码或分享文件`);
+  const topic = `duoduo-share-${recipientId}`;
+  const payload = {
+    shareId,
+    recipientId,
+    recipientUsername,
+    senderId: state.user?.id || '',
+    senderUsername: state.user?.username || '',
+    senderName: state.user?.displayName || state.user?.username || '',
+    note: note || '',
+    shareCode,
+  };
+  let restError = null;
+  try {
+    const response = await fetch(`${config.url.replace(/\/$/, '')}/realtime/v1/api/broadcast`, {
+      method: 'POST',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messages: [{ topic, event: 'project_share', private: false, payload }] }),
+    });
+    if (response.ok) return { shareId, recipientName };
+    restError = new Error(`HTTP ${response.status}`);
+  } catch (error) {
+    restError = error;
+  }
+  try {
+    await publishRealtimeBroadcast(config, topic, 'project_share', payload);
+  } catch (error) {
+    throw new Error(`站内投递失败（${restError?.message || '广播接口不可用'}；${error.message}），请改用分享码或分享文件`);
+  }
   return { shareId, recipientName };
+}
+
+function publishRealtimeBroadcast(config, topic, eventName, payload) {
+  return new Promise((resolve, reject) => {
+    const wsUrl = config.url.replace(/^http/, 'ws').replace(/\/$/, '') + `/realtime/v1/websocket?apikey=${encodeURIComponent(config.anonKey)}&vsn=1.0.0`;
+    const socket = new WebSocket(wsUrl);
+    let ref = 0;
+    let settled = false;
+    const finish = (error = null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { socket.close(); } catch {}
+      error ? reject(error) : resolve();
+    };
+    const timer = setTimeout(() => finish(new Error('WebSocket投递超时')), 8000);
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        topic: `realtime:${topic}`,
+        event: 'phx_join',
+        payload: { config: { broadcast: { ack: true, self: false }, presence: { key: '' }, postgres_changes: [] } },
+        ref: String(++ref),
+        join_ref: String(ref),
+      }));
+    };
+    socket.onmessage = event => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.event !== 'phx_reply') return;
+        if (message.payload?.status !== 'ok') return finish(new Error(message.payload?.response?.reason || '实时通道加入失败'));
+        if (Number(message.ref) === 1) {
+          socket.send(JSON.stringify({ topic: `realtime:${topic}`, event: 'broadcast', payload: { type: 'broadcast', event: eventName, payload }, ref: String(++ref), join_ref: '1' }));
+        } else if (Number(message.ref) === 2) {
+          finish();
+        }
+      } catch (error) {
+        finish(error);
+      }
+    };
+    socket.onerror = () => finish(new Error('实时通道连接失败'));
+    socket.onclose = () => {
+      if (!settled) finish(new Error('实时通道提前关闭'));
+    };
+  });
 }
 
 async function openShareProjectModal(projectId) {
