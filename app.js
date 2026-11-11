@@ -1,7 +1,7 @@
-import './backend.js?v=20261111-login1';
+import './backend.js?v=20261111-login4';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.21.10';
+const APP_VERSION = '1.22.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1327,6 +1327,7 @@ function renderAuth(mode = 'login') {
             ${!isLogin ? '<div class="field"><label>姓名 / 称呼</label><input class="input" name="displayName" autocomplete="name" placeholder="例如：王经理"></div>' : ''}
             <div class="field"><label>用户名</label><input class="input" name="username" autocomplete="username" required placeholder="输入用户名"></div>
             <div class="field"><label>密码 <small>至少6位</small></label><input class="input" type="password" name="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" required placeholder="输入密码"></div>
+            <label class="local-auth-mode"><input type="checkbox" name="localMode" id="local-auth-mode"><span><strong>本机兼容登录</strong><small>云端网络无法连接时使用。账号和项目只保存在当前设备，不跨设备同步；项目可通过分享码或站内收件箱交换。</small></span></label>
             <button class="auth-submit" type="submit">${isLogin ? '进入工作台' : '提交注册申请'}</button>
           </form>
           ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>首次使用可直接体验：账号 <strong>demo</strong>，密码 <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
@@ -1348,6 +1349,11 @@ function renderAuth(mode = 'login') {
     form.username.value = 'demo';
     form.password.value = 'demo1234';
   });
+  const localModeInput = document.getElementById('local-auth-mode');
+  if (localModeInput) {
+    localModeInput.checked = localStorage.getItem('duoduo_local_auth_mode') === '1';
+    localModeInput.addEventListener('change', () => localStorage.setItem('duoduo_local_auth_mode', localModeInput.checked ? '1' : '0'));
+  }
   document.getElementById('auth-form').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1358,6 +1364,7 @@ function renderAuth(mode = 'login') {
       username: form.username.value.trim(),
       password: form.password.value,
       displayName: form.displayName?.value.trim() || form.username.value.trim(),
+      mode: form.localMode.checked ? 'local' : 'cloud',
     };
     setBusy(true);
     try {
@@ -1408,7 +1415,7 @@ function sidebar(active = 'projects') {
       <div class="sidebar-spacer"></div>
       <div class="user-box">
         <strong>${escapeHtml(state.user?.displayName || state.user?.username || '')}</strong>
-        <span>${state.user?.role === 'super_admin' ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : '正式账号 · 云端工作空间'}</span>
+        <span>${state.user?.role === 'super_admin' ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : state.user?.localMode ? '本机兼容账号 · 当前设备' : '正式账号 · 云端工作空间'}</span>
         <div class="font-size-setting">
           <span class="font-size-setting-title">界面字号</span>
           <div class="font-size-options" role="group" aria-label="界面字号调整">
@@ -1499,7 +1506,8 @@ function bindShell() {
 function renderProjectList() {
   const cards = state.projects.map(project => projectCard(project)).join('');
   const storageCopy = state.user?.username === 'demo'
-    ? '演示账号项目只保存在当前浏览器，适合体验功能。'
+    ? '演示账号项目只保存在当前浏览器，适合体验功能。' : state.user?.localMode
+    ? '本机兼容账号项目只保存在当前浏览器；云端恢复后可通过分享码或站内收件箱迁移。'
     : '正式账号项目保存在云端，登录后可跨设备继续测算。';
   const content = `
     <div class="page-intro">

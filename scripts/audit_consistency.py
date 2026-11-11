@@ -90,6 +90,8 @@ def audit_defaults_and_units() -> None:
     require_text(app, "org-delete-btn danger-text", "organization icon delete action")
     assert "<span>删除岗位</span>" not in app
     assert "<span>删除部门</span>" not in app
+    require_text(backend, "body.mode === 'local'", "local fallback registration")
+    require_text(app, "本机兼容登录", "local fallback login UI")
     require_text(app, "budget.monthsVersion = 2", "preopening month migration")
     require_text(app, "data-sync-preopening-months", "preopening month sync action")
 

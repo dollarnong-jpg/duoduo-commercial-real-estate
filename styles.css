@@ -138,6 +138,11 @@ a { color: inherit; }
   border: 0; border-radius: 10px; padding: 12px 18px; font-weight: 600; transition: transform .16s, opacity .16s, background .16s;
 }
 .auth-submit { width: 100%; background: var(--navy); color: #fff; margin-top: 4px; }
+.local-auth-mode { display:flex; align-items:flex-start; gap:9px; margin:4px 0 8px; padding:10px 12px; border:1px solid #dbe5df; border-radius:10px; background:#f7faf8; cursor:pointer; }
+.local-auth-mode input { width:16px; height:16px; margin-top:2px; accent-color:var(--green); flex:0 0 auto; }
+.local-auth-mode span { display:block; color:var(--navy); font-size:var(--fs-9); line-height:1.5; }
+.local-auth-mode strong { display:block; margin-bottom:2px; font-size:var(--fs-10); }
+.local-auth-mode small { display:block; color:var(--muted); font-size:var(--fs-8); line-height:1.5; }
 .auth-submit:hover, .btn:hover { transform: translateY(-1px); }
 .auth-submit:disabled, .btn:disabled { opacity: .55; cursor: wait; transform: none; }
 .auth-demo { margin-top: 18px; padding: 13px 15px; border-radius: 12px; background: var(--gold-soft); color: #74571a; font-size: var(--fs-12); line-height: 1.6; }

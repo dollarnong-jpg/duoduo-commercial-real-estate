@@ -92,7 +92,7 @@ async function currentUser(init) {
   const localUsername = usernameFromToken(token);
   if (localUsername) {
     const users = await ensureUsers();
-    return users[localUsername] ? { username: localUsername, displayName: users[localUsername].displayName || localUsername, role: 'user', status: 'approved' } : null;
+    return users[localUsername] ? { username: localUsername, displayName: users[localUsername].displayName || localUsername, role: users[localUsername].role || 'user', status: 'approved', localMode: true } : null;
   }
   if (CLOUD_ENABLED) return cloudCurrentUser(init);
   return null;
@@ -341,7 +341,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261111-login1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261111-login4', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2562,11 +2562,13 @@ async function handleApi(path, init) {
     const body = await requestJSON(init);
     const username = String(body.username || '').trim().toLowerCase();
     const password = String(body.password || '');
-    if (username === 'demo') {
+    const localMode = body.mode === 'local';
+    if (localMode || username === 'demo') {
       const users = await ensureUsers();
       const user = users[username];
-      if (!user || user.passwordHash !== await sha256(password)) return jsonResponse({ error: '用户名或密码错误' }, 401);
-      return jsonResponse({ token: tokenFor(username), user: { username, displayName: user.displayName || username, role: 'user', status: 'approved' } });
+      if (!user) return jsonResponse({ error: localMode ? '本机没有该账号，请先切换到“注册”创建本机账号' : '用户名或密码错误' }, 401);
+      if (user.passwordHash !== await sha256(password)) return jsonResponse({ error: '用户名或密码错误' }, 401);
+      return jsonResponse({ token: tokenFor(username), user: { username, displayName: user.displayName || username, role: user.role || 'user', status: 'approved', localMode: true } });
     }
     if (!CLOUD_ENABLED) return jsonResponse({ error: '云端账号服务尚未配置' }, 503);
     try {
@@ -2615,6 +2617,13 @@ async function handleApi(path, init) {
     const displayName = String(body.displayName || username).trim();
     if (!/^[a-z0-9_\u4e00-\u9fa5-]{3,24}$/i.test(username)) return jsonResponse({ error: '用户名需为3–24位，可使用中文、字母、数字、下划线或短横线' }, 400);
     if (password.length < 6) return jsonResponse({ error: '密码至少6个字符' }, 400);
+    if (body.mode === 'local') {
+      const users = await ensureUsers();
+      if (users[username]) return jsonResponse({ error: '该用户名已在当前设备注册，请直接登录' }, 409);
+      users[username] = { username, displayName: displayName || username, passwordHash: await sha256(password), role: 'user', status: 'approved', localMode: true, createdAt: isoNow() };
+      writeJSON(USERS_KEY, users);
+      return jsonResponse({ token: tokenFor(username), user: { username, displayName: displayName || username, role: 'user', status: 'approved', localMode: true } });
+    }
     if (!CLOUD_ENABLED) return jsonResponse({ error: '云端账号服务尚未配置' }, 503);
     try {
       const health = await cloudRequest('/auth/v1/health', { token: CLOUD_CONFIG.anonKey, timeoutMs: 12000 });
