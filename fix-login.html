@@ -19,9 +19,9 @@
     <div class="steps">
       <div class="step"><span class="dot"></span>清理旧 Service Worker 与网页缓存</div>
       <div class="step"><span class="dot"></span>清除过期登录凭证</div>
-      <div class="step"><span class="dot"></span>自动打开 v1.24.0 正式登录页</div>
+      <div class="step"><span class="dot"></span>自动打开 v1.24.1 正式登录页</div>
     </div>
-    <a class="button" id="go" href="./?v=20261111-shopaudit4">立即进入登录页</a>
+    <a class="button" id="go" href="./?v=20261111-settlement2">立即进入登录页</a>
     <div class="status" id="status">准备清理…</div>
     <small>如果页面没有自动跳转，请点击上方按钮。正式账号首次使用时请选择“注册”，第一个正式账号会自动成为超级管理员。</small>
   </main>
@@ -49,7 +49,7 @@
         localStorage.removeItem('duoduo_cloud_session_v1');
         status.textContent = '修复完成，正在打开登录页…';
         const target = new URL('./', location.href);
-        target.searchParams.set('v', '20261111-shopaudit4');
+        target.searchParams.set('v', '20261111-settlement2');
         target.searchParams.set('fixed', Date.now().toString());
         setTimeout(() => location.replace(target.href), 900);
       } catch (error) {

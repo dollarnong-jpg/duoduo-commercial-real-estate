@@ -945,6 +945,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "rentArea": rent_area,
                 "guaranteeRevenue": guarantee_revenue,
                 "concessionRevenue": concession_revenue,
+                "includedGuaranteeRevenue": rent_part,
+                "includedConcessionRevenue": concession_part,
                 "monthlyRent": rent_part,
                 "monthlyRevenue": monthly,
                 "weightedRent": safe_div(monthly, rent_area),
@@ -1023,6 +1025,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                     "settlementMode": settlement_mode,
                     "guaranteeRevenue": guarantee_revenue,
                     "concessionRevenue": concession_revenue,
+                    "includedGuaranteeRevenue": rent_part,
+                    "includedConcessionRevenue": concession_part,
                     "monthlyRent": rent_part,
                     "monthlyRevenue": monthly,
                     **service_rates,
@@ -1049,7 +1053,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "rentAreaBasis": resolved_rent_area_basis(floor, project),
                 "rentArea": rent_area,
                 "monthlyRent": sum(shop["monthlyRent"] for shop in group),
-                "monthlyConcession": sum(shop["concessionRevenue"] for shop in group),
+                "monthlyGuarantee": sum(as_float(shop.get("includedGuaranteeRevenue")) for shop in group),
+                "monthlyConcession": sum(as_float(shop.get("includedConcessionRevenue")) for shop in group),
                 "monthlyRevenue": monthly,
                 "weightedRent": safe_div(monthly, rent_area),
                 "propertyFee": safe_div(monthly_property_fee, rent_area),
@@ -1067,7 +1072,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             building, floor_name = key.split("||", 1)
             rent_area = sum(shop["rentArea"] for shop in group_shops)
             monthly = sum(shop["monthlyRevenue"] for shop in group_shops)
-            floor_calc.append({"building": building, "name": floor_name, "buildingArea": sum(shop["buildingArea"] for shop in group_shops), "leasableArea": sum(shop["leasableArea"] for shop in group_shops), "rentArea": rent_area, "rentAreaBasis": "mixed", "avgRent": safe_div(monthly, rent_area), "monthlyRent": sum(shop["monthlyRent"] for shop in group_shops), "monthlyConcession": sum(shop["concessionRevenue"] for shop in group_shops), "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, rent_area)})
+            floor_calc.append({"building": building, "name": floor_name, "buildingArea": sum(shop["buildingArea"] for shop in group_shops), "leasableArea": sum(shop["leasableArea"] for shop in group_shops), "rentArea": rent_area, "rentAreaBasis": "mixed", "avgRent": safe_div(monthly, rent_area), "monthlyRent": sum(shop["monthlyRent"] for shop in group_shops), "monthlyGuarantee": sum(as_float(shop.get("includedGuaranteeRevenue")) for shop in group_shops), "monthlyConcession": sum(as_float(shop.get("includedConcessionRevenue")) for shop in group_shops), "monthlyRevenue": monthly, "weightedRent": safe_div(monthly, rent_area)})
     land_area = as_float(project.get("landArea"))
 
     leasing_items = [

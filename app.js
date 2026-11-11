@@ -1,7 +1,7 @@
-import './backend.js?v=20261111-shopaudit4';
+import './backend.js?v=20261111-settlement2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.24.0';
+const APP_VERSION = '1.24.1';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3407,7 +3407,7 @@ function renderDetailedPricing(m, shops, preview) {
       <div style="display:flex;gap:8px"><button class="btn btn-secondary btn-sm" id="add-shop">${ICONS.plus}<span>新增铺位</span></button>${shops.length ? `<button class="btn btn-danger btn-sm" id="clear-shops">${ICONS.trash}<span>清空</span></button>` : ''}</div>
     </div>
       <div class="data-table-wrap">
-      <table class="data-table shop-detail-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>商户计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">租金单价<br><small>元/㎡/月</small></th><th class="num">物业/商管/空调<br><small>元/㎡/月</small></th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
+      <table class="data-table shop-detail-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>商户计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">租金单价<br><small>元/㎡/月</small></th><th class="num">物业/商管/空调<br><small>元/㎡/月</small></th><th class="num">保底收入<br><small>实际计入</small></th><th class="num">联营收入<br><small>实际计入</small></th><th class="num">测算收入</th><th></th></tr></thead><tbody>
         ${pageRows.length ? pageRows.map(shop => {
           const key = shopRecordKey(shop);
           const calc = previewShopMap.get(key);
@@ -3417,7 +3417,9 @@ function renderDetailedPricing(m, shops, preview) {
           const rentSource = shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0 ? '导入/指定' : '自动分配';
           const feeText = calc ? `物业 ${fmt(calc.propertyFee, 2)} / 商管 ${fmt(calc.commercialManagementFee, 2)} / 空调 ${fmt(calc.centralAcFee, 2)}<small class="rent-source">合计 ${fmt(calc.monthlyServiceFee, 2)} 元/月</small>` : '待计算';
           const shopBasisLabel = `${RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)]}${shop.rentAreaBasisOverride ? '（铺位例外）' : ''}`;
-          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(shopBasisLabel)}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${calc ? fmt(calc.rent, 2) : fmt(shop.rentOverride, 2)}</strong><small class="rent-source">${rentSource}</small></td><td class="num">${feeText}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
+          const includedGuarantee = calc ? Number(calc.includedGuaranteeRevenue ?? calc.guaranteeRevenue ?? 0) : 0;
+          const includedConcession = calc ? Number(calc.includedConcessionRevenue ?? calc.concessionRevenue ?? 0) : 0;
+          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(shopBasisLabel)}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag" data-shop-settlement="${escapeHtml(key)}">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${calc ? fmt(calc.rent, 2) : fmt(shop.rentOverride, 2)}</strong><small class="rent-source">${rentSource}</small></td><td class="num">${feeText}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}" title="实际计入的保底收入；保底测算参考值 ${calc ? fmt(calc.guaranteeRevenue) : '待计算'}">${calc ? fmt(includedGuarantee) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}" title="实际计入的联营收入；联营测算参考值 ${calc ? fmt(calc.concessionRevenue) : '待计算'}">${calc ? fmt(includedConcession) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
         }).join('') : `<tr><td colspan="15" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
       </tbody></table>
     </div>
@@ -6403,13 +6405,24 @@ function updateLiveStats() {
     const shop = shops.get(el.dataset.shopPremium);
     if (shop) el.textContent = fmtPct(shop.conditionPremium || 0);
   });
+  const settlementLabels = { rent: '纯租金', concession: '纯联营扣点', guarantee_or_concession: '保底与联营扣点取高' };
+  document.querySelectorAll('[data-shop-settlement]').forEach(el => {
+    const shop = shops.get(el.dataset.shopSettlement);
+    if (shop) el.textContent = settlementLabels[shop.settlementMode] || shop.settlementMode || '';
+  });
   document.querySelectorAll('[data-shop-guarantee]').forEach(el => {
     const shop = shops.get(el.dataset.shopGuarantee);
-    if (shop) el.textContent = fmt(shop.guaranteeRevenue || 0);
+    if (shop) {
+      el.textContent = fmt(shop.includedGuaranteeRevenue ?? shop.guaranteeRevenue ?? 0);
+      el.title = `实际计入的保底收入；保底测算参考值 ${fmt(shop.guaranteeRevenue || 0)}`;
+    }
   });
   document.querySelectorAll('[data-shop-concession]').forEach(el => {
     const shop = shops.get(el.dataset.shopConcession);
-    if (shop) el.textContent = fmt(shop.concessionRevenue || 0);
+    if (shop) {
+      el.textContent = fmt(shop.includedConcessionRevenue ?? shop.concessionRevenue ?? 0);
+      el.title = `实际计入的联营收入；联营测算参考值 ${fmt(shop.concessionRevenue || 0)}`;
+    }
   });
 }
 

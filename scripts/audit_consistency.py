@@ -116,6 +116,7 @@ def audit_presets_and_formulas() -> None:
     require_text(app, "业主租金支付面积口径", "owner rent basis UI")
     require_text(app, "const rentAreaRecords = mode === 'detailed' && shops.length ? shops : floors", "merchant basis summary cascade")
     require_text(app, "rentAreaBasisOverride", "manual shop basis exception")
+    require_text(app, "data-shop-settlement", "live settlement mode label")
     require_text(backend, "商户租金核算面积口径", "merchant rent basis template")
     require_text(backend, "商铺计租例外", "shop rent basis exception template")
     require_text(backend, "exportShopAuditWorkbook", "formula audit workbook")
@@ -222,6 +223,8 @@ def audit_engine_invariants() -> None:
     basis_model["project"]["rentAreaBasis"] = "leasable"
     leasable_basis = engine.calculate_model(basis_model, False)
     assert close(leasable_basis["summary"]["totalMonthlyRent"], 8000)
+    assert close(leasable_basis["shops"][0]["includedConcessionRevenue"], 0)
+    assert close(leasable_basis["shops"][0]["includedGuaranteeRevenue"], 8000)
     assert close(leasable_basis["summary"]["grossFloorArea"], 120)
     assert leasable_basis["summary"]["rentAreaBasis"] == "leasable"
     basis_model["shops"][0]["rentAreaBasis"] = "leasable"
@@ -234,6 +237,13 @@ def audit_engine_invariants() -> None:
     shop_override = engine.calculate_model(basis_model, False)
     assert close(shop_override["summary"]["totalMonthlyRent"], 8000)
     assert shop_override["shops"][0]["rentAreaBasis"] == "leasable"
+
+    basis_model["project"]["revenueModel"] = "guarantee_or_concession"
+    basis_model["categories"][0]["salesPerSqmMonth"] = 1000
+    basis_model["categories"][0]["concessionRate"] = 0.10
+    take_higher = engine.calculate_model(basis_model, False)["shops"][0]
+    assert close(take_higher["includedGuaranteeRevenue"] + take_higher["includedConcessionRevenue"], take_higher["monthlyRevenue"])
+    assert close(min(take_higher["includedGuaranteeRevenue"], take_higher["includedConcessionRevenue"]), 0)
 
     owner_basis_model = engine.default_model("业主租金面积口径审计")
     owner_basis_model["calculationMode"] = "preliminary"
