@@ -55,6 +55,8 @@ def audit_version_and_cache() -> None:
 
 def audit_defaults_and_units() -> None:
     model = engine.default_model("一致性审计")
+    assert model["project"]["rentAreaBasis"] == "leasable"
+    assert model["project"]["ownerRentAreaBasis"] == "building"
     total_months = float(model["project"]["leasingPeriodMonths"])
     assert total_months == 12.0
     team_months = [float(item["months"]) for item in model["preOpeningBudget"]["team"]["positions"]]
@@ -110,6 +112,11 @@ def audit_presets_and_formulas() -> None:
         require_text(app, project_type, f"project type {project_type}")
     require_text(app, "一铺一价=商铺建筑面积×（1+公区系数）", "area formula")
     require_text(app, "初步测算=楼层建筑面积合计", "area formula")
+    require_text(app, "商户租金核算面积口径", "merchant rent basis UI")
+    require_text(app, "业主租金支付面积口径", "owner rent basis UI")
+    require_text(app, "const rentAreaRecords = mode === 'detailed' && shops.length ? shops : floors", "merchant basis summary cascade")
+    require_text(backend, "商户租金核算面积口径", "merchant rent basis template")
+    require_text(backend, "业主租金支付面积口径", "owner rent basis export")
     require_text(app, "企业所得税（融资前项目口径）", "project income tax label")
     require_text(app, "企业所得税（融资后股权口径）", "equity income tax label")
     require_text(backend, "融资前项目所得税", "project income tax export")
@@ -191,6 +198,52 @@ def audit_engine_invariants() -> None:
     preliminary["floors"] = [{"building": "1号楼", "name": "1F", "buildingArea": 1000, "leasableArea": 800, "avgRent": 100, "rentAreaBasis": "leasable"}]
     preliminary["project"]["gbaOverride"] = 1500
     assert close(engine.calculate_model(preliminary, False)["summary"]["grossFloorArea"], 1500)
+
+    basis_model = engine.default_model("双面积口径审计")
+    basis_model["calculationMode"] = "detailed"
+    basis_model["shops"] = [{
+        "id": "A-101",
+        "building": "1号楼",
+        "floor": "1F",
+        "buildingArea": 100,
+        "leasableArea": 80,
+        "category": "零售",
+        "rentOverride": 100,
+    }]
+    basis_model["project"]["rentAreaBasis"] = "building"
+    building_basis = engine.calculate_model(basis_model, False)
+    assert close(building_basis["summary"]["totalMonthlyRent"], 10000)
+    basis_model["project"]["rentAreaBasis"] = "leasable"
+    leasable_basis = engine.calculate_model(basis_model, False)
+    assert close(leasable_basis["summary"]["totalMonthlyRent"], 8000)
+    assert close(leasable_basis["summary"]["grossFloorArea"], 120)
+    assert leasable_basis["summary"]["rentAreaBasis"] == "leasable"
+    basis_model["floors"] = [{"building": "1号楼", "name": "1F", "rentAreaBasis": "building", "buildingArea": 100, "leasableArea": 80, "avgRent": 100}]
+    floor_override = engine.calculate_model(basis_model, False)
+    assert close(floor_override["summary"]["totalMonthlyRent"], 10000)
+    assert floor_override["shops"][0]["rentAreaBasis"] == "building"
+    basis_model["shops"][0]["rentAreaBasis"] = "leasable"
+    shop_override = engine.calculate_model(basis_model, False)
+    assert close(shop_override["summary"]["totalMonthlyRent"], 8000)
+    assert shop_override["shops"][0]["rentAreaBasis"] == "leasable"
+
+    owner_basis_model = engine.default_model("业主租金面积口径审计")
+    owner_basis_model["calculationMode"] = "preliminary"
+    owner_basis_model["floors"] = [{"building": "1号楼", "name": "1F", "buildingArea": 1000, "leasableArea": 800, "avgRent": 100}]
+    owner_basis_model["ownerRent"].update({
+        "enabled": True,
+        "leaseType": "property",
+        "propertyPricingMode": "unit",
+        "propertyArea": 0,
+        "propertyUnitRent": 100,
+    })
+    owner_basis_model["project"]["ownerRentAreaBasis"] = "building"
+    owner_building = engine.calculate_model(owner_basis_model, False)
+    assert close(owner_building["summary"]["ownerPropertyRentBaseAnnual"], 120)
+    owner_basis_model["project"]["ownerRentAreaBasis"] = "leasable"
+    owner_leasable = engine.calculate_model(owner_basis_model, False)
+    assert close(owner_leasable["summary"]["ownerPropertyRentBaseAnnual"], 96)
+    assert close(owner_building["summary"]["totalMonthlyRent"], owner_leasable["summary"]["totalMonthlyRent"])
 
     month_conflict = engine.default_model("筹备月数冲突")
     month_conflict["preOpeningBudget"]["mode"] = "detailed"

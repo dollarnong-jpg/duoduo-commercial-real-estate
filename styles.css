@@ -499,6 +499,10 @@ a { color: inherit; }
 .settlement-panel small { display: block; margin-top: 4px; color: var(--muted); font-size: var(--fs-9); }
 .settlement-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
 .settlement-actions .select { width: auto; min-width: 170px; padding: 8px 10px; font-size: var(--fs-10); }
+.merchant-basis-panel { align-items: flex-start; background: #f3f8f5; border-color: #cdded6; }
+.merchant-basis-actions { align-items: flex-end; flex-direction: column; gap: 6px; }
+.merchant-basis-summary { color: var(--muted); font-size: var(--fs-9); white-space: nowrap; }
+.merchant-basis-summary strong { display: inline; font-size: inherit; }
 .benchmark-card { margin: 12px 0 16px; border: 1px solid #dbe5df; border-radius: 12px; background: linear-gradient(135deg,#f7fbf8,#fbf8f1); overflow: hidden; }
 .benchmark-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; padding: 14px 16px; }
 .benchmark-head strong { display: block; margin: 3px 0; color: var(--navy); font-size: var(--fs-14); }

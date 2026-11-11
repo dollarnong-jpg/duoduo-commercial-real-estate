@@ -56,6 +56,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "propertyRightsStatus": "owned",
             "acquisitionMethod": "market_auction",
             "buildingStatus": "under_construction",
+            "ownerRentAreaBasis": "building",
             "rentAreaBasis": "leasable",
             "revenueModel": "rent",
             "startYear": datetime.now().year + 1,
@@ -623,15 +624,17 @@ def round_area(value: Any) -> float:
     return round(max(0.0, as_float(value)), 2)
 
 
-def resolved_rent_area_basis(record: dict[str, Any], project: dict[str, Any]) -> str:
+def resolved_rent_area_basis(record: dict[str, Any], project: dict[str, Any], fallback_record: dict[str, Any] | None = None) -> str:
     selected = str(record.get("rentAreaBasis") or "inherit")
+    if selected not in {"building", "leasable"} and isinstance(fallback_record, dict):
+        selected = str(fallback_record.get("rentAreaBasis") or "inherit")
     if selected not in {"building", "leasable"}:
         selected = str(project.get("rentAreaBasis") or "leasable")
     return "building" if selected == "building" else "leasable"
 
 
-def rent_area_for(record: dict[str, Any], project: dict[str, Any]) -> float:
-    basis = resolved_rent_area_basis(record, project)
+def rent_area_for(record: dict[str, Any], project: dict[str, Any], fallback_record: dict[str, Any] | None = None) -> float:
+    basis = resolved_rent_area_basis(record, project, fallback_record)
     value = record.get("buildingArea") if basis == "building" else record.get("leasableArea")
     return max(0.0, as_float(value))
 
@@ -943,10 +946,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         gla = sum(max(0.0, s["leasableArea"]) for s in shops)
         gba = gba_override if gba_override > 0 else shop_building_area * (1 + as_float(project.get("commonAreaFactor")))
         floor_avg = {building_floor_key(floor): max(0.0, as_float(floor.get("avgRent"))) for floor in floors}
+        floor_by_key = {building_floor_key(floor): floor for floor in floors}
         factor_groups: dict[str, list[tuple[float, float]]] = {}
         for shop in shops:
             key = building_floor_key(shop)
-            factor_groups.setdefault(key, []).append((rent_area_for(shop, project), max(0.0, category_factor.get(shop["category"], 1.0))))
+            factor_groups.setdefault(key, []).append((rent_area_for(shop, project, floor_by_key.get(key)), max(0.0, category_factor.get(shop["category"], 1.0))))
         global_factor_pairs = [pair for pairs in factor_groups.values() for pair in pairs]
         def weighted_factor(pairs: list[tuple[float, float]]) -> float:
             area = sum(p[0] for p in pairs)
@@ -956,8 +960,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         global_factor_avg = weighted_factor(global_factor_pairs)
         for shop in shops:
             key = building_floor_key(shop)
-            rent_area = rent_area_for(shop, project)
-            rent_basis = resolved_rent_area_basis(shop, project)
+            floor_record = floor_by_key.get(key)
+            rent_area = rent_area_for(shop, project, floor_record)
+            rent_basis = resolved_rent_area_basis(shop, project, floor_record)
             factor_avg = weighted_factor(factor_groups.get(key, [])) or global_factor_avg or 1.0
             applied_conditions = [name for name in shop.get("conditions", []) if name in condition_map]
             condition_premium = min(0.40, sum(condition_map[name] for name in applied_conditions))
@@ -1208,6 +1213,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     land_payment_months = max(0.0, as_float(owner_rent_config.get("landPaymentMonths"), 12.0)) if include_land_rent else 0.0
     property_pricing_mode = str(owner_rent_config.get("propertyPricingMode") or "total")
     property_area = max(0.0, as_float(owner_rent_config.get("propertyArea")))
+    if property_pricing_mode == "unit" and property_area <= 0:
+        owner_rent_area_basis = str(project.get("ownerRentAreaBasis") or "building")
+        property_area = gba if owner_rent_area_basis == "building" else gla
     property_unit_rent = max(0.0, as_float(owner_rent_config.get("propertyUnitRent")))
     property_monthly_rent = (
         property_area * property_unit_rent / 10000 if property_pricing_mode == "unit" else max(0.0, as_float(owner_rent_config.get("propertyMonthlyRent")))
@@ -1925,6 +1933,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "leasableArea": gla,
             "rentBasisArea": total_rent_area,
             "rentAreaBasis": str(project.get("rentAreaBasis") or "leasable"),
+            "ownerRentAreaBasis": str(project.get("ownerRentAreaBasis") or "building"),
             "shopBuildingArea": shop_building_area,
             "averageRent": average_rent,
             "averageRentLeasable": average_rent_leasable,

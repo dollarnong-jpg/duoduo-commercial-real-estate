@@ -1,7 +1,7 @@
-import './backend.js?v=20261111-login5';
+import './backend.js?v=20261111-rentbasis4';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.22.1';
+const APP_VERSION = '1.23.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -69,7 +69,8 @@ const FIELD_FORMULAS = {
   'project.operationYears': { title: '运营期与NPV', formula: '总测算期 = 建设期 + 运营期；NPV = Σ[CFt ÷（1+r）^t]', functions: ['SUM', 'POWER', 'NPV'], role: '延长运营期会改变累计现金流和退出价值时点。' },
   'project.revenueModel': { title: '项目计租方式', formula: '纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', functions: ['IF', 'MAX'], role: '该选择是项目默认结算方式，各业态可单独覆盖。' },
   'project.developmentType': { title: '项目开发状态', formula: '参考单价 = 城市系数 × 开发状态基准单价 × 商业类型系数', functions: ['ROUND'], role: '新建、旧改、运营中和轻资产项目会采用不同的建安、改造和装修参考基准。' },
-  'project.rentAreaBasis': { title: '租金核算面积口径', formula: '按建筑面积：租金 = 建筑面积 × 单价；按实用面积：租金 = 实用/租赁面积 × 单价', functions: ['IF'], role: '决定楼层和铺位租金按建筑面积还是实用面积（套内面积）核算，楼层和铺位可单独覆盖。' },
+  'project.ownerRentAreaBasis': { title: '业主租金支付面积口径', formula: '业主物业租金 = 合同计租面积 × 业主租金单价；合同面积填0时按本口径取项目总建筑面积或可租赁面积', functions: ['IF'], role: '仅用于测算向业主支付的物业租金，与向商户收取租金的口径相互独立。' },
+  'project.rentAreaBasis': { title: '商户租金核算面积口径', formula: '按建筑面积：商户租金 = 商铺建筑面积 × 租金单价；按实用面积：商户租金 = 实用/租赁面积 × 租金单价', functions: ['IF'], role: '决定出租给商户时楼层和铺位的默认计租面积；楼层和铺位可单独覆盖。' },
   'costs.preconstructionRate': { title: '前期工程费', formula: '前期工程费 = 总建筑面积 × 前期工程单价 ÷ 10000', functions: ['SUM', 'ROUND'], role: '金额单位为万元，计入直接工程费和折旧基数。' },
   'costs.constructionRate': { title: '建安工程费', formula: '建安工程费 = 总建筑面积 × 建安工程单价 ÷ 10000', functions: ['SUM', 'ROUND'], role: '计入直接工程费、预备费、维修费、保险和折旧基数。' },
   'costs.otherEngineeringRate': { title: '其他工程费', formula: '其他工程费 = 总建筑面积 × 其他工程单价 ÷ 10000', functions: ['SUM'], role: '并入前期及建安工程和折旧基数。' },
@@ -699,19 +700,27 @@ function safeParse(value) {
 }
 
 const RENT_BASIS_LABELS = {
-  inherit: '继承项目',
+  inherit: '继承商户默认',
   leasable: '实用面积',
   building: '建筑面积',
 };
 
 function resolvedRentAreaBasis(record, model = state.current?.model) {
-  const selected = record?.rentAreaBasis || 'inherit';
+  let selected = record?.rentAreaBasis || 'inherit';
+  if (selected !== 'building' && selected !== 'leasable' && record?.floor) {
+    const floor = (model?.floors || []).find(item => buildingFloorKey(item) === buildingFloorKey(record));
+    selected = floor?.rentAreaBasis || 'inherit';
+  }
   if (selected === 'building' || selected === 'leasable') return selected;
   return model?.project?.rentAreaBasis === 'building' ? 'building' : 'leasable';
 }
 
 function rentAreaFor(record, model = state.current?.model) {
   return Number(resolvedRentAreaBasis(record, model) === 'building' ? record?.buildingArea || 0 : record?.leasableArea || 0);
+}
+
+function projectAreaForBasis(model, basis) {
+  return basis === 'building' ? projectGrossBuildingArea(model) : projectLeasableArea(model);
 }
 
 function buildingFloorKey(record) {
@@ -2605,7 +2614,7 @@ function openNewProjectModal() {
             <div class="field"><label>项目位置</label><input class="input" name="location" value="广西壮族自治区" placeholder="例如：广西壮族自治区柳州市"></div>
             <div class="field"><label>项目开发状态</label><select class="select" name="developmentType">${DEVELOPMENT_TYPE_OPTIONS.map(item => `<option value="${item.value}">${item.label}</option>`).join('')}</select></div>
             <div class="field"><label>商业项目形态</label><select class="select" name="projectType"><option>购物中心</option><option>百货商场</option><option>奥特莱斯</option><option>街区商业</option><option>社区商业</option><option>社区底商</option><option>商业综合体</option><option>其他</option></select></div>
-            <div class="field"><label>租金核算面积口径</label><select class="select" name="rentAreaBasis"><option value="leasable">实用面积（套内/租赁面积）</option><option value="building">建筑面积</option></select></div>
+            <div class="field"><label>商户计租默认口径</label><select class="select" name="rentAreaBasis"><option value="leasable">实用面积（套内/租赁面积）</option><option value="building">建筑面积</option></select><small class="field-help">用于向商户收取租金，后续可在“商铺收益”页调整，并可被楼层、铺位单独覆盖。</small></div>
             <div class="field"><label>项目计租方式</label><select class="select" name="revenueModel"><option value="rent">纯租金</option><option value="concession">纯联营扣点</option><option value="guarantee_or_concession">保底与联营扣点取高</option></select></div>
           </div>
           <div class="modal-foot"><button type="button" class="btn btn-secondary" id="modal-cancel">取消</button><button class="btn btn-primary" type="submit">创建并开始</button></div>
@@ -2965,8 +2974,11 @@ function renderOwnerRentSection() {
   const landMonthlyComputed = includesLand
     ? landPricingMode === 'unit' ? Number(ownerRent.landArea || 0) * Number(ownerRent.landUnitRent || 0) / 10000 : Number(ownerRent.landMonthlyRent || 0)
     : 0;
+  const ownerRentAreaBasis = model.project?.ownerRentAreaBasis === 'leasable' ? 'leasable' : 'building';
+  const autoPropertyArea = projectAreaForBasis(model, ownerRentAreaBasis);
+  const effectivePropertyArea = Number(ownerRent.propertyArea || 0) > 0 ? Number(ownerRent.propertyArea || 0) : autoPropertyArea;
   const propertyMonthlyComputed = includesProperty
-    ? propertyPricingMode === 'unit' ? Number(ownerRent.propertyArea || 0) * Number(ownerRent.propertyUnitRent || 0) / 10000 : Number(ownerRent.propertyMonthlyRent || 0)
+    ? propertyPricingMode === 'unit' ? effectivePropertyArea * Number(ownerRent.propertyUnitRent || 0) / 10000 : Number(ownerRent.propertyMonthlyRent || 0)
     : 0;
   const landBase = landMonthlyComputed * Number(ownerRent.landPaymentMonths || 0);
   const propertyBase = propertyMonthlyComputed * Number(ownerRent.propertyPaymentMonths || 0);
@@ -2981,7 +2993,7 @@ function renderOwnerRentSection() {
   return `<div class="form-section owner-rent-section">
     <div class="section-title">土地及物业租赁支出</div>
     <div class="section-note">适用于土地租赁、物业租赁、租赁经营、轻资产和运营中项目。土地与物业租金会分别作为年度运营支出计入NOI和现金流。</div>
-    ${formulaPanel('土地及物业租赁支付公式', '按面积：月租金 = 面积 × 单价 ÷ 10000\n按总额：月租金 = 合同月度总额\n土地首年租金 = 土地月租金 × 土地支付月数\n物业首年租金 = 物业月租金 × 物业支付月数\n首年合计 = 土地首年租金 + 物业首年租金\n复利：第n年 = 首年 ×（1+递增率）^(n-1)\n单利：第n年 = 首年 ×［1+递增率×(n-1)］\n固定金额：第n年 = 首年 + 每年增加额×(n-1)\n阶梯：每N年按递增率上调一次', ['SUM', 'IF', 'POWER', 'INT'], '按土地租赁合同和物业租赁合同分别录入；自有物业不支付租金时选择“否”。')}
+    ${formulaPanel('土地及物业租赁支付公式', '按面积：月租金 = 面积 × 单价 ÷ 10000\n按总额：月租金 = 合同月度总额\n土地首年租金 = 土地月租金 × 土地支付月数\n物业首年租金 = 物业月租金 × 物业支付月数\n首年合计 = 土地首年租金 + 物业首年租金\n复利：第n年 = 首年 ×（1+递增率）^(n-1)\n单利：第n年 = 首年 ×［1+递增率×(n-1)］\n固定金额：第n年 = 首年 + 每年增加额×(n-1)\n阶梯：每N年按递增率上调一次', ['SUM', 'IF', 'POWER', 'INT'], '业主租金支付面积口径与商户计租面积口径相互独立。物业按面积计价时，合同面积填0会自动取项目总建筑面积或可租赁面积。')}
     <div class="form-grid">
       ${selectField('是否支付土地或物业租金', 'ownerRent.enabled', [{ value: true, label: '是，需要支付' }, { value: false, label: '否，自有物业' }], { type: 'boolean', help: '选择“是”后，租赁支出作为运营成本扣减NOI' })}
       ${enabled ? selectField('租赁标的类型', 'ownerRent.leaseType', [{ value: 'land', label: '仅土地租赁' }, { value: 'property', label: '仅物业租赁' }, { value: 'land_and_property', label: '土地 + 物业租赁' }], { help: '按实际租赁合同选择，系统将分别计算土地和物业租金' }) : ''}
@@ -2991,7 +3003,7 @@ function renderOwnerRentSection() {
       ${enabled && includesLand && landPricingMode === 'total' ? textField('土地月租金总额', 'ownerRent.landMonthlyRent', { type: 'number', unit: '万元/月', help: `首年土地租金约 ${fmt(landBase, 2)} 万元/年` }) : ''}
       ${enabled && includesLand ? textField('土地年度支付月数', 'ownerRent.landPaymentMonths', { type: 'number', unit: '月/年', help: '土地租赁免租期或分次支付时按实际月数调整' }) : ''}
       ${enabled && includesProperty ? selectField('物业计价方式', 'ownerRent.propertyPricingMode', [{ value: 'total', label: '按月度总额' }, { value: 'unit', label: '按面积单价' }], { help: '按合同选择月度总额或元/㎡/月计价' }) : ''}
-      ${enabled && includesProperty && propertyPricingMode === 'unit' ? textField('物业租赁面积', 'ownerRent.propertyArea', { type: 'number', unit: '㎡', help: '按物业租赁合同约定面积填写' }) : ''}
+      ${enabled && includesProperty && propertyPricingMode === 'unit' ? textField('物业租赁面积', 'ownerRent.propertyArea', { type: 'number', unit: '㎡', help: '按合同填写；填0时自动按下方业主租金面积口径取项目面积' }) : ''}
       ${enabled && includesProperty && propertyPricingMode === 'unit' ? textField('物业单价', 'ownerRent.propertyUnitRent', { type: 'number', unit: '元/㎡/月', help: `折合物业月租金约 ${fmt(propertyMonthlyComputed, 2)} 万元/月` }) : ''}
       ${enabled && includesProperty && propertyPricingMode === 'total' ? textField('物业月租金总额', 'ownerRent.propertyMonthlyRent', { type: 'number', unit: '万元/月', help: `首年物业租金约 ${fmt(propertyBase, 2)} 万元/年` }) : ''}
       ${enabled && includesProperty ? textField('物业年度支付月数', 'ownerRent.propertyPaymentMonths', { type: 'number', unit: '月/年', help: '物业租赁免租期或分次支付时按实际月数调整' }) : ''}
@@ -3029,7 +3041,7 @@ function renderProjectStep() {
         ${selectField('产权状态', 'project.propertyRightsStatus', PROPERTY_RIGHTS_OPTIONS, { help: '区分自有、租赁、股权或政府合作等产权安排，影响投资和运营边界。' })}
         ${selectField('取得方式', 'project.acquisitionMethod', ACQUISITION_METHOD_OPTIONS, { help: '用于识别招拍挂、协议转让、股权收购、租赁取得等不同前期风险。' })}
         ${selectField('物业建设 / 经营状态', 'project.buildingStatus', BUILDING_STATUS_OPTIONS, { help: '用于区分在建、竣工未开业、运营中和待改造项目的成本重点。' })}
-        ${selectField('租金核算面积口径', 'project.rentAreaBasis', [{value:'leasable',label:'实用面积（套内/租赁面积）'},{value:'building',label:'建筑面积'}], { help:'楼层和铺位可单独覆盖项目默认口径' })}
+        ${selectField('业主租金支付面积口径', 'project.ownerRentAreaBasis', [{value:'building',label:'建筑面积'},{value:'leasable',label:'实用/可租赁面积'}], { help:'仅用于业主物业租金测算；商户租金口径在“商铺收益”页独立设置' })}
         ${selectField('项目计租方式', 'project.revenueModel', [{value:'rent',label:'纯租金'},{value:'concession',label:'纯联营扣点'},{value:'guarantee_or_concession',label:'保底与联营扣点取高'}], { help: '业态可在铺位数据页单独覆盖项目规则' })}
         ${textField('建设起始年份', 'project.startYear', { type: 'number', unit: '年' })}
         ${textField('建设期', 'project.constructionYears', { type: 'number', unit: '年' })}
@@ -3120,7 +3132,8 @@ function renderShopsStep() {
   const preview = state.preview || state.result;
   const totalBuilding = floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0);
   const totalLease = floors.reduce((sum, floor) => sum + Number(floor.leasableArea || 0), 0);
-  const totalRentArea = floors.reduce((sum, floor) => sum + rentAreaFor(floor, m), 0);
+  const rentAreaRecords = mode === 'detailed' && shops.length ? shops : floors;
+  const totalRentArea = rentAreaRecords.reduce((sum, record) => sum + rentAreaFor(record, m), 0);
   const revenueMode = m.project?.revenueModel || 'rent';
   const totalMonthly = floors.reduce((sum, floor) => {
     const area = rentAreaFor(floor, m);
@@ -3135,6 +3148,7 @@ function renderShopsStep() {
       <button type="button" class="mode-card ${mode === 'preliminary' ? 'active' : ''}" data-shop-mode="preliminary"><strong>初步测算</strong><span>按楼层均价快速判断项目量级</span></button>
       <button type="button" class="mode-card ${mode === 'detailed' ? 'active' : ''}" data-shop-mode="detailed"><strong>一铺一价</strong><span>按铺位、业态和位置条件精细定价</span></button>
     </div>
+    ${renderMerchantRentBasisControls(m, mode, totalRentArea)}
     ${renderSettlementControls(m)}
     ${renderFloorEditor(m, mode, preview)}
     <div class="stats-row">
@@ -3153,6 +3167,23 @@ function renderShopsStep() {
       <div class="advanced-body">${renderMarketStep()}</div>
     </details>
   `;
+}
+
+function renderMerchantRentBasisControls(model, mode, totalRentArea) {
+  const basis = model.project?.rentAreaBasis === 'building' ? 'building' : 'leasable';
+  const floorOverrides = (model.floors || []).filter(item => item.rentAreaBasis === 'building' || item.rentAreaBasis === 'leasable').length;
+  const shopOverrides = mode === 'detailed' ? (model.shops || []).filter(item => item.rentAreaBasis === 'building' || item.rentAreaBasis === 'leasable').length : 0;
+  const overrideNotes = [floorOverrides ? `${floorOverrides} 个楼层覆盖` : '', shopOverrides ? `${shopOverrides} 个铺位覆盖` : ''].filter(Boolean);
+  return `<div class="settlement-panel merchant-basis-panel">
+    <div><span class="eyebrow">Merchant lease basis</span><strong>商户租金核算面积口径</strong><small>这里只决定向商户出租时的租金、物业费、商管费和空调费计费面积。业主租金支付口径在项目基本条件和业主租赁支出中单独设置。</small></div>
+    <div class="settlement-actions merchant-basis-actions">
+      <select class="select" data-path="project.rentAreaBasis" data-type="text">
+        <option value="building" ${basis === 'building' ? 'selected' : ''}>按建筑面积计租</option>
+        <option value="leasable" ${basis === 'leasable' ? 'selected' : ''}>按实用面积（套内/租赁面积）计租</option>
+      </select>
+      <span class="merchant-basis-summary">当前明细计租面积 <strong>${fmtArea(totalRentArea)}㎡</strong>${overrideNotes.length ? ` · ${overrideNotes.join(' · ')}` : ' · 全部继承商户默认'}</span>
+    </div>
+  </div>`;
 }
 
 function renderSettlementControls(m) {
@@ -3178,9 +3209,9 @@ function renderFloorEditor(m, mode, preview) {
   return `<div class="form-section">
     <div class="section-title">楼层均价与面积</div>
     <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层均价将作为一铺一价的基础：再乘业态系数并叠加铺位条件溢价。'}</div>
-    ${formulaPanel('楼层收益公式', '计租面积 = IF(计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 计租面积 × 楼层均价\n联营扣点月收益 = 计租面积 × 销售基数 × 扣点率\n实际加权收益 = 楼层月收益合计 ÷ 计租面积', ['SUM', 'MAX', 'IF'], '项目默认口径可被楼层单独覆盖；调整楼栋、楼层、面积、租金、销售基数或扣点率后，系统会实时更新。')}
+    ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层均价\n联营扣点月收益 = 商户计租面积 × 销售基数 × 扣点率\n实际加权收益 = 楼层月收益合计 ÷ 商户计租面积', ['SUM', 'MAX', 'IF'], '项目商户默认口径可被楼层、铺位单独覆盖；业主租金支付口径不参与这里的商户租金计算。')}
     <div class="data-table-wrap floor-table-wrap">
-      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">保底/平均租金（元/㎡）</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th class="num">实际加权收益</th><th></th></tr></thead><tbody>
+      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">保底/平均租金（元/㎡）</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th class="num">实际加权收益</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
           const ratio = Number(floor.buildingArea) ? Number(floor.leasableArea) / Number(floor.buildingArea) : 0;
           const area = rentAreaFor(floor, m);
@@ -3243,7 +3274,7 @@ function renderFloorRentSummary(preview) {
     <div class="section-note">按“楼栋 → 楼层”统一汇总面积与租金收入。平均租金按各楼层实际计租面积加权，年租金按满租月租金 × 12 展示。</div>
     <div class="data-table-wrap">
       <table class="data-table floor-summary-table">
-        <thead><tr><th>楼栋</th><th>楼层</th><th>计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用面积（㎡）</th><th class="num">计租面积（㎡）</th><th class="num">平均租金（元/㎡/月）</th><th class="num">月租金收入（元）</th><th class="num">月物业费（元）</th><th class="num">月商管费（元）</th><th class="num">月空调费（元）</th><th class="num">三费合计（元/月）</th><th class="num">年租金收入（万元）</th><th class="num">租金占比</th></tr></thead>
+        <thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用面积（㎡）</th><th class="num">商户计租面积（㎡）</th><th class="num">平均租金（元/㎡/月）</th><th class="num">月租金收入（元）</th><th class="num">月物业费（元）</th><th class="num">月商管费（元）</th><th class="num">月空调费（元）</th><th class="num">三费合计（元/月）</th><th class="num">年租金收入（万元）</th><th class="num">租金占比</th></tr></thead>
         <tbody>
           ${floors.map(floor => {
             const basisLabel = floor.rentAreaBasis === 'building' ? '建筑面积' : floor.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径';
@@ -3338,7 +3369,7 @@ function renderDetailedPricing(m, shops, preview) {
       <div style="display:flex;gap:8px"><button class="btn btn-secondary btn-sm" id="add-shop">${ICONS.plus}<span>新增铺位</span></button>${shops.length ? `<button class="btn btn-danger btn-sm" id="clear-shops">${ICONS.trash}<span>清空</span></button>` : ''}</div>
     </div>
       <div class="data-table-wrap">
-      <table class="data-table shop-detail-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">租金单价<br><small>元/㎡/月</small></th><th class="num">物业/商管/空调<br><small>元/㎡/月</small></th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
+      <table class="data-table shop-detail-table"><thead><tr><th>楼栋</th><th>楼层</th><th>铺位号</th><th>商户计租口径</th><th>业态</th><th>位置条件</th><th>结算方式</th><th class="num">建筑面积</th><th class="num">实用/租赁面积</th><th class="num">租金单价<br><small>元/㎡/月</small></th><th class="num">物业/商管/空调<br><small>元/㎡/月</small></th><th class="num">保底收入</th><th class="num">联营收入</th><th class="num">测算收入</th><th></th></tr></thead><tbody>
         ${pageRows.length ? pageRows.map(shop => {
           const key = shopRecordKey(shop);
           const calc = previewShopMap.get(key);
@@ -5693,7 +5724,14 @@ function bindStepInputs() {
         scheduleLivePreview();
         return;
       }
-      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode', 'formulas.rentGrowthMode', 'formulas.propertyFeeGrowthMode', 'formulas.commercialManagementGrowthMode', 'formulas.centralAcGrowthMode'].includes(path)) {
+      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode', 'project.ownerRentAreaBasis', 'formulas.rentGrowthMode', 'formulas.propertyFeeGrowthMode', 'formulas.commercialManagementGrowthMode', 'formulas.centralAcGrowthMode'].includes(path)) {
+        state.dirty = true;
+        state.preview = null;
+        renderWorkspace();
+        scheduleLivePreview();
+        return;
+      }
+      if (path === 'project.rentAreaBasis' || /^floors\.\d+\.rentAreaBasis$/.test(path)) {
         state.dirty = true;
         state.preview = null;
         renderWorkspace();
@@ -6572,7 +6610,7 @@ function applyImportHints(hints) {
   for (const [key, value] of Object.entries(projectHints)) {
     if (value === null || value === undefined || value === '') continue;
     if (numeric.has(key)) project[key] = Number(value) || 0;
-    else if (['name', 'location', 'projectType', 'developmentType', 'rentAreaBasis'].includes(key)) project[key] = value;
+    else if (['name', 'location', 'projectType', 'developmentType', 'rentAreaBasis', 'ownerRentAreaBasis'].includes(key)) project[key] = value;
     else if (project[key] === '' || project[key] === null || project[key] === undefined) project[key] = value;
   }
   model.revenues = model.revenues || {};
@@ -6601,7 +6639,7 @@ function openAddShopModal(editIndex = null) {
               <div class="field"><label>铺位号</label><input class="input" name="id" required placeholder="例如 A-101" value="${escapeHtml(editing?.id || '')}"></div>
               <div class="field"><label>楼栋</label><input class="input" name="building" list="building-options" placeholder="例如 1号楼" value="${escapeHtml(editing?.building || '1号楼')}"><datalist id="building-options">${[...new Set([...(m.floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])].map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist></div>
               <div class="field"><label>楼层</label><input class="input" name="floor" list="floor-options" placeholder="例如 1F" value="${escapeHtml(editing?.floor || '')}"><datalist id="floor-options">${(m.floors || []).map(floor => `<option value="${escapeHtml(floor.name)}"></option>`).join('')}</datalist></div>
-              <div class="field"><label>租金核算面积口径</label><select class="select" name="rentAreaBasis">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((editing?.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+              <div class="field"><label>商户计租口径</label><select class="select" name="rentAreaBasis">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((editing?.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
               <div class="field"><label>建筑面积（㎡）</label><input class="input" name="buildingArea" type="number" step="0.01" required value="${editing ? Number(editing.buildingArea || 0).toFixed(2) : ''}"></div>
               <div class="field"><label>实用面积（套内/租赁面积，㎡）</label><input class="input" name="leasableArea" type="number" step="0.01" required value="${editing ? Number(editing.leasableArea || 0).toFixed(2) : ''}"></div>
               <div class="field"><label>业态</label><select class="select" name="category">${(m.categories || []).map(c => `<option ${editing?.category === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>

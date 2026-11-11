@@ -371,7 +371,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261111-login5', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261111-rentbasis4', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -470,6 +470,7 @@ function demoModel() {
       locationSource: 'address',
       projectType: '购物中心',
       developmentType: 'new_build',
+      ownerRentAreaBasis: 'building',
       rentAreaBasis: 'leasable',
       revenueModel: 'rent',
       startYear: 2027,
@@ -609,7 +610,7 @@ const SHOP_ALIASES = {
   buildingArea: ['建筑面积', '建筑面', 'grossarea'],
   leasableArea: ['实际租赁面积', '租赁面积', '可租赁面积', '实用面积', '套内面积', '计租面积', 'leasablearea'],
   floor: ['楼层', '所在楼层', 'floor'],
-  rentAreaBasis: ['租金核算面积口径', '租金面积口径', '计租口径', '面积口径', 'rentareabasis'],
+  rentAreaBasis: ['商户租金核算面积口径', '商户计租口径', '租金核算面积口径', '租金面积口径', '计租口径', '面积口径', 'rentareabasis'],
   category: ['业态', '经营业态', 'category'],
   status: ['状态', '经营状态', 'status'],
   rentOverride: [
@@ -874,7 +875,8 @@ function parseShopWorkbook(base64, filename) {
       if (/项目名称/.test(rawLabel)) projectHints.project.name = String(value).trim();
       else if (/项目位置|项目地址/.test(rawLabel)) projectHints.project.location = String(value).trim();
       else if (/商业项目形态|项目形态/.test(rawLabel)) projectHints.project.projectType = String(value).trim();
-      else if (/租金核算面积口径|租金面积口径|计租口径/.test(rawLabel)) projectHints.project.rentAreaBasis = normalizeRentAreaBasis(value, 'leasable');
+      else if (/业主租金支付面积口径|业主计租口径/.test(rawLabel)) projectHints.project.ownerRentAreaBasis = normalizeRentAreaBasis(value, 'building');
+      else if (/商户租金核算面积口径|商户计租口径|租金核算面积口径|租金面积口径|计租口径/.test(rawLabel)) projectHints.project.rentAreaBasis = normalizeRentAreaBasis(value, 'leasable');
       else if (/项目开发状态/.test(rawLabel)) {
         const text = String(value);
         projectHints.project.developmentType = /旧改|存量|改造/.test(text) ? 'renovation' : /运营中/.test(text) ? 'operating' : /轻资产/.test(text) ? 'light_asset' : 'new_build';
@@ -1019,7 +1021,8 @@ function shopTemplate() {
     ['项目位置', '广西壮族自治区', '省/市/城区，例如：广西壮族自治区柳州市'],
     ['项目开发状态', '新建项目', '新建项目/旧改项目/运营中项目/轻资产运营项目'],
     ['商业项目形态', '购物中心', '购物中心/街区商业/社区商业/社区底商等'],
-    ['租金核算面积口径', '实用面积（套内/租赁面积）', '可填写：实用面积（套内/租赁面积）或建筑面积'],
+    ['商户租金核算面积口径', '实用面积（套内/租赁面积）', '向商户出租时的默认计租口径；可填写实用面积（套内/租赁面积）或建筑面积，商铺明细可逐铺覆盖'],
+    ['业主租金支付面积口径', '建筑面积', '向业主支付物业租金时使用，和商户计租口径相互独立'],
     ['首年物业管理费单价（元/㎡/月）', 18, '物业管理服务费，默认适用于全部铺位'],
     ['首年商业管理费单价（元/㎡/月）', 0, '商业运营管理服务费，如项目不收可填0'],
     ['默认中央空调使用费单价（元/㎡/月）', 0, '作为楼栋收费配置的参考单价；实际是否收取在“楼栋收费设置”表开启'],
@@ -1041,9 +1044,9 @@ function shopTemplate() {
   ], [18, 26, 30, 68]);
   const rows = [
     ['商铺明细导入表'],
-    ['填写顺序：楼栋 → 楼层 → 铺位号 → 建筑面积 → 实用面积 → 计租口径 → 租金单价。面积保留两位小数；请从第5行开始录入，不要移动表头。后三列收费覆盖仅在个别铺位不同于项目/楼栋标准时填写。'],
+    ['填写顺序：楼栋 → 楼层 → 铺位号 → 建筑面积 → 实用面积 → 商户计租口径 → 租金单价。面积保留两位小数；请从第5行开始录入，不要移动表头。后三列收费覆盖仅在个别铺位不同于项目/楼栋标准时填写。'],
     [],
-    ['楼栋', '楼层', '铺位号', '建筑面积（㎡）', '实用面积/套内面积（㎡）', '租金核算面积口径', '业态', '状态', '租金单价（元/㎡/月）', '物业管理费覆盖（元/㎡/月）', '商业管理费覆盖（元/㎡/月）', '中央空调费覆盖（元/㎡/月）', '铺位条件', '备注'],
+    ['楼栋', '楼层', '铺位号', '建筑面积（㎡）', '实用面积/套内面积（㎡）', '商户租金核算面积口径', '业态', '状态', '租金单价（元/㎡/月）', '物业管理费覆盖（元/㎡/月）', '商业管理费覆盖（元/㎡/月）', '中央空调费覆盖（元/㎡/月）', '铺位条件', '备注'],
     ['1号楼', '1F', 'A-101', 120.00, 90.00, '实用面积', '零售', '营业', '', '', '', '', '电梯口、转角铺', '示例行，可删除'],
   ];
   const shopWs = addSheet(wb, '商铺明细', rows, [14, 10, 16, 18, 22, 20, 16, 12, 24, 24, 24, 24, 24, 28]);
@@ -1054,7 +1057,7 @@ function shopTemplate() {
     ['1号楼', '楼栋名称。也可填写“1栋”“A栋”“商业中心主楼”等，系统会按原文保留。'],
     ['B1 / 1F / 2F / 3F', '楼层推荐统一写成地下B1、地上1F、2F。也可填写“负一层”“一楼”“2层”，导入时会自动标准化。'],
     ['1号楼1F', '如果只在一个单元格内填写楼栋和楼层，系统会尝试自动拆分。'],
-    ['计租口径', '可选：继承项目、建筑面积、实用面积。建议每行明确填写，避免混用口径。'],
+    ['商户计租口径', '可选：继承商户默认、建筑面积、实用面积。建议每行明确填写；该口径只决定向商户收取租金和三项费用。'],
     ['租金单价', '可直接填写“租金单价”“月租金单价”“合同租金单价”“保底租金”等表头。系统按元/㎡/月识别；元/㎡/天自动×30.4，元/㎡/年自动÷12，并自动计算铺位和楼层收入。'],
     ['物业管理费', '项目信息表填写全项目默认单价；个别铺位不同时，在商铺明细“物业管理费覆盖”列填写。覆盖值优先于项目默认值。'],
     ['商业管理费', '项目信息表填写全项目默认单价；个别铺位不同时，在商铺明细“商业管理费覆盖”列填写。覆盖值优先于项目默认值。'],
@@ -1710,7 +1713,7 @@ function exportExcel(result) {
   const wb = XLSX.utils.book_new();
   addSheet(wb, '项目概览', [
     ['多多 · 商业地产投资测算'], [''],
-    ['项目名称', s.projectName], ['项目位置', s.location], ['项目开发状态', developmentLabels[s.developmentType] || s.developmentType || '新建项目'], ['商业项目形态', model.project.projectType], ['产权状态', propertyRightsLabels[model.project.propertyRightsStatus] || '自有产权'], ['取得方式', acquisitionMethodLabels[model.project.acquisitionMethod] || '招拍挂/市场竞得'], ['建设/经营状态', buildingStatusLabels[model.project.buildingStatus] || '在建/待建'], ['租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
+    ['项目名称', s.projectName], ['项目位置', s.location], ['项目开发状态', developmentLabels[s.developmentType] || s.developmentType || '新建项目'], ['商业项目形态', model.project.projectType], ['产权状态', propertyRightsLabels[model.project.propertyRightsStatus] || '自有产权'], ['取得方式', acquisitionMethodLabels[model.project.acquisitionMethod] || '招拍挂/市场竞得'], ['建设/经营状态', buildingStatusLabels[model.project.buildingStatus] || '在建/待建'], ['商户租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['业主租金支付面积口径', model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
     ['总建筑面积（㎡）', s.grossFloorArea], ['可租赁面积（㎡）', s.leasableArea], ['商铺/楼层数量', s.calculationMode === 'preliminary' ? s.floorCount : s.shopsCount],
     ['项目总投资（万元）', s.totalInvestment], ['稳定期营业收入（万元/年）', s.stableRevenue], ['稳定期物业管理费收入（万元/年）', s.stablePropertyManagementIncome || 0], ['稳定期商业管理费收入（万元/年）', s.stableCommercialManagementIncome || 0], ['稳定期中央空调费收入（万元/年）', s.stableCentralAcIncome || 0], ['稳定期三项费用收入合计（万元/年）', s.stablePropertyFeeIncome || 0], ['业主租金支出（万元/年）', s.stableOwnerRentCost || 0], ['稳定期NOI（万元/年）', s.stableNoi],
     ['NOI回报率', s.noiYield], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback],
@@ -1720,12 +1723,13 @@ function exportExcel(result) {
     ['参数大类', '参数', '数值'],
     ['项目', '开发状态', developmentLabels[model.project.developmentType] || model.project.developmentType || '新建项目'], ['项目', '起始年份', model.project.startYear], ['项目', '建设期（年）', model.project.constructionYears],
     ['项目', '产权状态', propertyRightsLabels[model.project.propertyRightsStatus] || '自有产权'], ['项目', '取得方式', acquisitionMethodLabels[model.project.acquisitionMethod] || '招拍挂/市场竞得'], ['项目', '建设/经营状态', buildingStatusLabels[model.project.buildingStatus] || '在建/待建'],
-    ['项目', '招商运营年限（年）', model.project.operationYears], ['项目', '租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['项目', '建筑面积调节系数', model.project.commonAreaFactor],
+    ['项目', '招商运营年限（年）', model.project.operationYears], ['项目', '商户租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['项目', '业主租金支付面积口径', model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'], ['项目', '建筑面积调节系数', model.project.commonAreaFactor],
     ['业主租金', '是否支付', model.ownerRent?.enabled ? '是' : '否'], ['业主租金', '租赁标的', ownerRentLeaseLabels[model.ownerRent?.leaseType] || '仅物业租赁'],
     ['业主租金', '土地计价方式', model.ownerRent?.landPricingMode === 'unit' ? '按面积单价' : '按月度总额'],
     ['业主租金', '土地面积（㎡）', model.ownerRent?.landArea || 0], ['业主租金', '土地单价（元/㎡/月）', model.ownerRent?.landUnitRent || 0],
     ['业主租金', '土地月租金（万元/月）', model.ownerRent?.landMonthlyRent || 0], ['业主租金', '土地支付月数', model.ownerRent?.landPaymentMonths || 0],
     ['业主租金', '物业计价方式', model.ownerRent?.propertyPricingMode === 'unit' ? '按面积单价' : '按月度总额'],
+    ['业主租金', '业主租金支付面积口径', model.project?.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'],
     ['业主租金', '物业面积（㎡）', model.ownerRent?.propertyArea || 0], ['业主租金', '物业单价（元/㎡/月）', model.ownerRent?.propertyUnitRent || 0],
     ['业主租金', '物业月租金（万元/月）', model.ownerRent?.propertyMonthlyRent || 0], ['业主租金', '物业支付月数', model.ownerRent?.propertyPaymentMonths || 0],
     ['业主租金', '递增方式', ownerRentGrowthLabels[model.ownerRent?.growthMode] || '不复递增'],
@@ -2047,10 +2051,10 @@ function exportExcel(result) {
     ...Object.entries(EXPORT_FUNCTIONS).map(([name, f]) => [name, f.syntax, f.meaning, f.example, f.note])
   ], [16, 38, 55, 55, 70]);
   addSheet(wb, '投资构成', [['项目', '金额（万元）', '占比'], ...result.investmentBreakdown.map(x => [x.name, x.value, s.totalInvestment ? x.value / s.totalInvestment : 0])], [28, 18, 14]);
-  const floorWs = addSheet(wb, '楼层均价', [['楼栋', '楼层', '计租口径', '铺位/楼层建筑面积（㎡，不含公区）', '实用面积（㎡）', '计租面积（㎡）', '平均月租金（元/㎡/月）', '物业费单价（元/㎡/月）', '商管费单价（元/㎡/月）', '空调费单价（元/㎡/月）', '满租月租金（万元）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '租金收入占比'], ...(result.floors || []).map(x => { const monthlyWan = Number(x.monthlyRevenue || x.monthlyRent || 0) / 10000; const monthlyProperty = Number(x.monthlyPropertyFee || 0); const monthlyCommercial = Number(x.monthlyCommercialManagementFee || 0); const monthlyCentral = Number(x.monthlyCentralAcFee || 0); return [x.building || '1号楼', x.name, x.rentAreaBasis === 'building' ? '建筑面积' : x.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.weightedRent || x.avgRent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), monthlyWan, monthlyProperty, monthlyCommercial, monthlyCentral, monthlyProperty + monthlyCommercial + monthlyCentral, (monthlyProperty + monthlyCommercial + monthlyCentral) * 12 / 10000, s.totalMonthlyRent ? (Number(x.monthlyRevenue || x.monthlyRent || 0) / s.totalMonthlyRent) : 0]; })], [12, 10, 14, 18, 18, 18, 24, 22, 22, 22, 22, 22, 22, 22, 26, 24, 16]);
+  const floorWs = addSheet(wb, '楼层均价', [['楼栋', '楼层', '商户计租口径', '铺位/楼层建筑面积（㎡，不含公区）', '实用面积（㎡）', '商户计租面积（㎡）', '平均月租金（元/㎡/月）', '物业费单价（元/㎡/月）', '商管费单价（元/㎡/月）', '空调费单价（元/㎡/月）', '满租月租金（万元）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '租金收入占比'], ...(result.floors || []).map(x => { const monthlyWan = Number(x.monthlyRevenue || x.monthlyRent || 0) / 10000; const monthlyProperty = Number(x.monthlyPropertyFee || 0); const monthlyCommercial = Number(x.monthlyCommercialManagementFee || 0); const monthlyCentral = Number(x.monthlyCentralAcFee || 0); return [x.building || '1号楼', x.name, x.rentAreaBasis === 'building' ? '建筑面积' : x.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.weightedRent || x.avgRent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), monthlyWan, monthlyProperty, monthlyCommercial, monthlyCentral, monthlyProperty + monthlyCommercial + monthlyCentral, (monthlyProperty + monthlyCommercial + monthlyCentral) * 12 / 10000, s.totalMonthlyRent ? (Number(x.monthlyRevenue || x.monthlyRent || 0) / s.totalMonthlyRent) : 0]; })], [12, 10, 14, 18, 18, 18, 24, 22, 22, 22, 22, 22, 22, 22, 26, 24, 16]);
 
   setSheetColumnNumberFormat(floorWs, [3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15], '0.00');
-  const exportShopWs = addSheet(wb, '商铺明细', [['楼栋', '铺位号', '楼层', '计租口径', '业态', '状态', '建筑面积（㎡）', '实用面积（㎡）', '计租面积（㎡）', '租金单价（元/㎡/月）', '物业管理费（元/㎡/月）', '商业管理费（元/㎡/月）', '中央空调费（元/㎡/月）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '条件', '满租月租金收益（万元）'], ...(result.shops || []).map(x => [x.building || '1号楼', x.id, x.floor, x.rentAreaBasis === 'building' ? '建筑面积' : '实用面积', x.category, x.status || '', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.rent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), Number(x.monthlyPropertyFee || 0), Number(x.monthlyCommercialManagementFee || 0), Number(x.monthlyCentralAcFee || 0), Number(x.monthlyServiceFee || 0), Number(x.monthlyServiceFee || 0) * 12 / 10000, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [12, 16, 10, 14, 16, 12, 18, 18, 18, 22, 24, 24, 24, 22, 22, 22, 26, 24, 24, 24]);
+  const exportShopWs = addSheet(wb, '商铺明细', [['楼栋', '铺位号', '楼层', '商户计租口径', '业态', '状态', '建筑面积（㎡）', '实用面积（㎡）', '商户计租面积（㎡）', '租金单价（元/㎡/月）', '物业管理费（元/㎡/月）', '商业管理费（元/㎡/月）', '中央空调费（元/㎡/月）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '条件', '满租月租金收益（万元）'], ...(result.shops || []).map(x => [x.building || '1号楼', x.id, x.floor, x.rentAreaBasis === 'building' ? '建筑面积' : '实用面积', x.category, x.status || '', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.rent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), Number(x.monthlyPropertyFee || 0), Number(x.monthlyCommercialManagementFee || 0), Number(x.monthlyCentralAcFee || 0), Number(x.monthlyServiceFee || 0), Number(x.monthlyServiceFee || 0) * 12 / 10000, (x.appliedConditions || []).join('、'), x.monthlyRevenue])], [12, 16, 10, 14, 16, 12, 18, 18, 18, 22, 24, 24, 24, 22, 22, 22, 26, 24, 24, 24]);
 
   setSheetColumnNumberFormat(exportShopWs, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], '0.00');
   const leasingAdjustmentPeriodsExport = Array.isArray(model.operations?.leasingAdjustmentPeriods) ? model.operations.leasingAdjustmentPeriods : [];
@@ -2191,7 +2195,7 @@ async function exportPPT(result) {
   slide.addText(`稳定期费用性收入：物业管理费 ${Number(s.stablePropertyManagementIncome || 0).toFixed(2)} 万元/年｜商业管理费 ${Number(s.stableCommercialManagementIncome || 0).toFixed(2)} 万元/年｜中央空调费 ${Number(s.stableCentralAcIncome || 0).toFixed(2)} 万元/年｜三项合计 ${Number(s.stablePropertyFeeIncome || 0).toFixed(2)} 万元/年`, { x: 0.72, y: 6.35, w: 11.95, h: 0.5, fontFace: 'Microsoft YaHei', fontSize: 8, color: '17211E', fill: { color: 'E5F0EB' }, margin: 0.08, valign: 'mid' });
 
   slide = pptx.addSlide();
-  addSlideTitle(slide, '楼栋与楼层面积及租金汇总', `租金核算口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}｜表内面积为铺位/楼层明细面积，不含公区｜项目总建筑面积 ${Number(s.grossFloorArea || 0).toFixed(2)}㎡`);
+  addSlideTitle(slide, '楼栋与楼层面积及租金汇总', `商户计租口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}｜业主支付口径：${result.model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'}｜表内面积为铺位/楼层明细面积，不含公区｜项目总建筑面积 ${Number(s.grossFloorArea || 0).toFixed(2)}㎡`);
   const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','平均租金','年租金(万元)','占比'], ...(result.floors || []).slice(0, 12).map(x => [x.building || '1号楼', x.name, Number(x.buildingArea || 0).toFixed(0), Number(x.leasableArea || 0).toFixed(0), Number(x.rentArea || 0).toFixed(0), Number(x.weightedRent || x.avgRent || 0).toFixed(2), (Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000).toFixed(2), `${(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1) * 100).toFixed(2)}%`])];
   slide.addTable(floorSummaryRows, { x: 0.55, y: 1.4, w: 12.3, colW: [1.25, 0.9, 1.35, 1.35, 1.35, 1.55, 1.9, 1.2], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.5, margin: 0.03, rowH: 0.28, autoFit: false });
   if ((result.floors || []).length > 12) slide.addText(`仅展示前12个楼层，完整数据见Excel。`, { x: 0.7, y: 6.65, w: 5, h: 0.25, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F' });
