@@ -70,6 +70,36 @@ async function ensureUsers() {
   return users;
 }
 
+async function ensureLocalAccount(username, password, displayName = '') {
+  const users = await ensureUsers();
+  if (users[username]) {
+    if (users[username].passwordHash !== await sha256(password)) {
+      throw Object.assign(new Error('本机已有同名账号，但密码不一致，请使用原密码或更换用户名'), { status: 409 });
+    }
+    return { user: users[username], created: false };
+  }
+  const user = {
+    username,
+    displayName: displayName || username,
+    passwordHash: await sha256(password),
+    role: 'user',
+    status: 'approved',
+    localMode: true,
+    createdAt: isoNow(),
+  };
+  users[username] = user;
+  writeJSON(USERS_KEY, users);
+  return { user, created: true };
+}
+
+function localUserResponse(username, user, extra = {}) {
+  return {
+    token: tokenFor(username),
+    user: { username, displayName: user.displayName || username, role: user.role || 'user', status: 'approved', localMode: true },
+    ...extra,
+  };
+}
+
 function tokenFor(username) {
   return `${SESSION_PREFIX}${encodeURIComponent(username)}|${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`;
 }
@@ -341,7 +371,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261111-login4', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261111-login5', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2604,6 +2634,20 @@ async function handleApi(path, init) {
         },
       });
     } catch (error) {
+      const users = await ensureUsers();
+      const existingLocal = users[username];
+      if (existingLocal && existingLocal.passwordHash === await sha256(password)) {
+        return jsonResponse(localUserResponse(username, existingLocal, { cloudFallback: true, cloudPending: true }));
+      }
+      const canCreateLocalFallback = error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT' || String(error.code || '').startsWith('ACCOUNT_');
+      if (canCreateLocalFallback) {
+        try {
+          const result = await ensureLocalAccount(username, password, username);
+          return jsonResponse(localUserResponse(username, result.user, { cloudFallback: true, cloudPending: true }));
+        } catch (localError) {
+          if (localError.status === 409) return jsonResponse({ error: localError.message }, 409);
+        }
+      }
       if (error.status === 403) return jsonResponse({ error: error.message, code: error.code || '', status: error.accountStatus || '' }, 403);
       if (error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT') return jsonResponse({ error: error.message, code: error.code }, 503);
       return jsonResponse({ error: '用户名或密码错误，或账号尚未开通' }, 401);
@@ -2618,11 +2662,13 @@ async function handleApi(path, init) {
     if (!/^[a-z0-9_\u4e00-\u9fa5-]{3,24}$/i.test(username)) return jsonResponse({ error: '用户名需为3–24位，可使用中文、字母、数字、下划线或短横线' }, 400);
     if (password.length < 6) return jsonResponse({ error: '密码至少6个字符' }, 400);
     if (body.mode === 'local') {
-      const users = await ensureUsers();
-      if (users[username]) return jsonResponse({ error: '该用户名已在当前设备注册，请直接登录' }, 409);
-      users[username] = { username, displayName: displayName || username, passwordHash: await sha256(password), role: 'user', status: 'approved', localMode: true, createdAt: isoNow() };
-      writeJSON(USERS_KEY, users);
-      return jsonResponse({ token: tokenFor(username), user: { username, displayName: displayName || username, role: 'user', status: 'approved', localMode: true } });
+      const existing = (await ensureUsers())[username];
+      if (existing) {
+        if (existing.passwordHash !== await sha256(password)) return jsonResponse({ error: '该用户名已在当前设备注册，请使用原密码登录' }, 409);
+        return jsonResponse(localUserResponse(username, existing));
+      }
+      const result = await ensureLocalAccount(username, password, displayName);
+      return jsonResponse(localUserResponse(username, result.user));
     }
     if (!CLOUD_ENABLED) return jsonResponse({ error: '云端账号服务尚未配置' }, 503);
     try {
@@ -2638,7 +2684,8 @@ async function handleApi(path, init) {
         token: CLOUD_CONFIG.anonKey,
       });
       if (!auth?.access_token || !auth?.user?.id) {
-        return jsonResponse({ pending: true, message: '注册申请已提交，请等待超级管理员审核后登录' });
+        const local = await ensureLocalAccount(username, password, displayName);
+        return jsonResponse(localUserResponse(username, local.user, { cloudPending: true, cloudFallback: true }));
       }
       const profile = await cloudProfileWithToken(auth.access_token, auth.user.id);
       if (profile?.status === 'approved') {
@@ -2658,21 +2705,20 @@ async function handleApi(path, init) {
       }
       await cloudRequest('/auth/v1/logout', { method: 'POST', token: auth.access_token }).catch(() => {});
       clearCloudSession();
-      return jsonResponse({
-        pending: true,
-        user: { username, displayName: displayName || username, status: profile?.status || 'pending' },
-        message: '注册申请已提交。请等待超级管理员审核授权后再登录。',
-      });
+      const local = await ensureLocalAccount(username, password, displayName);
+      return jsonResponse(localUserResponse(username, local.user, { cloudPending: true, cloudFallback: true }));
     } catch (error) {
       const detail = String(error.message || '');
       if (/already|registered|duplicate|unique/i.test(detail)) return jsonResponse({ error: '该用户名已被使用，请更换后重试' }, 409);
-      if (error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT') {
-        return jsonResponse({
-          error: `${error.message} 如果重试时提示用户名已存在，说明上一次注册可能已经提交，请直接登录或联系超级管理员审核。`,
-          code: error.code,
-        }, 503);
+      if (error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT' || error.code === 'CLOUD_UNAVAILABLE' || Number(error.status) >= 500) {
+        try {
+          const local = await ensureLocalAccount(username, password, displayName);
+          return jsonResponse(localUserResponse(username, local.user, { cloudPending: true, cloudFallback: true }));
+        } catch (localError) {
+          if (localError.status === 409) return jsonResponse({ error: localError.message }, 409);
+        }
+        return jsonResponse({ error: `${error.message || '云端注册服务暂时不可用'}，本机兼容账号创建失败，请稍后重试。`, code: error.code || '' }, 503);
       }
-      if (error.status >= 500) return jsonResponse({ error: detail || '云端注册服务暂时不可用，请稍后重试' }, 503);
       return jsonResponse({ error: `注册失败：${detail}` }, error.status || 400);
     }
   }

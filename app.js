@@ -1,7 +1,7 @@
-import './backend.js?v=20261111-login4';
+import './backend.js?v=20261111-login5';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.22.0';
+const APP_VERSION = '1.22.1';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1379,6 +1379,7 @@ function renderAuth(mode = 'login') {
       renderWorkspaceLoading('正在同步账号与项目数据，首次载入会初始化本地计算引擎…');
       await loadProjects();
       renderProjectList();
+      if (payload.cloudPending) toast('云端账号正在审核或暂时无法连接，已自动进入本机兼容工作区；项目可通过分享码迁移', 'success');
       if (payload.firstAdmin) setTimeout(() => toast('首个正式账号已自动设为超级管理员', 'success'), 120);
     } catch (error) {
       alert.textContent = error.message;
