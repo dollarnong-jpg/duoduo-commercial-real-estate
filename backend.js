@@ -137,28 +137,41 @@ async function cloudRequest(path, options = {}) {
   headers.set('apikey', CLOUD_CONFIG.anonKey);
   headers.set('Authorization', `Bearer ${token}`);
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Number(options.timeoutMs) || 25000);
-  try {
-    return await nativeFetch(`${CLOUD_CONFIG.url}${path}`, {
-      method: options.method || 'GET',
-      headers,
-      body: options.body == null ? undefined : (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)),
-      cache: 'no-store',
-      signal: controller.signal,
-    });
-  } catch (error) {
-    const timeout = error?.name === 'AbortError';
-    const networkError = new Error(timeout
-      ? '连接云端服务超时。请切换 Wi-Fi 或手机移动网络，关闭 VPN、代理和广告拦截后重试。'
-      : '无法连接云端服务。请切换 Wi-Fi 或手机移动网络，关闭 VPN、代理和广告拦截后重试。');
-    networkError.status = 503;
-    networkError.code = timeout ? 'CLOUD_TIMEOUT' : 'CLOUD_NETWORK';
-    networkError.cause = error;
-    throw networkError;
-  } finally {
-    clearTimeout(timer);
+  const attempts = Math.max(1, Math.min(4, Number(options.retries) || 3));
+  const timeoutMs = Math.max(5000, Number(options.timeoutMs) || 22000);
+  let lastError = null;
+  let lastTimedOut = false;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await nativeFetch(`${CLOUD_CONFIG.url}${path}`, {
+        method: options.method || 'GET',
+        headers,
+        body: options.body == null ? undefined : (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)),
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      if ([502, 503, 504].includes(response.status) && attempt < attempts) {
+        await new Promise(resolve => setTimeout(resolve, attempt * 700));
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      lastTimedOut = error?.name === 'AbortError';
+      if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, attempt * 700));
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  const networkError = new Error(lastTimedOut
+    ? `连接云端服务超时，系统已自动重试${attempts}次。请切换 Wi-Fi 或手机移动网络，关闭 VPN、代理和广告拦截后重试。`
+    : `无法连接云端服务，系统已自动重试${attempts}次。请切换 Wi-Fi 或手机移动网络，关闭 VPN、代理和广告拦截后重试。`);
+  networkError.status = 503;
+  networkError.code = lastTimedOut ? 'CLOUD_TIMEOUT' : 'CLOUD_NETWORK';
+  networkError.cause = lastError;
+  throw networkError;
 }
 
 async function cloudJSON(path, options = {}) {
@@ -328,7 +341,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261110-position2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261111-login1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2561,6 +2574,8 @@ async function handleApi(path, init) {
         method: 'POST',
         body: { email: await usernameEmail(username), password },
         token: CLOUD_CONFIG.anonKey,
+        timeoutMs: 15000,
+        retries: 2,
       });
       if (!auth?.access_token || !auth?.user?.id) throw new Error('登录响应不完整，请稍后重试');
       const profile = await cloudProfileWithToken(auth.access_token, auth.user.id);
