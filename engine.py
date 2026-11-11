@@ -566,6 +566,8 @@ def normalize_shop(shop: dict[str, Any]) -> dict[str, Any]:
         conditions = [str(x).strip() for x in raw_conditions if str(x).strip()]
     else:
         conditions = []
+    rent_area_basis_override_value = shop.get("rentAreaBasisOverride", shop.get("租金面积口径覆盖", False))
+    rent_area_basis_override = rent_area_basis_override_value is True or str(rent_area_basis_override_value).strip().lower() in {"true", "1", "yes", "y", "是"}
     return {
         "id": str(shop.get("id") or shop.get("shopId") or shop.get("铺位号") or "").strip(),
         "building": str(shop.get("building", shop.get("楼栋", "1号楼")) or "1号楼").strip(),
@@ -579,6 +581,7 @@ def normalize_shop(shop: dict[str, Any]) -> dict[str, Any]:
         "commercialManagementFeeOverride": optional_float(shop.get("commercialManagementFeeOverride", shop.get("商业管理费单价覆盖", None))),
         "centralAcFeeOverride": optional_float(shop.get("centralAcFeeOverride", shop.get("中央空调费单价覆盖", None))),
         "rentAreaBasis": str(shop.get("rentAreaBasis") or shop.get("租金面积口径") or "inherit").strip(),
+        "rentAreaBasisOverride": rent_area_basis_override,
         "conditions": conditions,
         "note": str(shop.get("note", shop.get("备注", "")) or "").strip(),
     }
@@ -626,8 +629,19 @@ def round_area(value: Any) -> float:
 
 def resolved_rent_area_basis(record: dict[str, Any], project: dict[str, Any], fallback_record: dict[str, Any] | None = None) -> str:
     selected = str(record.get("rentAreaBasis") or "inherit")
-    if selected not in {"building", "leasable"} and isinstance(fallback_record, dict):
-        selected = str(fallback_record.get("rentAreaBasis") or "inherit")
+    override_value = record.get("rentAreaBasisOverride")
+    manual_override = override_value is True or str(override_value).strip().lower() in {"true", "1", "yes", "y", "是"}
+    if manual_override and selected in {"building", "leasable"}:
+        return selected
+    if isinstance(fallback_record, dict):
+        floor_basis = str(fallback_record.get("rentAreaBasis") or "inherit")
+        if floor_basis in {"building", "leasable"}:
+            return floor_basis
+        project_basis = str(project.get("rentAreaBasis") or "")
+        if project_basis in {"building", "leasable"}:
+            return project_basis
+    elif selected in {"building", "leasable"}:
+        return selected
     if selected not in {"building", "leasable"}:
         selected = str(project.get("rentAreaBasis") or "leasable")
     return "building" if selected == "building" else "leasable"
@@ -950,7 +964,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         factor_groups: dict[str, list[tuple[float, float]]] = {}
         for shop in shops:
             key = building_floor_key(shop)
-            factor_groups.setdefault(key, []).append((rent_area_for(shop, project, floor_by_key.get(key)), max(0.0, category_factor.get(shop["category"], 1.0))))
+            factor_groups.setdefault(key, []).append((rent_area_for(shop, project, floor_by_key.get(key, {})), max(0.0, category_factor.get(shop["category"], 1.0))))
         global_factor_pairs = [pair for pairs in factor_groups.values() for pair in pairs]
         def weighted_factor(pairs: list[tuple[float, float]]) -> float:
             area = sum(p[0] for p in pairs)
@@ -960,7 +974,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         global_factor_avg = weighted_factor(global_factor_pairs)
         for shop in shops:
             key = building_floor_key(shop)
-            floor_record = floor_by_key.get(key)
+            floor_record = floor_by_key.get(key, {})
             rent_area = rent_area_for(shop, project, floor_record)
             rent_basis = resolved_rent_area_basis(shop, project, floor_record)
             factor_avg = weighted_factor(factor_groups.get(key, [])) or global_factor_avg or 1.0

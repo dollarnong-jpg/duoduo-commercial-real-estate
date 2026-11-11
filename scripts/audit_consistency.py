@@ -115,7 +115,13 @@ def audit_presets_and_formulas() -> None:
     require_text(app, "商户租金核算面积口径", "merchant rent basis UI")
     require_text(app, "业主租金支付面积口径", "owner rent basis UI")
     require_text(app, "const rentAreaRecords = mode === 'detailed' && shops.length ? shops : floors", "merchant basis summary cascade")
+    require_text(app, "rentAreaBasisOverride", "manual shop basis exception")
     require_text(backend, "商户租金核算面积口径", "merchant rent basis template")
+    require_text(backend, "商铺计租例外", "shop rent basis exception template")
+    require_text(backend, "exportShopAuditWorkbook", "formula audit workbook")
+    require_text(backend, "setFormulaCell", "formula cells in audit workbook")
+    require_text(backend, "一铺一价核算表：公式、函数与修改说明", "formula audit instructions")
+    require_text(app, "导出核算表（含公式）", "audit workbook export action")
     require_text(backend, "业主租金支付面积口径", "owner rent basis export")
     require_text(app, "企业所得税（融资前项目口径）", "project income tax label")
     require_text(app, "企业所得税（融资后股权口径）", "equity income tax label")
@@ -218,11 +224,13 @@ def audit_engine_invariants() -> None:
     assert close(leasable_basis["summary"]["totalMonthlyRent"], 8000)
     assert close(leasable_basis["summary"]["grossFloorArea"], 120)
     assert leasable_basis["summary"]["rentAreaBasis"] == "leasable"
+    basis_model["shops"][0]["rentAreaBasis"] = "leasable"
+    basis_model["shops"][0]["rentAreaBasisOverride"] = False
     basis_model["floors"] = [{"building": "1号楼", "name": "1F", "rentAreaBasis": "building", "buildingArea": 100, "leasableArea": 80, "avgRent": 100}]
     floor_override = engine.calculate_model(basis_model, False)
     assert close(floor_override["summary"]["totalMonthlyRent"], 10000)
     assert floor_override["shops"][0]["rentAreaBasis"] == "building"
-    basis_model["shops"][0]["rentAreaBasis"] = "leasable"
+    basis_model["shops"][0]["rentAreaBasisOverride"] = True
     shop_override = engine.calculate_model(basis_model, False)
     assert close(shop_override["summary"]["totalMonthlyRent"], 8000)
     assert shop_override["shops"][0]["rentAreaBasis"] == "leasable"

@@ -1,7 +1,7 @@
-import './backend.js?v=20261111-rentbasis4';
+import './backend.js?v=20261111-shopaudit4';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.23.0';
+const APP_VERSION = '1.24.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -700,17 +700,22 @@ function safeParse(value) {
 }
 
 const RENT_BASIS_LABELS = {
-  inherit: '继承商户默认',
+  inherit: '继承上级默认',
   leasable: '实用面积',
   building: '建筑面积',
 };
 
 function resolvedRentAreaBasis(record, model = state.current?.model) {
-  let selected = record?.rentAreaBasis || 'inherit';
-  if (selected !== 'building' && selected !== 'leasable' && record?.floor) {
+  const selected = record?.rentAreaBasis || 'inherit';
+  const overrideValue = record?.rentAreaBasisOverride;
+  const manualOverride = overrideValue === true || ['true', '1', 'yes', 'y', '是'].includes(String(overrideValue ?? '').toLowerCase());
+  if (manualOverride && (selected === 'building' || selected === 'leasable')) return selected;
+  const isShop = Boolean(record && Object.prototype.hasOwnProperty.call(record, 'id'));
+  if (isShop && record?.floor) {
     const floor = (model?.floors || []).find(item => buildingFloorKey(item) === buildingFloorKey(record));
-    selected = floor?.rentAreaBasis || 'inherit';
+    if (floor?.rentAreaBasis === 'building' || floor?.rentAreaBasis === 'leasable') return floor.rentAreaBasis;
   }
+  if (isShop && (model?.project?.rentAreaBasis === 'building' || model?.project?.rentAreaBasis === 'leasable')) return model.project.rentAreaBasis;
   if (selected === 'building' || selected === 'leasable') return selected;
   return model?.project?.rentAreaBasis === 'building' ? 'building' : 'leasable';
 }
@@ -1241,6 +1246,39 @@ async function downloadFile(path, fallbackName) {
     a.remove();
     URL.revokeObjectURL(url);
     toast('文件已生成', 'success');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function downloadPayloadFile(path, payload, fallbackName) {
+  setBusy(true);
+  try {
+    const response = await fetch(path, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload.error || '导出失败');
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    let filename = fallbackName;
+    const match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (match) filename = decodeURIComponent(match[1]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('含公式核算表已生成', 'success');
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -3333,8 +3371,8 @@ function renderDetailedPricing(m, shops, preview) {
   return `
     <div class="import-zone" id="import-zone">
       <div class="import-icon">${ICONS.upload}</div>
-      <div><h3>导入一铺一价电子表格</h3><p>支持 .xlsx、.xlsm、.csv。自动识别楼栋、铺位号、面积、楼层、业态、租金单价、三项费用覆盖单价和铺位条件；元/㎡/天或元/㎡/年会自动换算为月租金。</p></div>
-      <div class="import-actions"><button class="btn btn-secondary" id="download-template">${ICONS.download}<span>下载模板</span></button><button class="btn btn-primary" id="choose-file">${ICONS.upload}<span>选择文件</span></button><input type="file" id="shop-file" accept=".xlsx,.xlsm,.csv" hidden></div>
+      <div><h3>一铺一价导入、核算与复核</h3><p>支持 .xlsx、.xlsm、.csv。可下载空白模板，也可导出系统已算好的“含公式核算表”；人工核对修改后，再从右侧导入回系统重新核算。</p></div>
+      <div class="import-actions"><button class="btn btn-secondary" id="download-template">${ICONS.download}<span>下载空白模板</span></button>${shops.length ? `<button class="btn btn-secondary" id="export-shop-audit">${ICONS.excel}<span>导出核算表（含公式）</span></button>` : ''}<button class="btn btn-primary" id="choose-file">${ICONS.upload}<span>导入/回传表格</span></button><input type="file" id="shop-file" accept=".xlsx,.xlsm,.csv" hidden></div>
     </div>
     ${state.importWarnings.length ? `<div class="warning-list">${state.importWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
     <div class="shop-rent-recognition">
@@ -3378,7 +3416,8 @@ function renderDetailedPricing(m, shops, preview) {
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
           const rentSource = shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0 ? '导入/指定' : '自动分配';
           const feeText = calc ? `物业 ${fmt(calc.propertyFee, 2)} / 商管 ${fmt(calc.commercialManagementFee, 2)} / 空调 ${fmt(calc.centralAcFee, 2)}<small class="rent-source">合计 ${fmt(calc.monthlyServiceFee, 2)} 元/月</small>` : '待计算';
-          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)])}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${calc ? fmt(calc.rent, 2) : fmt(shop.rentOverride, 2)}</strong><small class="rent-source">${rentSource}</small></td><td class="num">${feeText}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
+          const shopBasisLabel = `${RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)]}${shop.rentAreaBasisOverride ? '（铺位例外）' : ''}`;
+          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(shopBasisLabel)}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${calc ? fmt(calc.rent, 2) : fmt(shop.rentOverride, 2)}</strong><small class="rent-source">${rentSource}</small></td><td class="num">${feeText}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}">${calc ? fmt(calc.guaranteeRevenue) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}">${calc ? fmt(calc.concessionRevenue) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
         }).join('') : `<tr><td colspan="15" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
       </tbody></table>
     </div>
@@ -6517,6 +6556,11 @@ function bindShopsStep() {
   document.getElementById('choose-file')?.addEventListener('click', () => fileInput.click());
   fileInput?.addEventListener('change', () => fileInput.files[0] && handleShopImport(fileInput.files[0]));
   document.getElementById('download-template')?.addEventListener('click', () => downloadFile('/api/templates/shop-import', '商业地产铺位导入模板.xlsx'));
+  document.getElementById('export-shop-audit')?.addEventListener('click', () => downloadPayloadFile(
+    '/api/export/shop-audit',
+    { model: state.current.model },
+    `${state.current.model.project.name || '项目'}_一铺一价核算表_含公式.xlsx`
+  ));
   const zone = document.getElementById('import-zone');
   zone?.addEventListener('dragover', event => { event.preventDefault(); zone.classList.add('dragging'); });
   zone?.addEventListener('dragleave', () => zone.classList.remove('dragging'));
@@ -6629,6 +6673,7 @@ function openAddShopModal(editIndex = null) {
   const m = state.current.model;
   const editing = Number.isInteger(editIndex) && editIndex >= 0 ? m.shops[editIndex] : null;
   const selectedConditions = new Set(editing?.conditions || []);
+  const editingRentAreaBasis = editing?.rentAreaBasisOverride && ['building', 'leasable'].includes(editing?.rentAreaBasis) ? editing.rentAreaBasis : 'inherit';
   modalRegion.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
       <div class="modal">
@@ -6639,7 +6684,7 @@ function openAddShopModal(editIndex = null) {
               <div class="field"><label>铺位号</label><input class="input" name="id" required placeholder="例如 A-101" value="${escapeHtml(editing?.id || '')}"></div>
               <div class="field"><label>楼栋</label><input class="input" name="building" list="building-options" placeholder="例如 1号楼" value="${escapeHtml(editing?.building || '1号楼')}"><datalist id="building-options">${[...new Set([...(m.floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])].map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist></div>
               <div class="field"><label>楼层</label><input class="input" name="floor" list="floor-options" placeholder="例如 1F" value="${escapeHtml(editing?.floor || '')}"><datalist id="floor-options">${(m.floors || []).map(floor => `<option value="${escapeHtml(floor.name)}"></option>`).join('')}</datalist></div>
-              <div class="field"><label>商户计租口径</label><select class="select" name="rentAreaBasis">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((editing?.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+              <div class="field"><label>商铺计租例外 <small>可选</small></label><select class="select" name="rentAreaBasis">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${(editingRentAreaBasis === value) ? 'selected' : ''}>${label}</option>`).join('')}</select><div class="field-help">默认继承楼层；楼层也未设置时继承项目。只有该铺确实需要例外时才选择建筑面积或实用面积。</div></div>
               <div class="field"><label>建筑面积（㎡）</label><input class="input" name="buildingArea" type="number" step="0.01" required value="${editing ? Number(editing.buildingArea || 0).toFixed(2) : ''}"></div>
               <div class="field"><label>实用面积（套内/租赁面积，㎡）</label><input class="input" name="leasableArea" type="number" step="0.01" required value="${editing ? Number(editing.leasableArea || 0).toFixed(2) : ''}"></div>
               <div class="field"><label>业态</label><select class="select" name="category">${(m.categories || []).map(c => `<option ${editing?.category === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
@@ -6658,8 +6703,9 @@ function openAddShopModal(editIndex = null) {
   document.getElementById('add-shop-form').addEventListener('submit', event => {
     event.preventDefault();
     const f = new FormData(event.currentTarget);
+    const shopRentAreaBasis = String(f.get('rentAreaBasis') || 'inherit');
     const nextShop = {
-      id: String(f.get('id')).trim(), building: normalizeBuildingInput(f.get('building')), floor: normalizeFloorInput(f.get('floor')), rentAreaBasis: String(f.get('rentAreaBasis') || 'inherit'), buildingArea: roundAreaValue(f.get('buildingArea')), leasableArea: roundAreaValue(f.get('leasableArea')), category: f.get('category'), status: f.get('status'), rentOverride: f.get('rentOverride') ? Number(f.get('rentOverride')) : null, note: '',
+      id: String(f.get('id')).trim(), building: normalizeBuildingInput(f.get('building')), floor: normalizeFloorInput(f.get('floor')), rentAreaBasis: shopRentAreaBasis, rentAreaBasisOverride: ['building', 'leasable'].includes(shopRentAreaBasis), buildingArea: roundAreaValue(f.get('buildingArea')), leasableArea: roundAreaValue(f.get('leasableArea')), category: f.get('category'), status: f.get('status'), rentOverride: f.get('rentOverride') ? Number(f.get('rentOverride')) : null, note: '',
       conditions: f.getAll('conditions'),
     };
     if (editing) state.current.model.shops[editIndex] = { ...editing, ...nextShop };
