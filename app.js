@@ -1,7 +1,7 @@
-import './backend.js?v=20261112-officeac6';
+import './backend.js?v=20261112-style5';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.25.0';
+const APP_VERSION = '1.26.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');

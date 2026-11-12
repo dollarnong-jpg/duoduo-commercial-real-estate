@@ -371,7 +371,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-officeac6', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style5', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -405,6 +405,7 @@ def duo_calculate(model_json, include_sensitivity=True):
 
 let xlsxLibraryPromise = null;
 let pptxLibraryPromise = null;
+let jszipLibraryPromise = null;
 
 function loadVendorScript(src, globalName) {
   if (window[globalName]) return Promise.resolve(window[globalName]);
@@ -428,6 +429,11 @@ function ensureXlsxLibrary() {
 function ensurePptxLibrary() {
   if (!pptxLibraryPromise) pptxLibraryPromise = loadVendorScript(new URL('./vendor/pptxgen.bundle.js', import.meta.url).href, 'PptxGenJS');
   return pptxLibraryPromise;
+}
+
+function ensureJszipLibrary() {
+  if (!jszipLibraryPromise) jszipLibraryPromise = loadVendorScript(new URL('./vendor/jszip.min.js', import.meta.url).href, 'JSZip');
+  return jszipLibraryPromise;
 }
 
 // The application shell starts immediately. Calculation and export libraries
@@ -950,7 +956,7 @@ function shopWarnings(shops) {
 function parseMarketWorkbook(base64, filename) {
   if (!/\.(xlsx|xlsm|csv)$/i.test(filename)) throw new Error('仅支持.xlsx、.xlsm、.csv');
   const wb = readWorkbook(base64, filename);
-  const { rows } = sheetRows(wb);
+  const { rows } = sheetRows(wb, ['竞品', '租金', '市场']);
   const headerIdx = findHeaderRow(rows, MARKET_ALIASES, ['name', 'rent']);
   if (headerIdx < 0) throw new Error('未找到竞品名称和月租金单价列');
   const indexes = headerIndexes(rows[headerIdx], MARKET_ALIASES);
@@ -981,9 +987,142 @@ function parseMarketWorkbook(base64, filename) {
   return { comparables, warnings };
 }
 
-function workbookBlob(wb) {
-  const bytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array', compression: true });
-  return new Blob([bytes], { type: XLSX_MIME });
+const EXCEL_FONT = 'Microsoft YaHei';
+
+function excelXmlEscape(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+function excelXmlAttr(source, name) {
+  const pattern = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}="([^"]*)"`);
+  const match = String(source || '').match(pattern);
+  return match ? match[1].replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&apos;', "'") : '';
+}
+
+function excelPageSetupXml(setup) {
+  if (!setup) return '';
+  const orientation = setup.orientation === 'portrait' ? 'portrait' : 'landscape';
+  const fitToWidth = Math.max(1, Number(setup.fitToWidth || 1));
+  const fitToHeight = Math.max(0, Number(setup.fitToHeight || 0));
+  const paperSize = Math.max(1, Number(setup.paperSize || 9));
+  return `<pageSetup paperSize="${paperSize}" orientation="${orientation}" fitToWidth="${fitToWidth}" fitToHeight="${fitToHeight}"/>`;
+}
+
+function excelFreezePaneXml(freeze) {
+  if (!freeze) return '';
+  const xSplit = Math.max(0, Number(freeze.xSplit || 0));
+  const ySplit = Math.max(0, Number(freeze.ySplit || 0));
+  if (!xSplit && !ySplit) return '';
+  const topLeftCell = XLSX.utils.encode_cell({ r: ySplit, c: xSplit });
+  const activePane = xSplit && ySplit ? 'bottomRight' : ySplit ? 'bottomLeft' : 'topRight';
+  return `<pane${xSplit ? ` xSplit="${xSplit}"` : ''}${ySplit ? ` ySplit="${ySplit}"` : ''} topLeftCell="${topLeftCell}" activePane="${activePane}" state="frozen"/>`;
+}
+
+function excelSheetViewXml(sheetXml, ws) {
+  const showGridLines = ws?.['!sheetViews']?.[0]?.showGridLines === false ? '0' : '1';
+  const pane = excelFreezePaneXml(ws?.['!excelFreeze']);
+  const match = sheetXml.match(/<sheetView\b([^>]*?)(?:\/>|>([\s\S]*?)<\/sheetView>)/);
+  if (!match) {
+    return sheetXml.replace('<sheetViews>', `<sheetViews><sheetView showGridLines="${showGridLines}" workbookViewId="0">${pane}</sheetView>`);
+  }
+  const attrs = match[1]
+    .replace(/\s+showGridLines="[^"]*"/g, '')
+    .replace(/\s+workbookViewId="[^"]*"/g, '');
+  const existing = match[2] || '';
+  const next = `<sheetView showGridLines="${showGridLines}" workbookViewId="0"${attrs}>${pane}${existing}</sheetView>`;
+  return sheetXml.replace(match[0], next);
+}
+
+function excelSheetPrXml(sheetXml, setup, ws) {
+  const tabColor = ws?.['!tabColor']?.rgb ? `<tabColor rgb="${excelXmlEscape(ws['!tabColor'].rgb)}"/>` : '';
+  const pageSetup = setup ? '<pageSetUpPr fitToPage="1"/>' : '';
+  if (!tabColor && !pageSetup) return sheetXml;
+  if (/<sheetPr\b/.test(sheetXml)) {
+    let next = sheetXml;
+    if (tabColor) {
+      next = /<tabColor\b/.test(next)
+        ? next.replace(/<tabColor\b[^>]*\/?\s*>/, tabColor)
+        : next.replace(/(<sheetPr\b[^>]*>)/, `$1${tabColor}`);
+    }
+    if (pageSetup) {
+      next = /<pageSetUpPr\b/.test(next)
+        ? next.replace(/<pageSetUpPr\b[^>]*\/?\s*>/, pageSetup)
+        : next.replace(/(<tabColor\b[^>]*\/>|<sheetPr\b[^>]*>)/, `$1${pageSetup}`);
+    }
+    return next;
+  }
+  return sheetXml.replace(/(<worksheet\b[^>]*>)/, `$1<sheetPr>${tabColor}${pageSetup}</sheetPr>`);
+}
+
+function excelPageSetupBlockXml(ws) {
+  const setup = ws?.['!pageSetup'];
+  if (!setup) return '';
+  return `${excelPageSetupXml(setup)}<headerFooter><oddFooter>&amp;L多多 · 商业地产&amp;R第 &amp;P 页 / 共 &amp;N 页</oddFooter></headerFooter>`;
+}
+
+function excelApplyPrintSettings(sheetXml, ws) {
+  const setup = ws?.['!pageSetup'];
+  let next = excelSheetPrXml(sheetXml, setup, ws);
+  next = excelSheetViewXml(next, ws);
+  if (!setup) return next;
+  const block = excelPageSetupBlockXml(ws);
+  if (/<pageSetup\b/.test(next)) return next;
+  if (/<pageMargins\b[^>]*\/>/.test(next)) {
+    return next.replace(/(<pageMargins\b[^>]*\/>)/, `$1${block}`);
+  }
+  return next.replace('</worksheet>', `${block}</worksheet>`);
+}
+
+async function postProcessWorkbookXlsx(bytes, wb) {
+  if (!window.JSZip) return new Blob([bytes], { type: XLSX_MIME });
+  const zip = await window.JSZip.loadAsync(bytes);
+  const workbookFile = zip.file('xl/workbook.xml');
+  const relsFile = zip.file('xl/_rels/workbook.xml.rels');
+  if (!workbookFile || !relsFile) return new Blob([bytes], { type: XLSX_MIME });
+  const workbookXml = await workbookFile.async('string');
+  const relsXml = await relsFile.async('string');
+  const stylesFile = zip.file('xl/styles.xml');
+  if (stylesFile) {
+    const stylesXml = await stylesFile.async('string');
+    zip.file('xl/styles.xml', stylesXml.replaceAll('vertical="middle"', 'vertical="center"'));
+  }
+  const relationships = {};
+  for (const match of relsXml.matchAll(/<Relationship\b([^>]+)>/g)) {
+    const id = excelXmlAttr(match[1], 'Id');
+    const target = excelXmlAttr(match[1], 'Target');
+    if (id && target) relationships[id] = target;
+  }
+  for (const match of workbookXml.matchAll(/<sheet\b([^>]+)>/g)) {
+    const name = excelXmlAttr(match[1], 'name');
+    const relId = excelXmlAttr(match[1], 'r:id');
+    const target = relationships[relId];
+    if (!name || !target) continue;
+    const normalized = target.replace(/^\/?xl\//, '').replace(/^\.\//, '');
+    const path = `xl/${normalized}`;
+    const file = zip.file(path);
+    if (!file) continue;
+    const sheetXml = await file.async('string');
+    zip.file(path, excelApplyPrintSettings(sheetXml, wb.Sheets[name]));
+  }
+  const output = await zip.generateAsync({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+    mimeType: XLSX_MIME,
+  });
+  return new Blob([output], { type: XLSX_MIME });
+}
+
+async function workbookBlob(wb) {
+  await ensureXlsxLibrary();
+  await ensureJszipLibrary();
+  const bytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array', compression: true, cellStyles: true, bookSST: true });
+  return postProcessWorkbookXlsx(bytes, wb);
 }
 
 function addSheet(wb, name, rows, widths = []) {
@@ -1001,6 +1140,420 @@ function addSheet(wb, name, rows, widths = []) {
   wb.SheetNames.push(name);
   wb.Sheets[name] = ws;
   return ws;
+}
+
+const EXCEL_THEME = {
+  navy: 'FF103B33',
+  teal: 'FF1D6B57',
+  gold: 'FFD6A84B',
+  goldLight: 'FFF7ECD4',
+  greenLight: 'FFF3F8F5',
+  greenPale: 'FFEAF4EF',
+  cream: 'FFFBF8F1',
+  text: 'FF17211E',
+  muted: 'FF66736F',
+  border: 'FFDDE5E1',
+  borderSoft: 'FFE8EEEA',
+  white: 'FFFFFFFF',
+  input: 'FFFFF7E6',
+  inputText: 'FF1F4E79',
+  danger: 'FFB94A48',
+  grayTab: 'FF7F8C87',
+  blueTab: 'FF4D7D8A',
+};
+
+function excelArgb(hex) {
+  const value = String(hex || '').replace('#', '').toUpperCase();
+  return value.length === 8 ? value : `FF${value.padStart(6, '0')}`;
+}
+
+function excelSide(style = 'thin', color = EXCEL_THEME.border) {
+  return { style, color: { rgb: color } };
+}
+
+function excelBorder({ top = null, bottom = null, left = null, right = null } = {}) {
+  return {
+    ...(top ? { top: excelSide(top.style || 'thin', top.color || EXCEL_THEME.border) } : {}),
+    ...(bottom ? { bottom: excelSide(bottom.style || 'thin', bottom.color || EXCEL_THEME.border) } : {}),
+    ...(left ? { left: excelSide(left.style || 'thin', left.color || EXCEL_THEME.border) } : {}),
+    ...(right ? { right: excelSide(right.style || 'thin', right.color || EXCEL_THEME.border) } : {}),
+  };
+}
+
+function excelStyle({ size = 10, bold = false, italic = false, color = EXCEL_THEME.text, fill = null, horizontal = 'left', vertical = 'center', wrap = false, border = null } = {}) {
+  return {
+    font: { name: EXCEL_FONT, sz: size, bold, italic, color: { rgb: color } },
+    alignment: { horizontal, vertical, wrapText: wrap },
+    ...(fill ? { fill: { patternType: 'solid', fgColor: { rgb: fill } } } : {}),
+    ...(border ? { border } : {}),
+  };
+}
+
+function excelCellText(cell) {
+  if (!cell) return '';
+  return String(cell.w ?? cell.v ?? '').trim();
+}
+
+function excelRowStats(ws, row, startCol, endCol) {
+  let count = 0;
+  let textCount = 0;
+  let numericCount = 0;
+  const values = [];
+  for (let col = startCol; col <= endCol; col++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+    const text = excelCellText(cell);
+    if (text) {
+      count += 1;
+      values.push(text);
+      if (cell?.t === 'n') numericCount += 1;
+      else textCount += 1;
+    }
+  }
+  return { count, textCount, numericCount, values };
+}
+
+function excelVisualLength(value) {
+  return [...String(value || '')].reduce((sum, ch) => sum + (/[\u3400-\u9FFF]/.test(ch) ? 2 : 1), 0);
+}
+
+function excelSheetPurpose(name) {
+  const exact = {
+    '项目概览': '项目核心指标、投资规模与收益结论',
+    '核心参数': '关键假设、税费、融资与估值参数',
+    '项目信息': '项目名称、位置、形态、面积与收费口径',
+    '楼栋收费设置': '按楼栋配置中央空调收费与单价',
+    '商铺明细': '逐铺导入楼栋、楼层、面积、租金与铺位条件',
+    '楼栋楼层填写说明': '楼栋楼层命名、面积与租金列填写规范',
+    '一铺一价核算': '逐铺计租面积、租金、联营和三项费用公式',
+    '参数与公式说明': 'Excel 公式、函数、输入区与复核规则',
+    '项目参数': '本次核算采用的项目基础参数',
+    '业态参考规则': '业态租金、销售基数、扣点率与结算方式',
+    '使用说明': '模板用途、填写顺序与导入规则',
+    '基础参数': '组织、薪酬与筹备期基础参数',
+    '组织架构': '部门、岗位、编制与税前月薪',
+    '薪酬口径说明': '工资、社保、个税和实发口径说明',
+    '个税税率表': '中国综合所得年度税率与速算扣除数',
+    '物业服务模式': '物业工程、保安、保洁服务模式与费率',
+    '筹备期成本': '筹备周期、团队、物业与开办参数',
+    '办公预算': '办公及行政费用项目和周期金额',
+    '招商预算': '招商渠道、活动、物料、差旅和系统费用',
+    '招商渠道核算': '渠道面积、首年月租金和佣金倍数',
+    '招商调整阶段': '阶段性租金调整、出租率和招商投入',
+    '营销常规预算': '年度营销推广、美陈、媒体和会员费用',
+    '开业首年营销': '导视导览与开业美陈专项预算',
+    '维保预算': '电梯、暖通、消防、景观及其他维保',
+    '组织架构与人员成本': '部门、岗位、编制、工资社保和个税',
+    '物业服务模式': '物业服务模式、岗位成本和管理费',
+    '办公与招商预算': '办公行政与年度招商费用明细',
+    '年度营销预算分解': '营销费用金额、权重和费用内容',
+    '运营成本构成': '稳定期运营成本项目、金额和占比',
+    '阶段成本汇总': '建设期、筹备期和运营期成本汇总',
+    '税费与规费统计': '增值税、房产税、土地使用税、附加及所得税',
+    '筹备期成本明细': '筹备团队、物业服务与行政开办明细',
+    '资金计划': '月度资金缺口、资本金和现金流安排',
+    '公式与参数': '计算公式、函数和关键参数说明',
+    '函数注解': 'Excel 函数语法、含义与使用注意事项',
+    '投资构成': '土地、工程、装修、设备、预备费与开办投入',
+    '楼层均价': '按楼栋楼层汇总面积、租金和三项费用',
+    '租赁联营规则': '业态租金、扣点和行业参考区间',
+    '周边市场分析': '竞品租金分位、项目定价位置与结论',
+    '3-5公里商业侦测': '周边商业供给、交通、居住、竞品和机会',
+    '竞品租金样本': '3–5公里竞品租金调查原始样本',
+    '敏感性分析': '租金与投资变化对项目收益的影响',
+    '分析结论': '系统测算结论、建议与诊断提示',
+  };
+  if (exact[name]) return exact[name];
+  if (/^年度收益/.test(name)) return '按运营年度列示收入、成本、税费、NOI和现金流';
+  if (/^封面|目录/.test(name)) return '文件封面与工作表导航';
+  return '测算与复核数据';
+}
+
+function formatCoverSheet(ws, sheetNames, options) {
+  const projectName = options.projectName || options.title || '商业地产项目';
+  const navEntries = sheetNames.filter(name => name !== '封面');
+  const navigationTitleRow = 10;
+  const navigationHeaderRow = 11;
+  const navigationStartRow = 12;
+  const legendTitleRow = navigationStartRow + navEntries.length + 1;
+  const legendInputRow = legendTitleRow + 1;
+  const legendFormulaRow = legendInputRow + 1;
+  const legendTotalRow = legendFormulaRow + 1;
+  const readingGuideRow = legendTotalRow + 2;
+  const boundaryRow = readingGuideRow + 1;
+  const rows = [
+    ['', '多多 · 商业地产', '', '', '', ''],
+    ['', '', '', '', '', ''],
+    ['', options.title || '商业地产投资测算工作簿', '', '', '', ''],
+    ['', options.subtitle || '输入、计算、复核与汇报一体化工作簿', '', '', '', ''],
+    ['', '', '', '', '', ''],
+    ['', '项目名称', projectName, '', '', ''],
+    ['', '文件类型', options.fileKind || '投资测算工作簿', '', '', ''],
+    ['', '金额口径', options.currencyNote || '人民币（CNY）；金额单位按各工作表表头执行', '', '', ''],
+    ['', '生成日期', options.generatedAt || new Date().toLocaleDateString('zh-CN'), '', '', ''],
+    ['', '', '', '', '', ''],
+    ['', '工作表导航', '', '', '', ''],
+    ['', '序号', '工作表', '主要内容', '', ''],
+    ...navEntries.map((name, index) => ['', index + 1, name, excelSheetPurpose(name), '', '']),
+    ['', '', '', '', '', ''],
+    ['', '颜色图例', '', '', '', ''],
+    ['', '输入区', '浅金色', '需要填写的项目数据、面积、租金和费用参数', '', ''],
+    ['', '计算区', '浅绿色', '系统自动计算，请勿手工覆盖，除非有明确复核依据', '', ''],
+    ['', '合计区', '深绿色', '关键总计、回报指标和结论', '', ''],
+    ['', '', '', '', '', ''],
+    ['', '读表顺序', '先看项目概览和分析结论，再复核核心参数、收入成本、税费与年度现金流。', '', '', ''],
+    ['', '重要边界', options.note || '本工作簿用于投资初筛和方案比较，不替代可研、审计、资产评估或税务鉴证。', '', '', ''],
+  ];
+  const header = XLSX.utils.aoa_to_sheet(rows);
+  ws['!ref'] = header['!ref'];
+  Object.entries(header).forEach(([key, value]) => { if (!key.startsWith('!')) ws[key] = value; });
+  ws['!cols'] = [{ wch: 3 }, { wch: 16 }, { wch: 28 }, { wch: 72 }, { wch: 4 }, { wch: 4 }];
+  ws['!merges'] = [
+    { s: { r: 0, c: 1 }, e: { r: 0, c: 3 } },
+    { s: { r: 2, c: 1 }, e: { r: 2, c: 3 } },
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },
+    { s: { r: 5, c: 2 }, e: { r: 5, c: 3 } },
+    { s: { r: 6, c: 2 }, e: { r: 6, c: 3 } },
+    { s: { r: 7, c: 2 }, e: { r: 7, c: 3 } },
+    { s: { r: 8, c: 2 }, e: { r: 8, c: 3 } },
+    { s: { r: readingGuideRow, c: 2 }, e: { r: readingGuideRow, c: 3 } },
+    { s: { r: boundaryRow, c: 2 }, e: { r: boundaryRow, c: 3 } },
+  ];
+  const put = (r, c, style) => {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+    ws[addr].s = style;
+  };
+  put(0, 1, excelStyle({ size: 10, bold: true, color: EXCEL_THEME.teal, border: excelBorder({ bottom: { style: 'medium', color: EXCEL_THEME.gold } }) }));
+  put(2, 1, excelStyle({ size: 20, bold: true, color: EXCEL_THEME.navy, vertical: 'center' }));
+  put(3, 1, excelStyle({ size: 10, color: EXCEL_THEME.muted, vertical: 'center' }));
+  for (const r of [5, 6, 7, 8]) {
+    put(r, 1, excelStyle({ size: 10, bold: true, color: EXCEL_THEME.muted, fill: EXCEL_THEME.greenLight, border: excelBorder({ bottom: { style: 'thin', color: EXCEL_THEME.borderSoft } }) }));
+    put(r, 2, excelStyle({ size: 10, color: EXCEL_THEME.text, fill: EXCEL_THEME.white, border: excelBorder({ bottom: { style: 'thin', color: EXCEL_THEME.borderSoft } }) }));
+  }
+  put(navigationTitleRow, 1, excelStyle({ size: 14, bold: true, color: EXCEL_THEME.navy, border: excelBorder({ bottom: { style: 'medium', color: EXCEL_THEME.gold } }) }));
+  for (let c = 1; c <= 3; c++) put(navigationHeaderRow, c, excelStyle({ size: 10, bold: true, color: EXCEL_THEME.white, fill: EXCEL_THEME.navy, horizontal: 'center', border: excelBorder({ bottom: { style: 'thin', color: EXCEL_THEME.white }, left: { style: 'thin', color: EXCEL_THEME.white }, right: { style: 'thin', color: EXCEL_THEME.white } }) }));
+  for (let r = navigationStartRow; r < navigationStartRow + navEntries.length; r++) {
+    const isAlt = (r - navigationStartRow) % 2 === 1;
+    for (let c = 1; c <= 3; c++) put(r, c, excelStyle({ size: 10, color: EXCEL_THEME.text, fill: isAlt ? EXCEL_THEME.greenLight : EXCEL_THEME.white, horizontal: c === 1 ? 'center' : 'left', border: excelBorder({ bottom: { style: 'thin', color: EXCEL_THEME.borderSoft } }) }));
+  }
+  put(legendTitleRow, 1, excelStyle({ size: 10, bold: true, color: EXCEL_THEME.navy }));
+  put(legendInputRow, 1, excelStyle({ size: 9, color: EXCEL_THEME.muted }));
+  put(legendInputRow, 2, excelStyle({ size: 9, bold: true, color: EXCEL_THEME.inputText, fill: EXCEL_THEME.input, horizontal: 'center', border: excelBorder({ top: { style: 'thin', color: EXCEL_THEME.gold }, bottom: { style: 'thin', color: EXCEL_THEME.gold }, left: { style: 'thin', color: EXCEL_THEME.gold }, right: { style: 'thin', color: EXCEL_THEME.gold } }) }));
+  put(legendInputRow, 3, excelStyle({ size: 9, color: EXCEL_THEME.muted }));
+  put(legendFormulaRow, 1, excelStyle({ size: 9, color: EXCEL_THEME.muted }));
+  put(legendFormulaRow, 2, excelStyle({ size: 9, bold: true, color: EXCEL_THEME.teal, fill: EXCEL_THEME.greenLight, horizontal: 'center', border: excelBorder({ top: { style: 'thin', color: EXCEL_THEME.border }, bottom: { style: 'thin', color: EXCEL_THEME.border }, left: { style: 'thin', color: EXCEL_THEME.border }, right: { style: 'thin', color: EXCEL_THEME.border } }) }));
+  put(legendFormulaRow, 3, excelStyle({ size: 9, color: EXCEL_THEME.muted }));
+  put(legendTotalRow, 1, excelStyle({ size: 9, color: EXCEL_THEME.muted }));
+  put(legendTotalRow, 2, excelStyle({ size: 9, bold: true, color: EXCEL_THEME.white, fill: EXCEL_THEME.navy, horizontal: 'center' }));
+  put(legendTotalRow, 3, excelStyle({ size: 9, color: EXCEL_THEME.muted }));
+  put(readingGuideRow, 1, excelStyle({ size: 9, bold: true, color: EXCEL_THEME.muted, fill: EXCEL_THEME.cream, border: excelBorder({ bottom: { style: 'thin', color: EXCEL_THEME.borderSoft } }) }));
+  put(readingGuideRow, 2, excelStyle({ size: 9, color: EXCEL_THEME.muted, italic: true, fill: EXCEL_THEME.cream, border: excelBorder({ bottom: { style: 'thin', color: EXCEL_THEME.borderSoft } }) }));
+  put(boundaryRow, 1, excelStyle({ size: 9, color: EXCEL_THEME.muted, italic: true, fill: EXCEL_THEME.cream, border: excelBorder({ top: { style: 'thin', color: EXCEL_THEME.borderSoft }, bottom: { style: 'thin', color: EXCEL_THEME.borderSoft } }) }));
+  put(boundaryRow, 2, excelStyle({ size: 9, color: EXCEL_THEME.muted, italic: true, fill: EXCEL_THEME.cream, border: excelBorder({ top: { style: 'thin', color: EXCEL_THEME.borderSoft }, bottom: { style: 'thin', color: EXCEL_THEME.borderSoft } }) }));
+  ws['!rows'] = [{ hpt: 24 }, { hpt: 8 }, { hpt: 34 }, { hpt: 22 }, { hpt: 10 }, { hpt: 20 }, { hpt: 20 }, { hpt: 20 }, { hpt: 20 }, { hpt: 10 }, { hpt: 24 }, { hpt: 24 }];
+  ws['!rows'][legendTitleRow] = { hpt: 22 };
+  ws['!rows'][legendInputRow] = { hpt: 20 };
+  ws['!rows'][legendFormulaRow] = { hpt: 20 };
+  ws['!rows'][legendTotalRow] = { hpt: 20 };
+  ws['!rows'][readingGuideRow] = { hpt: 28 };
+  ws['!rows'][boundaryRow] = { hpt: 34 };
+  ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 1, paperSize: 9 };
+  ws['!margins'] = { left: 0.45, right: 0.45, top: 0.55, bottom: 0.55, header: 0.2, footer: 0.2 };
+  ws['!sheetViews'] = [{ showGridLines: false }];
+}
+
+function findExcelHeaderRow(ws, range) {
+  const start = range.s.r;
+  const end = Math.min(range.e.r, start + 10);
+  const firstStats = excelRowStats(ws, start, range.s.c, range.e.c);
+  const titleRow = firstStats.count === 1 ? start : -1;
+  const searchStart = titleRow >= 0 ? titleRow + 1 : start;
+  for (let row = searchStart; row <= end; row++) {
+    const stats = excelRowStats(ws, row, range.s.c, range.e.c);
+    if (stats.count >= 2 && stats.textCount >= 2) return { headerRow: row, titleRow };
+  }
+  return { headerRow: -1, titleRow };
+}
+
+function excelFreezeForSheet(sheetName, headerRow, tableLastRow) {
+  if (headerRow < 0 || tableLastRow - headerRow < 10) return null;
+  const ySplit = headerRow + 1;
+  let xSplit = 0;
+  if (/年度收益/.test(sheetName)) xSplit = 1;
+  else if (/一铺一价|商铺明细|组织架构|组织架构与人员成本|物业服务岗位|招商渠道|营销常规|办公预算|维保预算/.test(sheetName)) xSplit = /一铺一价|商铺明细/.test(sheetName) ? 3 : 2;
+  return { xSplit, ySplit };
+}
+
+function formatDataSheet(ws, sheetName, profile, inputSheets) {
+  if (!ws || !ws['!ref']) return;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const noHeader = new Set(['项目概览', '使用说明']);
+  const referenceOnly = new Set(['薪酬口径说明', '个税税率表']);
+  const detected = noHeader.has(sheetName) ? { headerRow: -1, titleRow: excelRowStats(ws, range.s.r, range.s.c, range.e.c).count === 1 ? range.s.r : -1 } : findExcelHeaderRow(ws, range);
+  const { headerRow, titleRow } = detected;
+  const headerCount = headerRow >= 0 ? excelRowStats(ws, headerRow, range.s.c, range.e.c).count : 0;
+  const tableEndCol = headerRow >= 0 ? Math.max(range.s.c + headerCount - 1, range.s.c + 1) : range.e.c;
+  let tableLastRow = headerRow;
+  if (headerRow >= 0) {
+    let sawData = false;
+    for (let row = headerRow + 1; row <= range.e.r; row++) {
+      const stats = excelRowStats(ws, row, range.s.c, tableEndCol);
+      if (stats.count >= 2) {
+        sawData = true;
+        tableLastRow = row;
+      } else if (sawData && stats.count === 0) {
+        break;
+      }
+    }
+  }
+  if (titleRow >= 0) {
+    const existing = (ws['!merges'] || []).find(m => m.s.r === titleRow && m.s.c === range.s.c);
+    if (!existing && tableEndCol > range.s.c) {
+      ws['!merges'] = [...(ws['!merges'] || []), { s: { r: titleRow, c: range.s.c }, e: { r: titleRow, c: tableEndCol } }];
+    }
+  }
+  for (let row = range.s.r; row <= range.e.r; row++) {
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+      if (!cell) continue;
+      if (!cell.s) cell.s = excelStyle({ size: 10, color: EXCEL_THEME.text });
+      if (cell.t === 'n' && !cell.z) cell.z = '#,##0.00';
+    }
+  }
+  if (titleRow >= 0) {
+    const addr = XLSX.utils.encode_cell({ r: titleRow, c: range.s.c });
+    if (ws[addr]) ws[addr].s = excelStyle({ size: 15, bold: true, color: EXCEL_THEME.navy, border: excelBorder({ bottom: { style: 'medium', color: EXCEL_THEME.gold } }) });
+    if (!ws['!rows']) ws['!rows'] = [];
+    ws['!rows'][titleRow] = { hpt: 30 };
+  }
+  if (headerRow >= 0) {
+    for (let col = range.s.c; col <= tableEndCol; col++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: headerRow, c: col })];
+      if (!cell) continue;
+      cell.s = excelStyle({ size: 10, bold: true, color: EXCEL_THEME.white, fill: EXCEL_THEME.navy, horizontal: 'center', wrap: true, border: excelBorder({ bottom: { style: 'medium', color: EXCEL_THEME.gold }, left: { style: 'thin', color: EXCEL_THEME.white }, right: { style: 'thin', color: EXCEL_THEME.white } }) });
+    }
+    if (!ws['!rows']) ws['!rows'] = [];
+    ws['!rows'][headerRow] = { hpt: 28 };
+    if (tableLastRow > headerRow + 2 && tableEndCol >= range.s.c + 1) {
+      ws['!autofilter'] = { ref: `${XLSX.utils.encode_cell({ r: headerRow, c: range.s.c })}:${XLSX.utils.encode_cell({ r: tableLastRow, c: tableEndCol })}` };
+    }
+    ws['!excelFreeze'] = excelFreezeForSheet(sheetName, headerRow, tableLastRow);
+  }
+  const inputSheetNames = new Set(inputSheets || []);
+  const firstBodyRow = headerRow >= 0 ? headerRow + 1 : (titleRow >= 0 ? titleRow + 1 : range.s.r);
+  for (let row = firstBodyRow; row <= range.e.r; row++) {
+    const stats = excelRowStats(ws, row, range.s.c, range.e.c);
+    if (!stats.count) continue;
+    const joined = stats.values.join(' ');
+    const isTotal = /^(合计|总计|小计)|合计$|总计$|小计$/.test(joined) || /合计.*(元|万元|%)/.test(joined);
+    const isSection = stats.count === 1 && row > firstBodyRow && !/说明|填写|边界|口径/.test(joined);
+    const isNote = stats.count === 1 && /说明|填写|边界|口径|注意|建议|导入后|请勿/.test(joined);
+    const longRow = excelVisualLength(joined) > 54;
+    const rowHeight = isNote || longRow ? 24 : 20;
+    if (!ws['!rows']) ws['!rows'] = [];
+    ws['!rows'][row] = { hpt: rowHeight };
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+      if (!cell) continue;
+      const header = headerRow >= 0
+        ? excelCellText(ws[XLSX.utils.encode_cell({ r: headerRow, c: col })])
+        : excelCellText(ws[XLSX.utils.encode_cell({ r: row, c: range.s.c })]);
+      const isNumeric = cell.t === 'n';
+      const isFormula = Boolean(cell.f);
+      const isInput = profile === 'template' && inputSheetNames.has(sheetName) && !referenceOnly.has(sheetName) && !isFormula;
+      let fill = row % 2 === 0 ? EXCEL_THEME.greenLight : EXCEL_THEME.white;
+      let color = EXCEL_THEME.text;
+      let bold = false;
+      let fontStyle = false;
+      if (isNote) {
+        fill = EXCEL_THEME.cream;
+        color = EXCEL_THEME.muted;
+        fontStyle = true;
+      } else if (isSection) {
+        fill = EXCEL_THEME.greenPale;
+        color = EXCEL_THEME.teal;
+        bold = true;
+      } else if (isTotal) {
+        fill = EXCEL_THEME.greenPale;
+        color = EXCEL_THEME.navy;
+        bold = true;
+      } else if (isInput) {
+        fill = EXCEL_THEME.input;
+        color = EXCEL_THEME.inputText;
+      } else if (isFormula) {
+        fill = EXCEL_THEME.greenLight;
+        color = EXCEL_THEME.text;
+      }
+      cell.s = excelStyle({
+        size: 10,
+        bold,
+        italic: fontStyle,
+        color,
+        fill,
+        horizontal: isNumeric ? 'right' : 'left',
+        wrap: joined.length > 36,
+        border: excelBorder({ bottom: { style: isTotal ? 'medium' : 'thin', color: isTotal ? EXCEL_THEME.gold : EXCEL_THEME.borderSoft } }),
+      });
+      if (isNumeric && !cell.z) {
+        if (/率|比例|占比|IRR|收益率/i.test(header) && Math.abs(Number(cell.v || 0)) <= 1) cell.z = '0.00%';
+        else if (/年|数量|人数|楼层/.test(header)) cell.z = '#,##0';
+        else if (/金额|收入|成本|投资|租金|费用|工资|税费|现金|净收益|NOI|NPV|价值|支出|收益|预算|单价|月薪/.test(header)) cell.z = '#,##0.00;[Red](#,##0.00);-';
+        else cell.z = '#,##0.00';
+      }
+    }
+  }
+  const widths = [];
+  for (let col = range.s.c; col <= range.e.c; col++) {
+    let maxLen = 8;
+    for (let row = range.s.r; row <= Math.min(range.e.r, range.s.r + 200); row++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+      maxLen = Math.max(maxLen, excelVisualLength(excelCellText(cell)));
+    }
+    const current = Number(ws['!cols']?.[col]?.wch || 0);
+    widths.push({ wch: Math.max(8, Math.min(36, Math.max(current, maxLen + 2))) });
+  }
+  ws['!cols'] = widths;
+  const lastRow = range.e.r;
+  for (let row = Math.max(0, headerRow); row <= lastRow; row++) {
+    if (row < 0) continue;
+    const leftCell = ws[XLSX.utils.encode_cell({ r: row, c: range.s.c })];
+    const rightCell = ws[XLSX.utils.encode_cell({ r: row, c: tableEndCol })];
+    if (leftCell) leftCell.s = { ...(leftCell.s || {}), border: { ...(leftCell.s?.border || {}), left: excelSide('thin', EXCEL_THEME.border) } };
+    if (rightCell) rightCell.s = { ...(rightCell.s || {}), border: { ...(rightCell.s?.border || {}), right: excelSide('thin', EXCEL_THEME.border) } };
+  }
+  ws['!pageSetup'] = { orientation: tableEndCol - range.s.c > 5 ? 'landscape' : 'portrait', fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+  ws['!margins'] = { left: 0.3, right: 0.3, top: 0.45, bottom: 0.45, header: 0.2, footer: 0.2 };
+  ws['!sheetViews'] = [{ showGridLines: false }];
+}
+
+function formatWorkbook(wb, options = {}) {
+  const profile = options.profile || 'report';
+  const inputSheets = options.inputSheets || [];
+  if (options.cover !== false && !wb.SheetNames.includes('封面')) {
+    const cover = XLSX.utils.aoa_to_sheet([['']]);
+    addSheet(wb, '封面', [['']], [3, 16, 28, 72, 4, 4]);
+    wb.Sheets['封面'] = cover;
+    wb.SheetNames = ['封面', ...wb.SheetNames.filter(name => name !== '封面')];
+  }
+  const sheetNames = [...wb.SheetNames];
+  if (sheetNames.includes('封面')) formatCoverSheet(wb.Sheets['封面'], sheetNames, options);
+  sheetNames.filter(name => name !== '封面').forEach(name => formatDataSheet(wb.Sheets[name], name, profile, inputSheets));
+  wb.Props = {
+    ...(wb.Props || {}),
+    Title: options.title || '多多 · 商业地产投资测算工作簿',
+    Subject: options.subtitle || '商业地产投资测算与复核',
+    Author: '多多 · 商业地产',
+    Company: '多多 · 商业地产',
+    Comments: '统一格式：深绿色表头、浅金色输入区、浅绿色计算区、深色合计行。',
+  };
+  wb.Workbook ||= {};
+  wb.Workbook.Sheets ||= [];
+  wb.SheetNames.forEach((name, index) => {
+    const primary = index === 0 ? EXCEL_THEME.gold : ['项目概览', '核心参数', '一铺一价核算', '分析结论'].includes(name) ? EXCEL_THEME.navy : /说明|注解|口径/.test(name) ? EXCEL_THEME.grayTab : /市场|竞品|侦测/.test(name) ? EXCEL_THEME.blueTab : EXCEL_THEME.teal;
+    wb.Workbook.Sheets[index] = { ...(wb.Workbook.Sheets[index] || {}), TabColor: { rgb: primary } };
+    wb.Sheets[name]['!tabColor'] = { rgb: primary };
+  });
+  return wb;
 }
 
 function setSheetColumnNumberFormat(ws, zeroBasedColumns, format = '0.00') {
@@ -1136,7 +1689,14 @@ function exportShopAuditWorkbook(result) {
     ['业态', '参考租金（元/㎡/月）', '销售基数（元/㎡/月）', '扣点率', '结算方式', '说明'],
     ...(model.categories || []).map(item => [item.name || '', Number(item.rent || 0), Number(item.salesPerSqmMonth || 0), Number(item.concessionRate || 0), settlementLabel(item.revenueMode === 'inherit' ? model.project?.revenueModel : item.revenueMode), '用于一铺一价核算表中的销售基数、扣点率和结算方式参考']),
   ], [18, 24, 26, 14, 24, 62]);
-  return wb;
+  return formatWorkbook(wb, {
+    profile: 'report',
+    title: '一铺一价核算与人工复核表',
+    subtitle: '逐铺面积、租金、结算方式、三项费用与年化收入复核',
+    fileKind: '一铺一价核算表',
+    projectName: model.project?.name || result.summary?.projectName || '商业地产项目',
+    note: '本表用于复核当前测算口径；人工修改后需重新导入系统，Excel 修改不会自动同步到云端。',
+  });
 }
 
 function shopTemplate() {
@@ -1196,7 +1756,14 @@ function shopTemplate() {
     ['1号楼', 'B1'], ['1号楼', '1F'], ['1号楼', '2F'], ['1号楼', '3F'],
     ['2号楼', 'B1'], ['2号楼', '1F'], ['2号楼', '2F'],
   ], [22, 78]);
-  return wb;
+  return formatWorkbook(wb, {
+    profile: 'template',
+    title: '铺位与一铺一价导入模板',
+    subtitle: '项目信息、楼栋空调收费、逐铺面积与租金一次录入',
+    fileKind: '导入模板',
+    projectName: '商业地产项目铺位导入',
+    inputSheets: ['项目信息', '楼栋收费设置', '商铺明细'],
+  });
 }
 
 function marketTemplate() {
@@ -1208,7 +1775,14 @@ function marketTemplate() {
     ['样本名称', '地址', '楼层', '业态', '可租赁面积（㎡）', '月租金单价（元/㎡/月）', '数据日期', '距项目（km）', '备注'],
     ['示例购物中心', '柳州市城中区', '1F', '零售', 120, 138, '2026-09', 1.8, '示例行，可删除'],
   ], [24, 32, 10, 16, 18, 22, 14, 14, 28]);
-  return wb;
+  return formatWorkbook(wb, {
+    profile: 'template',
+    title: '3–5公里竞品租金调研模板',
+    subtitle: '竞品项目、楼层、业态、可租赁面积与月租金样本',
+    fileKind: '调研导入模板',
+    projectName: '竞品租金市场调研',
+    inputSheets: ['竞品租金样本'],
+  });
 }
 
 
@@ -1408,7 +1982,14 @@ function operatingBudgetTemplate() {
     ['开业美陈', 40, '开业主题美陈、氛围布置及公共空间装饰'],
   ], [24, 16, 60]);
   addSheet(wb, '维保预算', [['维保项目', '年度金额（万元）', '说明'], ...MAINTENANCE_BUDGET_DEFS.map(([label]) => [label, 0, ''])] , [26, 20, 50]);
-  return wb;
+  return formatWorkbook(wb, {
+    profile: 'template',
+    title: '运营成本与人员预算导入模板',
+    subtitle: '组织架构、物业服务、办公招商、营销和维保预算',
+    fileKind: '运营预算模板',
+    projectName: '商业地产运营成本预算',
+    inputSheets: ['基础参数', '组织架构', '物业服务模式', '筹备期成本', '办公预算', '招商预算', '招商渠道核算', '招商调整阶段', '营销常规预算', '开业首年营销', '维保预算'],
+  });
 }
 
 function preopeningBudgetTemplate() {
@@ -1472,7 +2053,14 @@ function preopeningBudgetTemplate() {
     ['证照及专业服务费', 0, '一次性总额', 0, '证照、尽调、咨询、法务和审计'],
     ['其他前期及开办费用', 0, '一次性总额', 0, '其他无法归类的筹备开办费用'],
   ], [26, 18, 18, 14, 72]);
-  return wb;
+  return formatWorkbook(wb, {
+    profile: 'template',
+    title: '筹备期成本明细导入模板',
+    subtitle: '筹备团队、物业工程、保安保洁、行政与开办费用',
+    fileKind: '筹备期预算模板',
+    projectName: '商业地产筹备期成本',
+    inputSheets: ['基础参数', '筹备团队', '物业服务', '物业服务岗位', '物业一次性费用', '行政开办'],
+  });
 }
 
 function parseServiceMode(value) {
@@ -1856,7 +2444,7 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   return { organization, propertyService, projectFields, officeBudget, leasingBudget, marketingBudget, maintenanceBudget, operations, warnings };
 }
 
-function exportExcel(result) {
+async function exportExcel(result) {
   const model = result.model;
   const s = result.summary;
   const formulas = model.formulas || {};
@@ -2278,6 +2866,14 @@ function exportExcel(result) {
 
   addSheet(wb, '敏感性分析', [['租金变化 ↓ / 投资变化 →', ...(result.sensitivity.capexSteps || []).map(v => (v * 100).toFixed(0) + '%')], ...(result.sensitivity.rentSteps || []).map((rent, i) => [(rent * 100).toFixed(0) + '%', ...(result.sensitivity.npvMatrix[i] || [])])], [24, 14, 14, 14, 14, 14]);
   addSheet(wb, '分析结论', [['类型', '内容'], ...(result.analysis.bullets || []).map(x => ['分析结论', x]), ...(result.analysis.recommendations || []).map(x => ['建议', x]), ...(result.diagnostics || []).map(x => [x.level, `${x.title}：${x.detail}`])], [18, 100]);
+  formatWorkbook(wb, {
+    profile: 'report',
+    title: '项目投资测算与收益分析',
+    subtitle: `${result.summary.location || '项目所在地'}｜投资、收入、成本、税费、现金流与资本回报`,
+    fileKind: '投资测算报告',
+    projectName: result.summary.projectName || '商业地产项目',
+    note: '本工作簿用于投资初筛与方案比较；正式决策前应结合属地政策、合同、造价、税务和现场调研复核。',
+  });
   return workbookBlob(wb);
 }
 
@@ -2965,7 +3561,7 @@ async function handleApi(path, init) {
     const body = await requestJSON(init);
     const model = await normalizeModel(body.model || body);
     const result = await calculate(model, false);
-    return fileResponse(workbookBlob(exportShopAuditWorkbook(result)), `${result.summary?.projectName || '项目'}_一铺一价核算表_含公式.xlsx`, XLSX_MIME);
+    return fileResponse(await workbookBlob(exportShopAuditWorkbook(result)), `${result.summary?.projectName || '项目'}_一铺一价核算表_含公式.xlsx`, XLSX_MIME);
   }
 
   if (pathname.endsWith('/api/import-shops') && method === 'POST') {
@@ -3013,19 +3609,19 @@ async function handleApi(path, init) {
   }
 
   if (pathname.endsWith('/api/templates/shop-import') && method === 'GET') {
-    return fileResponse(workbookBlob(shopTemplate()), '商业地产铺位导入模板.xlsx', XLSX_MIME);
+    return fileResponse(await workbookBlob(shopTemplate()), '商业地产铺位导入模板.xlsx', XLSX_MIME);
   }
 
   if (pathname.endsWith('/api/templates/market-comps') && method === 'GET') {
-    return fileResponse(workbookBlob(marketTemplate()), '商业地产竞品租金导入模板.xlsx', XLSX_MIME);
+    return fileResponse(await workbookBlob(marketTemplate()), '商业地产竞品租金导入模板.xlsx', XLSX_MIME);
   }
 
   if (pathname.endsWith('/api/templates/operating-budget') && method === 'GET') {
-    return fileResponse(workbookBlob(operatingBudgetTemplate()), '商业地产运营成本预算导入模板.xlsx', XLSX_MIME);
+    return fileResponse(await workbookBlob(operatingBudgetTemplate()), '商业地产运营成本预算导入模板.xlsx', XLSX_MIME);
   }
 
   if (pathname.endsWith('/api/templates/preopening-budget') && method === 'GET') {
-    return fileResponse(workbookBlob(preopeningBudgetTemplate()), '商业地产筹备期成本明细导入模板.xlsx', XLSX_MIME);
+    return fileResponse(await workbookBlob(preopeningBudgetTemplate()), '商业地产筹备期成本明细导入模板.xlsx', XLSX_MIME);
   }
 
   if (pathname.endsWith('/api/share/users') && method === 'GET') {
@@ -3185,7 +3781,7 @@ async function handleApi(path, init) {
     if (!project) return jsonResponse({ error: '项目不存在或无权访问' }, 404);
     if (format === 'xlsx') {
       const result = await calculate(project.model, true);
-      return fileResponse(exportExcel(result), `${result.summary.projectName || '项目'}_投资测算.xlsx`, XLSX_MIME);
+      return fileResponse(await exportExcel(result), `${result.summary.projectName || '项目'}_投资测算.xlsx`, XLSX_MIME);
     }
     if (format === 'pptx') {
       const result = await calculate(project.model, true);
