@@ -1,7 +1,7 @@
-import './backend.js?v=20261112-style5';
+import './backend.js?v=20261112-style6';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.26.0';
+const APP_VERSION = '1.26.1';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1551,14 +1551,22 @@ function bindShell() {
     renderProjectList();
   });
   document.getElementById('top-save')?.addEventListener('click', saveProject);
-  document.getElementById('top-export-excel')?.addEventListener('click', () => {
+  document.getElementById('top-export-excel')?.addEventListener('click', async () => {
     if (!state.current) return;
-    if (state.dirty) return toast('请先保存并计算最新修改', 'error');
+    if (state.dirty) {
+      toast('正在保存并计算，完成后自动导出 Excel', 'success');
+      await saveProject();
+      if (!state.current || state.dirty) return;
+    }
     downloadFile(`/api/projects/${state.current.id}/export/xlsx`, `${state.current.model.project.name || '项目'}_投资测算.xlsx`);
   });
-  document.getElementById('top-export-ppt')?.addEventListener('click', () => {
+  document.getElementById('top-export-ppt')?.addEventListener('click', async () => {
     if (!state.current) return;
-    if (state.dirty) return toast('请先保存并计算最新修改', 'error');
+    if (state.dirty) {
+      toast('正在保存并计算，完成后自动导出 PPT', 'success');
+      await saveProject();
+      if (!state.current || state.dirty) return;
+    }
     downloadFile(`/api/projects/${state.current.id}/export/pptx`, `${state.current.model.project.name || '项目'}_投资汇报.pptx`);
   });
   document.getElementById('top-new-project')?.addEventListener('click', openNewProjectModal);

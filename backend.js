@@ -371,7 +371,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style5', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style6', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
