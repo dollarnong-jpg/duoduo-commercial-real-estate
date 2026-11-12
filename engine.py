@@ -39,6 +39,15 @@ PROPERTY_SERVICE_MODE_LABELS = {
     "non_resident": "第三方非常驻服务",
 }
 
+OFFICE_BUDGET_DEFAULT_ITEMS = [
+    {"id": "officeRent", "name": "办公室租金", "legacyKey": "officeRentAnnual", "note": "办公室、办公场地及配套租金"},
+    {"id": "utilities", "name": "水电及通讯费", "legacyKey": "utilitiesAnnual", "note": "办公水电、网络、电话及邮寄"},
+    {"id": "itSoftware", "name": "IT及软件服务", "legacyKey": "itSoftwareAnnual", "note": "商管、财务、会员及协同办公系统"},
+    {"id": "officeSupplies", "name": "办公用品", "legacyKey": "officeSuppliesAnnual", "note": "耗材、打印、日常办公采购"},
+    {"id": "travelEntertainment", "name": "差旅及业务招待", "legacyKey": "travelEntertainmentAnnual", "note": "差旅、接待、业务拓展"},
+    {"id": "otherOffice", "name": "其他办公费用", "legacyKey": "otherAnnual", "note": "培训、团建及其他行政支出"},
+]
+
 
 def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
     return {
@@ -411,6 +420,36 @@ def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
             model["ownerRent"]["propertyMonthlyRent"] = as_float(raw_owner_rent.get("monthlyRent"))
         if "leaseType" not in raw_owner_rent:
             model["ownerRent"]["leaseType"] = "property"
+    office_budget = model.get("officeBudget") if isinstance(model.get("officeBudget"), dict) else {}
+    item_schema = int(as_float(office_budget.get("itemSchema"))) >= 1 or isinstance(office_budget.get("items"), list)
+    if not item_schema:
+        input_periods = office_budget.get("inputPeriods") if isinstance(office_budget.get("inputPeriods"), dict) else {}
+        office_budget["items"] = [
+            {
+                "id": default["id"],
+                "name": default["name"],
+                "annual": max(0.0, as_float(office_budget.get(default["legacyKey"]))),
+                "period": "monthly" if input_periods.get(default["legacyKey"]) == "monthly" else "annual",
+                "note": default["note"],
+            }
+            for default in OFFICE_BUDGET_DEFAULT_ITEMS
+        ]
+    else:
+        normalized_items = []
+        for index, item in enumerate(office_budget.get("items", [])):
+            if not isinstance(item, dict):
+                continue
+            period = str(item.get("period") or "annual")
+            normalized_items.append({
+                "id": str(item.get("id") or f"office_{index + 1}"),
+                "name": str(item.get("name") or f"办公费用{index + 1}").strip() or f"办公费用{index + 1}",
+                "annual": max(0.0, as_float(item.get("annual", item.get("amount", 0)))),
+                "period": "monthly" if period == "monthly" else "annual",
+                "note": str(item.get("note") or ""),
+            })
+        office_budget["items"] = normalized_items
+    office_budget["itemSchema"] = 1
+    model["officeBudget"] = office_budget
     raw_marketing = (raw or {}).get("marketingBudget") if isinstance((raw or {}).get("marketingBudget"), dict) else None
     if raw_marketing is not None and "amountMode" not in raw_marketing and raw_marketing.get("channels") and not raw_marketing.get("annualItems"):
         # Preserve projects created before amount-based marketing budgets. The UI offers
@@ -821,15 +860,17 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     operations_recruitment_training = operations_team_cost * recruitment_training_rate
     active_service_cost = sum(item["serviceCost"] for item in property_service_base)
     structured_active_personnel_cost = operations_team_cost + operations_recruitment_training + active_service_cost
-    office_items = [
-        ("办公室租金", "officeRentAnnual"),
-        ("水电通讯", "utilitiesAnnual"),
-        ("IT及软件", "itSoftwareAnnual"),
-        ("办公用品", "officeSuppliesAnnual"),
-        ("差旅及业务招待", "travelEntertainmentAnnual"),
-        ("其他办公费用", "otherAnnual"),
+    office_breakdown = [
+        {
+            "id": str(item.get("id") or f"office_{index + 1}"),
+            "name": str(item.get("name") or f"办公费用{index + 1}"),
+            "value": max(0.0, as_float(item.get("annual"))),
+            "period": "monthly" if item.get("period") == "monthly" else "annual",
+            "note": str(item.get("note") or ""),
+        }
+        for index, item in enumerate(office_budget.get("items", []))
+        if isinstance(item, dict)
     ]
-    office_breakdown = [{"name": name, "value": max(0.0, as_float(office_budget.get(key)))} for name, key in office_items]
     structured_office_cost = sum(item["value"] for item in office_breakdown)
     for item in office_breakdown:
         item["share"] = safe_div(item["value"], structured_office_cost)
@@ -876,6 +917,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     def service_rates_for(record: dict[str, Any]) -> dict[str, float | bool]:
         building_name = str(record.get("building") or "1号楼").strip()
         central_config = central_ac_configs.get(building_name, {})
+        building_configured = building_name in central_ac_configs
+        if building_configured and not bool(central_config.get("enabled")):
+            return {
+                "propertyFee": max(0.0, as_float(record.get("propertyFeeOverride"), property_fee_unit)),
+                "commercialManagementFee": max(0.0, as_float(record.get("commercialManagementFeeOverride"), commercial_management_fee_unit)),
+                "centralAcFee": 0.0,
+                "centralAcEnabled": False,
+            }
         central_enabled = bool(central_config.get("enabled")) or bool(record.get("centralAcEnabled"))
         central_rate = as_float(central_config.get("fee"), default_central_ac_fee)
         if record.get("centralAcFeeOverride") is not None:

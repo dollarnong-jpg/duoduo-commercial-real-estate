@@ -1,7 +1,7 @@
-import './backend.js?v=20261111-settlement2';
+import './backend.js?v=20261112-officeac6';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.24.1';
+const APP_VERSION = '1.25.0';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1063,7 +1063,20 @@ function applyOperatingCostReference(model = state.current?.model, options = {})
   }
   if (selected('office')) {
     model.operations.adminCostPerSqm = reference.values.adminCostPerSqm;
-    model.officeBudget = { ...(model.officeBudget || {}), ...reference.values.officeBudget };
+    const officeItems = ensureOfficeBudgetItems(model);
+    const referenceKeyById = {
+      officeRent: 'officeRentAnnual',
+      utilities: 'utilitiesAnnual',
+      itSoftware: 'itSoftwareAnnual',
+      officeSupplies: 'officeSuppliesAnnual',
+      travelEntertainment: 'travelEntertainmentAnnual',
+      otherOffice: 'otherAnnual',
+    };
+    for (const item of officeItems) {
+      const referenceKey = referenceKeyById[item.id];
+      if (referenceKey && reference.values.officeBudget[referenceKey] != null) item.annual = Number(reference.values.officeBudget[referenceKey]);
+    }
+    model.officeBudget = { ...(model.officeBudget || {}), ...reference.values.officeBudget, items: officeItems, itemSchema: 1 };
   }
   if (selected('leasing')) model.leasingBudget = { ...(model.leasingBudget || {}), ...reference.values.leasingBudget };
   if (selected('marketing')) {
@@ -3805,29 +3818,54 @@ function budgetPeriodOptions(selected) {
   return `<option value="annual" ${selected === 'annual' ? 'selected' : ''}>按年录入</option><option value="monthly" ${selected === 'monthly' ? 'selected' : ''}>按月录入</option>`;
 }
 
-function renderOfficeBudgetSection(model) {
+function ensureOfficeBudgetItems(model) {
   const officeBudget = model.officeBudget || (model.officeBudget = {});
   officeBudget.inputPeriods ||= {};
-  const items = [
-    { label: '办公室租金', key: 'officeRentAnnual', note: '办公室、办公场地及配套租金' },
-    { label: '水电及通讯费', key: 'utilitiesAnnual', note: '办公水电、网络、电话及邮寄' },
-    { label: 'IT及软件服务', key: 'itSoftwareAnnual', note: '商管、财务、会员及协同办公系统' },
-    { label: '办公用品', key: 'officeSuppliesAnnual', note: '耗材、打印、日常办公采购' },
-    { label: '差旅及业务招待', key: 'travelEntertainmentAnnual', note: '差旅、接待、业务拓展' },
-    { label: '其他办公费用', key: 'otherAnnual', note: '培训、团建及其他行政支出' },
+  const defaults = [
+    { id: 'officeRent', name: '办公室租金', legacyKey: 'officeRentAnnual', note: '办公室、办公场地及配套租金' },
+    { id: 'utilities', name: '水电及通讯费', legacyKey: 'utilitiesAnnual', note: '办公水电、网络、电话及邮寄' },
+    { id: 'itSoftware', name: 'IT及软件服务', legacyKey: 'itSoftwareAnnual', note: '商管、财务、会员及协同办公系统' },
+    { id: 'officeSupplies', name: '办公用品', legacyKey: 'officeSuppliesAnnual', note: '耗材、打印、日常办公采购' },
+    { id: 'travelEntertainment', name: '差旅及业务招待', legacyKey: 'travelEntertainmentAnnual', note: '差旅、接待、业务拓展' },
+    { id: 'otherOffice', name: '其他办公费用', legacyKey: 'otherAnnual', note: '培训、团建及其他行政支出' },
   ];
-  const total = items.reduce((sum, item) => sum + Number(officeBudget[item.key] || 0), 0);
+  const hasItemSchema = Number(officeBudget.itemSchema || 0) >= 1 || Array.isArray(officeBudget.items);
+  if (!hasItemSchema) {
+    officeBudget.items = defaults.map(item => ({
+      id: item.id,
+      name: item.name,
+      annual: Number(officeBudget[item.legacyKey] || 0),
+      period: officeBudget.inputPeriods[item.legacyKey] === 'monthly' ? 'monthly' : 'annual',
+      note: item.note,
+    }));
+  }
+  officeBudget.items = (officeBudget.items || []).map((item, index) => ({
+    id: String(item.id || `office_${index + 1}`),
+    name: String(item.name || `办公费用${index + 1}`),
+    annual: Number(item.annual ?? item.amount ?? 0),
+    period: item.period === 'monthly' ? 'monthly' : 'annual',
+    note: String(item.note || ''),
+  }));
+  officeBudget.itemSchema = 1;
+  return officeBudget.items;
+}
+
+function renderOfficeBudgetSection(model) {
+  const officeBudget = model.officeBudget || (model.officeBudget = {});
+  const items = ensureOfficeBudgetItems(model);
+  const total = items.reduce((sum, item) => sum + Number(item.annual || 0), 0);
   return `<div class="form-section budget-section" data-budget-unit="yuan">
     <div class="section-title">办公及行政费用</div>
-    <div class="section-note">金额按“元”录入，不再要求填写万元。每项可选择按年或按月录入，系统自动换算为元/月和元/年，并在底层换算成万元参与成本测算。</div>
-    ${formulaPanel('办公及行政费用月度/年度换算公式', '按年录入：月度金额 = 录入金额 ÷ 12；年度金额 = 录入金额\n按月录入：年度金额 = 录入金额 × 12；月度金额 = 录入金额\n办公行政成本 = 办公室租金 + 水电通讯 + IT软件 + 办公用品 + 差旅招待 + 其他办公费用\n自动权重 = 单项年度金额 ÷ 办公行政成本合计', ['SUM','IF'], '同一项目可以混合使用年度和月度录入。切换周期只改变显示口径，不改变已存的年化总额；随后重新输入金额才会改年化值。')}
+    <div class="section-note">费用名称、录入周期、金额和费用内容均可直接编辑，也可新增或删除费用项目。金额按“元”录入，系统自动换算为元/月、元/年，并折算成万元参与运营成本和NOI测算。</div>
+    ${formulaPanel('办公及行政费用月度/年度换算公式', '按年录入：月度金额 = 录入金额 ÷ 12；年度金额 = 录入金额\n按月录入：年度金额 = 录入金额 × 12；月度金额 = 录入金额\n办公行政成本 = Σ所有办公及行政费用项目\n自动权重 = 单项年度金额 ÷ 办公行政成本合计', ['SUM','IF'], '同一项目可以混合使用年度和月度录入。切换周期只改变显示口径，不改变已存的年化总额；随后重新输入金额才会改年化值。新增项目会自动纳入合计和成本测算。')}
+    <div class="budget-toolbar office-budget-toolbar"><span>共 <strong>${items.length}</strong> 个费用项目</span><button type="button" class="btn btn-secondary btn-sm" id="add-office-budget-item">${ICONS.plus}<span>新增费用项目</span></button></div>
     <div class="data-table-wrap budget-table-wrap">
-      <table class="data-table budget-table budget-period-table" data-share-table data-budget-unit="yuan"><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（元/期）</th><th class="num">月度金额（元/月）</th><th class="num">年度金额（元/年）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
-        ${items.map(item => {
-          const annual = Number(officeBudget[item.key] || 0);
-          const period = budgetInputPeriod(officeBudget, item.key);
+      <table class="data-table budget-table budget-period-table" data-share-table data-budget-unit="yuan"><thead><tr><th>费用项目</th><th>录入周期</th><th class="num">录入金额（元/期）</th><th class="num">月度金额（元/月）</th><th class="num">年度金额（元/年）</th><th class="num">自动权重</th><th>费用内容</th><th></th></tr></thead><tbody>
+        ${items.map((item, index) => {
+          const annual = Number(item.annual || 0);
+          const period = item.period === 'monthly' ? 'monthly' : 'annual';
           const entered = budgetPeriodAmount(annual, period);
-          return `<tr data-annualized-row data-annual-value="${annual}"><td><strong>${escapeHtml(item.label)}</strong><small class="cost-method-label">金额录入 · 年/月换算</small></td><td><select class="table-select period-select" data-path="officeBudget.inputPeriods.${item.key}" data-type="text" data-budget-period="true">${budgetPeriodOptions(period)}</select></td><td class="num"><input class="table-input" data-path="officeBudget.${item.key}" data-type="number" data-scale="0.0001" data-annualize="true" data-period-path="officeBudget.inputPeriods.${item.key}" type="number" step="1" value="${roundDisplayValue(entered * 10000, 2)}"></td><td class="num"><strong data-budget-monthly>${fmt(annual * 10000 / 12, 2)}</strong></td><td class="num"><strong data-budget-annual>${fmt(annual * 10000, 2)}</strong></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? annual / total : 0)}</span></td><td>${escapeHtml(item.note)}</td></tr>`;
+          return `<tr data-annualized-row data-annual-value="${annual}"><td><input class="table-input office-item-name" data-path="officeBudget.items.${index}.name" data-type="text" value="${escapeHtml(item.name)}"><small class="cost-method-label">金额录入 · 年/月换算</small></td><td><select class="table-select period-select" data-path="officeBudget.items.${index}.period" data-type="text" data-budget-period="true">${budgetPeriodOptions(period)}</select></td><td class="num"><input class="table-input" data-path="officeBudget.items.${index}.annual" data-type="number" data-scale="0.0001" data-annualize="true" data-period-path="officeBudget.items.${index}.period" type="number" step="1" value="${roundDisplayValue(entered * 10000, 2)}"></td><td class="num"><strong data-budget-monthly>${fmt(annual * 10000 / 12, 2)}</strong></td><td class="num"><strong data-budget-annual>${fmt(annual * 10000, 2)}</strong></td><td class="num"><span class="auto-weight" data-auto-weight>${fmtPct(total > 0 ? annual / total : 0)}</span></td><td><input class="table-input office-item-note" data-path="officeBudget.items.${index}.note" data-type="text" value="${escapeHtml(item.note)}"></td><td><button type="button" class="btn btn-ghost btn-sm org-delete-btn danger-text" data-remove-office-budget-item="${index}" title="删除费用项目" aria-label="删除费用项目">${ICONS.trash}</button></td></tr>`;
         }).join('')}
       </tbody></table>
     </div>
@@ -4339,6 +4377,28 @@ function bindOperationsBudgets() {
     model.organization.departments.splice(Number(btn.dataset.removeDepartment), 1);
     state.dirty = true; renderWorkspace(); scheduleLivePreview();
   }));
+  document.getElementById('add-office-budget-item')?.addEventListener('click', () => {
+    const items = ensureOfficeBudgetItems(model);
+    items.push({
+      id: `office-${crypto.randomUUID()}`,
+      name: '新增办公费用项目',
+      annual: 0,
+      period: 'monthly',
+      note: '请填写费用内容或用途',
+    });
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  });
+  document.querySelectorAll('[data-remove-office-budget-item]').forEach(btn => btn.addEventListener('click', () => {
+    const items = ensureOfficeBudgetItems(model);
+    items.splice(Number(btn.dataset.removeOfficeBudgetItem), 1);
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  }));
   document.querySelectorAll('[data-marketing-amount]').forEach(input => input.addEventListener('input', () => {
     model.marketingBudget ||= {};
     model.marketingBudget.amountMode = true;
@@ -4584,10 +4644,14 @@ function normalizeCentralAcBuildingConfigs(model) {
   ])].sort((a, b) => a.localeCompare(b, 'zh-CN', { numeric: true }));
   const configs = names.map(building => {
     const current = byBuilding.get(building) || {};
+    const defaultFee = Number(revenues.centralAcFee || 0);
+    const currentFee = current.fee === null || current.fee === undefined ? defaultFee : Number(current.fee || 0);
+    const feeCustomized = current.feeCustomized == null ? current.fee !== null && current.fee !== undefined && currentFee !== defaultFee : Boolean(current.feeCustomized);
     return {
       building,
       enabled: Boolean(current.enabled),
-      fee: current.fee === null || current.fee === undefined ? Number(revenues.centralAcFee || 0) : Number(current.fee || 0),
+      fee: feeCustomized ? currentFee : defaultFee,
+      feeCustomized,
     };
   });
   revenues.centralAcBuildings = configs;
@@ -4609,6 +4673,59 @@ function centralAcBuildingAreas(model) {
     areas.set(building, (areas.get(building) || 0) + rentAreaFor(floor, model));
   }
   return areas;
+}
+
+function resetCentralAcBuildingFee(model, index) {
+  const config = normalizeCentralAcBuildingConfigs(model)[Number(index)];
+  if (!config) return;
+  config.fee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
+  config.feeCustomized = false;
+  state.dirty = true;
+  state.preview = null;
+  renderWorkspace();
+  scheduleLivePreview();
+}
+
+function refreshCentralAcRevenueDom(model) {
+  const configs = normalizeCentralAcBuildingConfigs(model);
+  const areas = centralAcBuildingAreas(model);
+  const occupancy = Math.max(0, Number(model.operations?.stableOccupancy ?? 0.95));
+  const defaultFee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
+  const defaultFeeEl = document.querySelector('[data-central-ac-default-fee]');
+  const enabledCountEl = document.querySelector('[data-central-ac-enabled-count]');
+  if (defaultFeeEl) defaultFeeEl.textContent = fmt(defaultFee, 2);
+  if (enabledCountEl) enabledCountEl.textContent = String(configs.filter(item => item.enabled).length);
+  configs.forEach((config, index) => {
+    const row = document.querySelector(`[data-central-ac-row="${index}"]`);
+    if (!row) return;
+    const area = Number(areas.get(config.building) || 0);
+    const fee = config.enabled ? Number(config.fee || 0) : 0;
+    const monthly = area * fee * occupancy;
+    const toggle = row.querySelector('[data-central-ac-toggle]');
+    const label = toggle?.closest('label')?.querySelector('span');
+    if (toggle) toggle.checked = Boolean(config.enabled);
+    if (label) label.textContent = config.enabled ? '收取' : '不收取';
+    const feeInput = row.querySelector('[data-central-ac-fee]');
+    if (feeInput) {
+      feeInput.value = Number(config.fee || 0).toFixed(2);
+      feeInput.disabled = !config.enabled;
+    }
+    const feeStatusEl = row.querySelector('[data-central-ac-fee-status]');
+    if (feeStatusEl) {
+      feeStatusEl.innerHTML = config.feeCustomized
+        ? `<button type="button" class="btn btn-ghost btn-sm central-ac-reset" data-reset-central-ac-fee="${index}">恢复默认价</button>`
+        : '<small class="rent-source">跟随默认价</small>';
+      feeStatusEl.querySelector('[data-reset-central-ac-fee]')?.addEventListener('click', () => resetCentralAcBuildingFee(model, index));
+    }
+    const areaEl = row.querySelector('[data-central-ac-area]');
+    if (areaEl) areaEl.textContent = fmtArea(area);
+    const monthlyEl = row.querySelector('[data-central-ac-monthly]');
+    if (monthlyEl) monthlyEl.textContent = fmt(monthly);
+    const annualEl = row.querySelector('[data-central-ac-annual]');
+    if (annualEl) annualEl.textContent = fmt(monthly * 12 / 10000, 2);
+    const statusEl = row.querySelector('[data-central-ac-status]');
+    if (statusEl) statusEl.textContent = config.enabled ? '独立计入中央空调使用费收入' : '该楼栋不产生空调费收入，仍计入物业费和商管费';
+  });
 }
 
 function normalizedLeasingAdjustmentPeriods(model) {
@@ -4694,6 +4811,8 @@ function renderRevenueAssumptionsSection() {
   const configs = normalizeCentralAcBuildingConfigs(model);
   const areas = centralAcBuildingAreas(model);
   const occupancy = Math.max(0, Number(operations.stableOccupancy ?? 0.95));
+  const defaultCentralAcFee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
+  const enabledCentralAcBuildings = configs.filter(item => item.enabled).length;
   return `<div class="form-section">
     <div class="section-title">出租率、租金增长与租赁条款</div>
     ${formulaPanel('出租率、租金及费用递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子', ['IF', 'POWER', 'INT', 'SUM'], '租金、物业管理费、商业管理费和中央空调费分别设置增长方式和递增率；阶梯递增示例：每3年递增5%，第1—3年不变，第4年开始上调。')}
@@ -4714,10 +4833,10 @@ function renderRevenueAssumptionsSection() {
     </div>
     ${renderLeasingAdjustmentSection(model, state.preview)}
   </div>
-  <div class="form-section">
+  <div class="form-section" id="central-ac-section">
     <div class="section-title">物业管理费、商业管理费与中央空调费（独立核算）</div>
     <div class="section-note">三类费用分别计算收入、递增和导出明细。物业费与商业管理费默认适用于全部铺位；中央空调费只在下方开启的楼栋收取，也可在铺位明细中用覆盖单价单独调整。</div>
-    ${formulaPanel('三项费用收入公式', '物业管理费 = Σ铺位计租面积 × 物业费单价 × 12 × 出租率 × 物业费递增因子\n商业管理费 = Σ铺位计租面积 × 商管费单价 × 12 × 出租率 × 商管费递增因子\n中央空调费 = Σ开启楼栋的铺位计租面积 × 楼栋空调单价 × 12 × 出租率 × 空调费递增因子\n三项费用合计 = 物业管理费 + 商业管理费 + 中央空调费', ['SUM', 'POWER', 'INT', 'IF'], '计租面积按铺位或楼层选择的建筑面积/实用面积口径计算；物业费和商管费可按铺位覆盖，中央空调费可按楼栋开启并设置独立单价。')}
+    ${formulaPanel('三项费用收入公式', '物业管理费 = Σ铺位计租面积 × 物业费单价 × 12 × 出租率 × 物业费递增因子\n商业管理费 = Σ铺位计租面积 × 商管费单价 × 12 × 出租率 × 商管费递增因子\n中央空调费 = Σ开启楼栋的铺位计租面积 × 楼栋空调单价 × 12 × 出租率 × 空调费递增因子\n三项费用合计 = 物业管理费 + 商业管理费 + 中央空调费', ['SUM', 'POWER', 'INT', 'IF'], '计租面积按铺位或楼层选择的建筑面积/实用面积口径计算；物业费和商管费可按铺位覆盖。中央空调费以楼栋开关为总控：楼栋关闭时所有铺位统一为0，楼栋开启后铺位覆盖价才生效。')}
     <div class="form-grid">
       ${textField('首年物业管理费单价', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月', help: '物业服务合同或租赁合同约定的物业管理费；默认适用于所有铺位' })}
       ${selectField('物业管理费递增方式', 'formulas.propertyFeeGrowthMode', growthOptions, { help: '物业管理费独立递增，不跟随租金或商管费。' })}
@@ -4725,7 +4844,7 @@ function renderRevenueAssumptionsSection() {
       ${textField('首年商业管理费单价', 'revenues.commercialManagementFee', { type: 'number', unit: '元/㎡/月', help: '商业运营管理服务费；如项目不收可填0' })}
       ${selectField('商业管理费递增方式', 'formulas.commercialManagementGrowthMode', growthOptions, { help: '商业管理费按委托管理合同独立递增。' })}
       ${feeGrowthFields('商业管理费', commercialManagementGrowthMode, 'formulas.commercialManagementGrowthMode', 'operations.commercialManagementGrowth', 'operations.commercialManagementStepYears', 'operations.commercialManagementStepRate')}
-      ${textField('默认中央空调使用费单价', 'revenues.centralAcFee', { type: 'number', unit: '元/㎡/月', help: '作为新建楼栋收费配置的参考单价；是否实际收取由下方楼栋开关决定' })}
+      ${textField('默认中央空调使用费单价', 'revenues.centralAcFee', { type: 'number', unit: '元/㎡/月', help: '首次从0填写为正数时自动按此单价启用全部楼栋；无中央空调的楼栋请在下方取消勾选' })}
       ${selectField('中央空调费递增方式', 'formulas.centralAcGrowthMode', growthOptions, { help: '中央空调费按能耗、运维成本或合同约定独立递增。' })}
       ${feeGrowthFields('中央空调费', centralAcGrowthMode, 'formulas.centralAcGrowthMode', 'operations.centralAcGrowth', 'operations.centralAcStepYears', 'operations.centralAcStepRate')}
       ${textField('多经收入占租金比例', 'revenues.otherIncomeRatio', { type: 'number', unit: '%', scale: 0.01 })}
@@ -4735,7 +4854,8 @@ function renderRevenueAssumptionsSection() {
   </div>
   <div class="form-section">
     <div class="section-title">按楼栋设置中央空调收费</div>
-    <div class="section-note">只开启实际提供中央空调且向租户收费的楼栋。稳定期月收费按计租面积 × 楼栋空调单价 × 稳定期出租率估算；不收取的楼栋按0核算，并会在铺位明细和导出表显示为0。</div>
+    <div class="section-note">默认单价会作为楼栋收费基准。首次从0填写为正数时，系统会按默认单价启用全部楼栋；没有中央空调的楼栋请再单独取消勾选。稳定期月收费按计租面积 × 楼栋空调单价 × 稳定期出租率估算。</div>
+    <div class="budget-toolbar central-ac-toolbar"><span>默认单价 <strong data-central-ac-default-fee>${fmt(defaultCentralAcFee, 2)}</strong> 元/㎡/月｜已启用 <strong data-central-ac-enabled-count>${enabledCentralAcBuildings}</strong> / ${configs.length} 栋</span><div><button type="button" class="btn btn-secondary btn-sm" id="enable-all-central-ac">全部按默认单价启用</button><button type="button" class="btn btn-ghost btn-sm" id="disable-all-central-ac">全部停用</button></div></div>
     <div class="data-table-wrap" style="max-height:none">
       <table class="data-table">
         <thead><tr><th>楼栋</th><th>是否收取中央空调费</th><th class="num">计租面积（㎡）</th><th class="num">空调费单价（元/㎡/月）</th><th class="num">稳定期月收费（元）</th><th class="num">稳定期年收入（万元）</th><th>说明</th></tr></thead>
@@ -4744,14 +4864,14 @@ function renderRevenueAssumptionsSection() {
             const area = Number(areas.get(config.building) || 0);
             const fee = config.enabled ? Number(config.fee || 0) : 0;
             const monthly = area * fee * occupancy;
-            return `<tr>
+            return `<tr data-central-ac-row="${index}">
               <td><strong>${escapeHtml(config.building)}</strong></td>
               <td><label class="switch-line"><input type="checkbox" data-path="revenues.centralAcBuildings.${index}.enabled" data-type="bool" ${config.enabled ? 'checked' : ''} data-central-ac-toggle="true"><span>${config.enabled ? '收取' : '不收取'}</span></label></td>
-              <td class="num">${fmtArea(area)}</td>
-              <td class="num"><div class="input-affix compact"><input class="table-input" data-path="revenues.centralAcBuildings.${index}.fee" data-type="number" type="number" step="0.01" value="${Number(config.fee || 0).toFixed(2)}" ${config.enabled ? '' : 'disabled'}><span>元/㎡/月</span></div></td>
-              <td class="num"><strong>${fmt(monthly)}</strong></td>
-              <td class="num"><strong>${fmt(monthly * 12 / 10000, 2)}</strong></td>
-              <td>${config.enabled ? '独立计入中央空调使用费收入' : '该楼栋不产生空调费收入，仍计入物业费和商管费'}</td>
+              <td class="num"><span data-central-ac-area>${fmtArea(area)}</span></td>
+              <td class="num"><div class="input-affix compact"><input class="table-input" data-path="revenues.centralAcBuildings.${index}.fee" data-type="number" data-central-ac-fee="true" type="number" step="0.01" value="${Number(config.fee || 0).toFixed(2)}" ${config.enabled ? '' : 'disabled'}><span>元/㎡/月</span></div><span data-central-ac-fee-status>${config.feeCustomized ? `<button type="button" class="btn btn-ghost btn-sm central-ac-reset" data-reset-central-ac-fee="${index}">恢复默认价</button>` : '<small class="rent-source">跟随默认价</small>'}</span></td>
+              <td class="num"><strong data-central-ac-monthly>${fmt(monthly)}</strong></td>
+              <td class="num"><strong data-central-ac-annual>${fmt(monthly * 12 / 10000, 2)}</strong></td>
+              <td><span data-central-ac-status>${config.enabled ? '独立计入中央空调使用费收入' : '该楼栋不产生空调费收入，仍计入物业费和商管费'}</span></td>
             </tr>`;
           }).join('') || '<tr><td colspan="7" class="admin-empty">请先在商铺收益页添加楼栋或导入铺位明细。</td></tr>'}
         </tbody>
@@ -5743,6 +5863,12 @@ function bindStepInputs() {
       const previousCentralAcFee = path === 'revenues.centralAcFee' ? Number(getPath(state.current.model, path) || 0) : null;
       const previousLeasingPeriodMonths = path === 'project.leasingPeriodMonths' ? Number(getPath(state.current.model, path) || 0) : null;
       setPath(state.current.model, path, value);
+      if (/^revenues\.centralAcBuildings\.\d+\.fee$/.test(path)) {
+        const configIndex = Number(path.split('.')[2]);
+        const config = state.current.model.revenues?.centralAcBuildings?.[configIndex];
+        if (config) config.feeCustomized = true;
+        refreshCentralAcRevenueDom(state.current.model);
+      }
       if (path === 'project.leasingPeriodMonths') {
         syncPreOpeningMonthsWithLeasingPeriod(state.current.model, previousLeasingPeriodMonths, value);
         document.querySelectorAll('[data-path^="preOpeningBudget."][data-path$=".months"]').forEach(monthInput => {
@@ -5750,9 +5876,23 @@ function bindStepInputs() {
         });
       }
       if (path === 'revenues.centralAcFee' && Array.isArray(state.current.model.revenues?.centralAcBuildings)) {
+        const nextFee = Math.max(0, Number(value || 0));
         state.current.model.revenues.centralAcBuildings.forEach(config => {
-          if (!config.enabled && Number(config.fee || 0) === previousCentralAcFee) config.fee = Number(value || 0);
+          if (nextFee === 0) {
+            config.enabled = false;
+            config.fee = 0;
+            config.feeCustomized = false;
+            return;
+          }
+          if (previousCentralAcFee === 0) {
+            config.enabled = true;
+            config.fee = nextFee;
+            config.feeCustomized = false;
+            return;
+          }
+          if (!config.feeCustomized) config.fee = nextFee;
         });
+        refreshCentralAcRevenueDom(state.current.model);
       }
       if (input.dataset.annualize === 'true') {
         const annualizedRow = input.closest('[data-annualized-row]');
@@ -6473,6 +6613,66 @@ function ensureFloorsFromShops(model, options = {}) {
 
 function bindShopsStep() {
   const model = state.current.model;
+  const centralAcFeeField = document.querySelector('input[data-path="revenues.centralAcFee"]');
+  if (centralAcFeeField) {
+    let previousFee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
+    centralAcFeeField.addEventListener('focus', () => {
+      previousFee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
+    });
+    centralAcFeeField.addEventListener('input', event => {
+      const nextFee = Math.max(0, Number(event.currentTarget.value || 0));
+      const configs = normalizeCentralAcBuildingConfigs(model);
+      configs.forEach(config => {
+        if (nextFee === 0) {
+          config.enabled = false;
+          config.fee = 0;
+          config.feeCustomized = false;
+          return;
+        }
+        if (previousFee === 0) {
+          config.enabled = true;
+          config.fee = nextFee;
+          config.feeCustomized = false;
+          return;
+        }
+        if (!config.feeCustomized) config.fee = nextFee;
+      });
+      state.dirty = true;
+      state.preview = null;
+      refreshCentralAcRevenueDom(model);
+    });
+  }
+  document.getElementById('enable-all-central-ac')?.addEventListener('click', () => {
+    const fee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
+    if (fee <= 0) return toast('请先填写大于0的默认中央空调使用费单价', 'error');
+    normalizeCentralAcBuildingConfigs(model).forEach(config => { config.enabled = true; config.fee = fee; });
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  });
+  document.getElementById('disable-all-central-ac')?.addEventListener('click', () => {
+    normalizeCentralAcBuildingConfigs(model).forEach(config => { config.enabled = false; });
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  });
+  document.querySelector('input[data-path="revenues.centralAcFee"]')?.addEventListener('change', () => {
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  });
+  document.querySelectorAll('input[data-central-ac-fee]').forEach(input => input.addEventListener('change', () => {
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
+  }));
+  document.querySelectorAll('[data-reset-central-ac-fee]').forEach(btn => btn.addEventListener('click', () => {
+    resetCentralAcBuildingFee(model, btn.dataset.resetCentralAcFee);
+  }));
   document.querySelectorAll('[data-add-leasing-stage]').forEach(button => button.addEventListener('click', () => {
     model.operations ||= {};
     model.operations.leasingAdjustmentPeriods ||= [];

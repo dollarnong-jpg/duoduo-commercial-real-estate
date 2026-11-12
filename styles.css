@@ -1029,6 +1029,8 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .cost-structure-table td:nth-child(2) { line-height:1.65; }
 .budget-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:11px; color:var(--muted); font-size: var(--fs-10); }
 .budget-toolbar strong { color:var(--navy); font-size: var(--fs-12); }
+.central-ac-toolbar > div { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.central-ac-reset { margin-top:4px; padding:2px 6px; min-height:0; font-size:var(--fs-8); }
 .auto-weight { display:inline-flex; align-items:center; justify-content:center; min-width:64px; padding:5px 8px; border-radius:999px; background:var(--green-soft); color:var(--green); font-size:var(--fs-9); font-weight:700; }
 .amount-source { color:#78837e; font-size:var(--fs-9); line-height:1.55; }
 .subsection-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:18px 0 9px; padding-top:15px; border-top:1px solid #ece7de; }

@@ -371,7 +371,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261111-settlement2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-officeac6', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1798,9 +1798,39 @@ function parseOperatingBudgetWorkbook(base64, filename) {
       if (periodTarget) periodTarget[key] = isMonthly ? 'monthly' : 'annual';
     }
   }
+  function parseOfficeBudgetSheet() {
+    const rows = getTemplateRows(wb, '办公预算');
+    const header = findHeaderRow(rows, { name: ['费用项目'], amount: ['录入金额', '年度金额'] }, ['name', 'amount']);
+    if (header < 0) return;
+    const indexes = headerIndexes(rows[header], { name: ['费用项目'], amount: ['录入金额', '年度金额'], period: ['录入周期', '周期'], note: ['说明', '费用内容'] });
+    const keyByLabel = Object.fromEntries(OFFICE_BUDGET_DEFS.map(([label, key]) => [normalizeHeader(label), key]));
+    const amountHeader = String(rowValue(rows[header], indexes, 'amount') || '');
+    const unitScale = /万元/.test(amountHeader) ? 1 : /元/.test(amountHeader) ? 0.0001 : 1;
+    const items = [];
+    rows.slice(header + 1).forEach((row, index) => {
+      const name = String(rowValue(row, indexes, 'name') || '').trim();
+      if (!name) return;
+      const key = keyByLabel[normalizeHeader(name)] || `importedOffice_${index + 1}`;
+      const rawPeriod = normalizeHeader(rowValue(row, indexes, 'period'));
+      const isMonthly = rawPeriod.includes('月') && !rawPeriod.includes('年');
+      const annual = safeNumber(rowValue(row, indexes, 'amount')) * unitScale * (isMonthly ? 12 : 1);
+      items.push({
+        id: key,
+        name,
+        annual,
+        period: isMonthly ? 'monthly' : 'annual',
+        note: String(rowValue(row, indexes, 'note') || '').trim(),
+      });
+      if (keyByLabel[normalizeHeader(name)]) officeBudget.inputPeriods[key] = isMonthly ? 'monthly' : 'annual';
+    });
+    if (items.length) {
+      officeBudget.items = items;
+      officeBudget.itemSchema = 1;
+    }
+  }
   officeBudget.inputPeriods = {};
   leasingBudget.inputPeriods = {};
-  parseAmountSheet('办公预算', OFFICE_BUDGET_DEFS, officeBudget, officeBudget.inputPeriods);
+  parseOfficeBudgetSheet();
   parseAmountSheet('招商预算', LEASING_BUDGET_DEFS, leasingBudget, leasingBudget.inputPeriods);
   parseAmountSheet('维保预算', MAINTENANCE_BUDGET_DEFS, maintenanceBudget);
   const annualMarketingAmounts = {};
@@ -1955,14 +1985,11 @@ function exportExcel(result) {
   setSheetColumnNumberFormat(propertyServiceWs, [3], '0');
   const officeBudgetTotal = (result.officeBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
   const leasingBudgetTotal = (result.leasingBreakdown || []).reduce((sum, item) => sum + Number(item.value || 0), 0);
-  const officePeriods = model.officeBudget?.inputPeriods || {};
   const leasingPeriods = model.leasingBudget?.inputPeriods || {};
-  const officeKeyByName = Object.fromEntries(OFFICE_BUDGET_DEFS.map(([label, key]) => [label, key]));
   const leasingKeyByName = Object.fromEntries(LEASING_BUDGET_DEFS.map(([label, key]) => [label, key]));
   const officeExportRows = (result.officeBreakdown || []).map(x => {
-    const key = officeKeyByName[x.name];
-    const period = officePeriods[key] === 'monthly' ? '按月' : '按年';
-    return ['办公行政', x.name, '元', period, Number(x.value || 0) * 10000, Number(x.value || 0) * 10000 / 12, Number(x.value || 0) * 10000, officeBudgetTotal ? Number(x.value || 0) / officeBudgetTotal : 0, '页面和模板按元录入；导出统一折算为元'];
+    const period = x.period === 'monthly' ? '按月' : '按年';
+    return ['办公行政', x.name, '元', period, Number(x.value || 0) * 10000, Number(x.value || 0) * 10000 / 12, Number(x.value || 0) * 10000, officeBudgetTotal ? Number(x.value || 0) / officeBudgetTotal : 0, x.note || '页面和模板按元录入；导出统一折算为元'];
   });
   const leasingExportRows = (result.leasingBreakdown || []).map(x => {
     const key = leasingKeyByName[x.name];

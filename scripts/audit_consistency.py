@@ -66,6 +66,8 @@ def audit_defaults_and_units() -> None:
     assert set(service_months) == {total_months}, service_months
     assert set(admin_months) == {total_months}, admin_months
     assert all(service.get("positions") for service in model["preOpeningBudget"]["property"]["services"])
+    normalized_office = engine.normalize_model(model)
+    assert len(normalized_office["officeBudget"]["items"]) == 6
 
     backend = read("backend.js")
     app = read("app.js")
@@ -96,6 +98,10 @@ def audit_defaults_and_units() -> None:
     require_text(app, "本机兼容登录", "local fallback login UI")
     require_text(app, "budget.monthsVersion = 2", "preopening month migration")
     require_text(app, "data-sync-preopening-months", "preopening month sync action")
+    require_text(app, "add-office-budget-item", "office budget add action")
+    require_text(app, "remove-office-budget-item", "office budget delete action")
+    require_text(app, "feeCustomized", "building central AC fee override")
+    require_text(app, "enable-all-central-ac", "central AC bulk enable action")
 
     office = function_segment(app, "renderOfficeBudgetSection")
     leasing = function_segment(app, "renderLeasingBudgetSection")
@@ -268,6 +274,35 @@ def audit_engine_invariants() -> None:
     month_conflict["preOpeningBudget"]["team"]["positions"][0]["months"] = 18
     conflict_diagnostics = engine.calculate_model(month_conflict, False)["diagnostics"]
     assert any(item.get("title") == "筹备明细月数超过筹备招商总周期" for item in conflict_diagnostics), conflict_diagnostics
+
+    office_model = engine.default_model("办公费用自定义项目")
+    office_model["officeBudget"]["itemSchema"] = 1
+    office_model["officeBudget"]["items"] = [
+        {"id": "custom_legal", "name": "法务顾问费", "annual": 12, "period": "annual", "note": "年度法律顾问"},
+        {"id": "custom_audit", "name": "审计咨询费", "annual": 6, "period": "annual", "note": "专项审计"},
+    ]
+    office_result = engine.calculate_model(office_model, False)
+    assert len(office_result["officeBreakdown"]) == 2
+    assert close(office_result["summary"]["stableOfficeCost"], 18)
+    office_model["officeBudget"]["items"] = []
+    assert close(engine.calculate_model(office_model, False)["summary"]["stableOfficeCost"], 0)
+
+    central_ac_model = engine.default_model("中央空调楼栋总控")
+    central_ac_model["calculationMode"] = "detailed"
+    central_ac_model["shops"] = [{
+        "id": "AC-01", "building": "1号楼", "floor": "1F",
+        "buildingArea": 100, "leasableArea": 80, "category": "零售",
+        "rentOverride": 100, "centralAcFeeOverride": 9,
+    }]
+    central_ac_model["revenues"]["centralAcFee"] = 8
+    central_ac_model["revenues"]["centralAcBuildings"] = [{"building": "1号楼", "enabled": False, "fee": 8}]
+    disabled_ac = engine.calculate_model(central_ac_model, False)["shops"][0]
+    assert close(disabled_ac["centralAcFee"], 0)
+    assert close(disabled_ac["monthlyCentralAcFee"], 0)
+    central_ac_model["revenues"]["centralAcBuildings"][0]["enabled"] = True
+    enabled_ac = engine.calculate_model(central_ac_model, False)["shops"][0]
+    assert close(enabled_ac["centralAcFee"], 9)
+    assert close(enabled_ac["monthlyCentralAcFee"], 720)
 
 
 def main() -> None:
