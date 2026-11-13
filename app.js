@@ -1,7 +1,7 @@
-import './backend.js?v=20261112-style7';
+import './backend.js?v=20261112-style9';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.26.2';
+const APP_VERSION = '1.26.3';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -656,6 +656,8 @@ const state = {
   user: safeParse(localStorage.getItem('cr_user')),
   projects: [],
   projectLoadError: '',
+  projectSyncBusy: false,
+  lastProjectSyncAt: 0,
   current: null,
   result: null,
   preview: null,
@@ -708,6 +710,11 @@ function normalizeUserRole(value) {
 
 function isSuperAdmin(user = state.user) {
   return Boolean(user && !user.localMode && normalizeUserRole(user.role) === 'super_admin');
+}
+
+function projectUpdatedAtChanged(previous, latest) {
+  if (!previous || !latest) return false;
+  return String(previous).trim() !== String(latest).trim();
 }
 
 const RENT_BASIS_LABELS = {
@@ -1235,14 +1242,17 @@ async function api(path, options = {}) {
   if (!response.ok) {
     let message = `请求失败（${response.status}）`;
     let errorCode = '';
+    let errorPayload = {};
     if (contentType.includes('application/json')) {
       const payload = await response.json().catch(() => ({}));
+      errorPayload = payload;
       message = payload.error || message;
       errorCode = payload.code || '';
     }
     const error = new Error(message);
     error.code = errorCode;
     error.status = response.status;
+    error.payload = errorPayload;
     throw error;
   }
   return contentType.includes('application/json') ? response.json() : response;
@@ -1403,6 +1413,55 @@ async function loadProjects() {
     state.projects = [];
     state.projectLoadError = error.message || '项目数据暂时无法加载';
     return null;
+  }
+}
+
+async function syncProjectsAfterFocus() {
+  if (document.hidden || !state.token || !state.user?.id || state.user?.localMode || state.projectSyncBusy) return;
+  if (Date.now() - Number(state.lastProjectSyncAt || 0) < 15000) return;
+  state.lastProjectSyncAt = Date.now();
+  state.projectSyncBusy = true;
+  try {
+    const previousCurrent = state.current;
+    const payload = await api(`/api/projects${previousCurrent ? '?meta=1' : ''}`);
+    const remoteProjects = payload.projects || [];
+    if (!previousCurrent) state.projects = remoteProjects;
+    state.projectLoadError = '';
+    if (Number(payload.localProjectMigrationFailures || 0) > 0) {
+      toast(`有 ${payload.localProjectMigrationFailures} 个历史项目迁移失败，请稍后重试`, 'error');
+    }
+    if (previousCurrent) {
+      const latest = remoteProjects.find(project => project.id === previousCurrent.id);
+      if (!latest) {
+        if (state.dirty) toast('此项目可能已在其他设备删除。当前有未保存修改，请先复制或导出后再离开。', 'error');
+        else {
+          state.current = null;
+          state.result = null;
+          state.preview = null;
+          renderProjectList();
+          toast('此项目已在其他设备删除，项目列表已同步', 'error');
+        }
+      } else if (projectUpdatedAtChanged(previousCurrent.updatedAt, latest.updatedAt)) {
+        if (state.dirty) {
+          toast('检测到其他设备已更新此项目。当前有未保存修改，请先保存或返回项目列表重新打开。', 'error');
+        } else {
+          const detail = await api(`/api/projects/${previousCurrent.id}`);
+          state.current = detail.project;
+          state.result = detail.result;
+          state.preview = detail.result;
+          state.dirty = false;
+          renderWorkspace();
+          toast('已同步其他设备保存的最新项目数据', 'success');
+        }
+      }
+    } else {
+      const projectHeading = document.querySelector('.page-intro h1')?.textContent || '';
+      if (projectHeading.includes('项目工作台')) renderProjectList();
+    }
+  } catch (error) {
+    if (state.token) state.projectLoadError = error.message || '项目同步失败';
+  } finally {
+    state.projectSyncBusy = false;
   }
 }
 
@@ -1601,7 +1660,7 @@ function bindShell() {
     state.current = null; state.result = null; state.dirty = false;
     renderProjectList();
   });
-  document.getElementById('top-save')?.addEventListener('click', saveProject);
+  document.getElementById('top-save')?.addEventListener('click', () => saveProject());
   document.getElementById('top-export-excel')?.addEventListener('click', async () => {
     if (!state.current) return;
     if (state.dirty) {
@@ -2889,7 +2948,7 @@ function bindWorkspace() {
     }
     state.step = nextStep; renderWorkspace();
   });
-  document.getElementById('final-save')?.addEventListener('click', saveProject);
+  document.getElementById('final-save')?.addEventListener('click', () => saveProject());
 }
 
 function renderStep() {
@@ -7003,16 +7062,58 @@ function openAddShopModal(editIndex = null) {
 }
 
 function bindResultsActions() {
-  document.getElementById('inline-calculate')?.addEventListener('click', saveProject);
+  document.getElementById('inline-calculate')?.addEventListener('click', () => saveProject());
   document.getElementById('export-excel')?.addEventListener('click', () => downloadFile(`/api/projects/${state.current.id}/export/xlsx`, `${state.current.model.project.name || '项目'}_投资测算.xlsx`));
   document.getElementById('export-ppt')?.addEventListener('click', () => downloadFile(`/api/projects/${state.current.id}/export/pptx`, `${state.current.model.project.name || '项目'}_投资汇报.pptx`));
 }
 
-async function saveProject() {
+function openProjectConflictModal(error) {
+  const remoteProject = error?.payload?.project;
+  const remoteResult = error?.payload?.result;
+  if (!remoteProject) return toast(error?.message || '项目已在其他设备更新', 'error');
+  modalRegion.innerHTML = `
+    <div class="modal-backdrop" id="project-conflict-backdrop">
+      <div class="modal" style="width:min(620px,100%)">
+        <div class="modal-head"><div><span class="eyebrow">Cross-device conflict</span><h2>检测到跨设备数据更新</h2><p>其他电脑已经保存了此项目。为避免覆盖最新数据，请选择本次处理方式。</p></div><button class="modal-close" id="project-conflict-close">×</button></div>
+        <div class="modal-body">
+          <div class="warning-list"><div class="warning-item"><strong>云端版本更新时间：${escapeHtml(fmtDate(remoteProject.updatedAt))}</strong><span>当前页面还有未保存修改。加载云端版本会放弃当前页面修改；覆盖云端版本会保留当前页面并替换其他设备已保存的内容。</span></div></div>
+        </div>
+        <div class="modal-foot"><button class="btn btn-secondary" id="project-conflict-load">加载云端最新版本</button><button class="btn btn-primary" id="project-conflict-overwrite">保留当前并覆盖</button></div>
+      </div>
+    </div>`;
+  const close = () => { modalRegion.innerHTML = ''; };
+  document.getElementById('project-conflict-close')?.addEventListener('click', close);
+  document.getElementById('project-conflict-backdrop')?.addEventListener('click', event => {
+    if (event.target.id === 'project-conflict-backdrop') close();
+  });
+  document.getElementById('project-conflict-load')?.addEventListener('click', () => {
+    state.current = remoteProject;
+    state.result = remoteResult || null;
+    state.preview = remoteResult || null;
+    state.dirty = false;
+    close();
+    renderWorkspace();
+    toast('已加载云端最新版本', 'success');
+  });
+  document.getElementById('project-conflict-overwrite')?.addEventListener('click', async () => {
+    if (!confirm('确定用当前页面内容覆盖其他设备已保存的版本吗？')) return;
+    close();
+    await saveProject({ force: true });
+  });
+}
+
+async function saveProject({ force = false } = {}) {
   if (!state.current) return;
   setBusy(true);
   try {
-    const payload = await api(`/api/projects/${state.current.id}`, { method: 'PUT', body: { model: state.current.model } });
+    const payload = await api(`/api/projects/${state.current.id}`, {
+      method: 'PUT',
+      body: {
+        model: state.current.model,
+        clientUpdatedAt: state.current.updatedAt || '',
+        forceOverwrite: Boolean(force),
+      },
+    });
     state.current = { ...payload.project, model: payload.result?.model || payload.project.model };
     state.result = payload.result;
     state.preview = payload.result;
@@ -7021,7 +7122,10 @@ async function saveProject() {
     await loadProjects();
     renderWorkspace();
     toast('测算已更新', 'success');
-  } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
+  } catch (error) {
+    if (error.code === 'PROJECT_CONFLICT' && !force) openProjectConflictModal(error);
+    else toast(error.message, 'error');
+  } finally { setBusy(false); }
 }
 
 function renderResultCharts() {
@@ -7128,8 +7232,13 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.user?.id && state.token) pollShareInbox(state.user.id);
+  if (!document.hidden && state.user?.id && state.token) {
+    pollShareInbox(state.user.id);
+    syncProjectsAfterFocus();
+  }
 });
+
+window.addEventListener('focus', () => syncProjectsAfterFocus());
 
 applyFontScale(state.fontScale);
 boot();

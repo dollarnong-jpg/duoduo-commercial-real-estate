@@ -369,6 +369,7 @@ async function migrateLocalProjectsToCloud(user, token, cloudRows) {
           user_id: user.id,
           name: String(model.project?.name || '本机项目').trim() || '本机项目',
           model,
+          updated_at: new Date().toISOString(),
         },
         headers: { Prefer: 'return=representation' },
       });
@@ -427,7 +428,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style7', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style9', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3714,7 +3715,7 @@ async function handleApi(path, init) {
         const token = await cloudAccessToken();
         const rows = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at', {
           method: 'POST', token,
-          body: { user_id: recipientId, name: sharedModel.project.name, model: sharedModel },
+        body: { user_id: recipientId, name: sharedModel.project.name, model: sharedModel, updated_at: new Date().toISOString() },
           headers: { Prefer: 'return=representation' },
         });
         if (!Array.isArray(rows) || !rows[0]) throw new Error('直接投递失败');
@@ -3753,7 +3754,7 @@ async function handleApi(path, init) {
       const token = await cloudAccessToken();
       const rows = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at', {
         method: 'POST', token,
-        body: { user_id: user.id, name: duplicateModel.project.name, model: duplicateModel },
+        body: { user_id: user.id, name: duplicateModel.project.name, model: duplicateModel, updated_at: new Date().toISOString() },
         headers: { Prefer: 'return=representation' },
       });
       if (!Array.isArray(rows) || !rows[0]) throw new Error('项目副本创建失败');
@@ -3770,6 +3771,7 @@ async function handleApi(path, init) {
 
   if (pathname.endsWith('/api/projects') && method === 'GET') {
     const projects = [];
+    const metaOnly = url.searchParams.get('meta') === '1';
     let migratedLocalProjects = 0;
     let localProjectMigrationFailures = 0;
     if (user.isCloud) {
@@ -3778,13 +3780,18 @@ async function handleApi(path, init) {
       const migration = await migrateLocalProjectsToCloud(user, token, Array.isArray(rows) ? rows : []);
       migratedLocalProjects = migration.migrated;
       localProjectMigrationFailures = migration.failed;
-      for (const row of migration.rows) projects.push(await cloudProjectSummary(cloudProject(row)));
+      for (const row of migration.rows) {
+        const project = cloudProject(row);
+        projects.push(metaOnly ? project : await cloudProjectSummary(project));
+      }
     } else {
       await ensureDemoProject(user.username);
       const rows = getProjects(user.username);
       for (const project of rows) {
         let summary = {};
-        try { summary = (await calculate(project.model, false)).summary; } catch {}
+        if (!metaOnly) {
+          try { summary = (await calculate(project.model, false)).summary; } catch {}
+        }
         projects.push({ ...project, summary });
       }
     }
@@ -3801,7 +3808,7 @@ async function handleApi(path, init) {
       const token = await cloudAccessToken();
       const rows = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at', {
         method: 'POST', token,
-        body: { user_id: user.id, name: projectName, model },
+        body: { user_id: user.id, name: projectName, model, updated_at: new Date().toISOString() },
         headers: { Prefer: 'return=representation' },
       });
       if (!Array.isArray(rows) || !rows[0]) throw new Error('项目创建失败，请稍后重试');
@@ -3847,9 +3854,29 @@ async function handleApi(path, init) {
       const body = await requestJSON(init);
       const model = await normalizeModel(body.model || body);
       if (user.isCloud) {
+        const clientUpdatedAt = String(body.clientUpdatedAt || '').trim();
+        const expectedMs = Date.parse(clientUpdatedAt);
+        const currentMs = Date.parse(project.updatedAt);
+        const timestampsDiffer = clientUpdatedAt && project.updatedAt && (
+          Number.isFinite(expectedMs) && Number.isFinite(currentMs)
+            ? expectedMs !== currentMs
+            : clientUpdatedAt !== String(project.updatedAt)
+        );
+        if (!body.forceOverwrite && timestampsDiffer) {
+          return jsonResponse({
+            error: '检测到其他设备已保存此项目。为避免覆盖最新数据，请先加载云端版本或明确选择覆盖。',
+            code: 'PROJECT_CONFLICT',
+            project,
+            result: await calculate(project.model, true),
+          }, 409);
+        }
         const rows = await cloudJSON(`/rest/v1/projects?id=eq.${encodeURIComponent(id)}&select=id,user_id,name,model,created_at,updated_at`, {
           method: 'PATCH', token: cloudToken,
-          body: { model, name: String(body.name || model.project?.name || project.name || '未命名商业项目').trim() },
+          body: {
+            model,
+            name: String(body.name || model.project?.name || project.name || '未命名商业项目').trim(),
+            updated_at: new Date().toISOString(),
+          },
           headers: { Prefer: 'return=representation' },
         });
         if (!Array.isArray(rows) || !rows[0]) return jsonResponse({ error: '项目保存失败或无权修改' }, 403);
