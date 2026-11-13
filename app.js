@@ -1,7 +1,7 @@
-import './backend.js?v=20261112-style6';
+import './backend.js?v=20261112-style7';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.26.1';
+const APP_VERSION = '1.26.2';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -655,6 +655,7 @@ const state = {
   token: localStorage.getItem('cr_token') || '',
   user: safeParse(localStorage.getItem('cr_user')),
   projects: [],
+  projectLoadError: '',
   current: null,
   result: null,
   preview: null,
@@ -679,6 +680,7 @@ const state = {
   adminUsers: [],
   adminProjects: [],
   adminLogs: [],
+  adminWarnings: [],
   adminStatus: 'all',
   adminSearch: '',
   adminLoaded: false,
@@ -697,6 +699,15 @@ const processedShareIds = new Set();
 
 function safeParse(value) {
   try { return value ? JSON.parse(value) : null; } catch { return null; }
+}
+
+function normalizeUserRole(value) {
+  const role = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return ['super_admin', 'superadmin', 'admin', 'owner', 'administrator'].includes(role) ? 'super_admin' : 'user';
+}
+
+function isSuperAdmin(user = state.user) {
+  return Boolean(user && !user.localMode && normalizeUserRole(user.role) === 'super_admin');
 }
 
 const RENT_BASIS_LABELS = {
@@ -1312,6 +1323,7 @@ function clearSession() {
   state.token = '';
   state.user = null;
   state.projects = [];
+  state.projectLoadError = '';
   state.current = null;
   state.result = null;
   state.preview = null;
@@ -1320,6 +1332,7 @@ function clearSession() {
   state.adminUsers = [];
   state.adminProjects = [];
   state.adminLogs = [];
+  state.adminWarnings = [];
   state.adminLoaded = false;
   localStorage.removeItem('cr_token');
   localStorage.removeItem('cr_user');
@@ -1344,16 +1357,53 @@ async function boot() {
     localStorage.setItem('cr_user', JSON.stringify(state.user));
     startShareInbox();
     await loadProjects();
+    if (!state.token) return;
     renderProjectList();
-  } catch {
-    logout();
+  } catch (error) {
+    const status = Number(error?.status || 0);
+    if (status === 401 || status === 403 || !state.token) {
+      logout(false);
+      renderAuth('login');
+      if (error?.message) toast(error.message, 'error');
+      return;
+    }
+    const cachedUser = state.user || safeParse(localStorage.getItem('cr_user'));
+    if (!cachedUser) {
+      logout(false);
+      renderAuth('login');
+      toast(error?.message || '账号状态暂时无法确认', 'error');
+      return;
+    }
+    state.user = cachedUser;
+    await loadProjects();
+    if (!state.token) return;
+    renderProjectList();
+    toast('账号验证服务暂时不可用，已保留登录状态和功能模块；项目数据可稍后重试。', 'error');
   }
 }
 
 async function loadProjects() {
-  const payload = await api('/api/projects');
-  state.projects = payload.projects || [];
-  state.adminLoaded = false;
+  try {
+    const payload = await api('/api/projects');
+    state.projects = payload.projects || [];
+    state.projectLoadError = '';
+    state.adminLoaded = false;
+    if (Number(payload.migratedLocalProjects || 0) > 0) {
+      toast(`已将 ${payload.migratedLocalProjects} 个本机项目迁移到当前云端账号`, 'success');
+    }
+    if (Number(payload.localProjectMigrationFailures || 0) > 0) {
+      toast(`有 ${payload.localProjectMigrationFailures} 个本机项目暂未迁移，请稍后点击“重新加载项目”重试`, 'error');
+    }
+    return payload;
+  } catch (error) {
+    if (!state.token) {
+      renderAuth('login');
+      return null;
+    }
+    state.projects = [];
+    state.projectLoadError = error.message || '项目数据暂时无法加载';
+    return null;
+  }
 }
 
 function renderAuth(mode = 'login') {
@@ -1438,6 +1488,7 @@ function renderAuth(mode = 'login') {
       setBusy(false);
       renderWorkspaceLoading('正在同步账号与项目数据，首次载入会初始化本地计算引擎…');
       await loadProjects();
+      if (!state.token) return;
       renderProjectList();
       if (payload.cloudPending) toast('云端账号正在审核或暂时无法连接，已自动进入本机兼容工作区；项目可通过分享码迁移', 'success');
       if (payload.firstAdmin) setTimeout(() => toast('首个正式账号已自动设为超级管理员', 'success'), 120);
@@ -1468,7 +1519,7 @@ function sidebar(active = 'projects') {
       <button class="nav-item" data-nav="terms">
         <span class="nav-icon">${ICONS.info}</span><span>名词解释</span>
       </button>
-      ${state.user?.role === 'super_admin' ? `
+      ${isSuperAdmin() ? `
       <div class="sidebar-context">Administration</div>
       <button class="nav-item ${active === 'admin' ? 'active' : ''}" data-nav="admin">
         <span class="nav-icon">${ICONS.users}</span><span>用户与项目管理</span>
@@ -1476,7 +1527,7 @@ function sidebar(active = 'projects') {
       <div class="sidebar-spacer"></div>
       <div class="user-box">
         <strong>${escapeHtml(state.user?.displayName || state.user?.username || '')}</strong>
-        <span>${state.user?.role === 'super_admin' ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : state.user?.localMode ? '本机兼容账号 · 当前设备' : '正式账号 · 云端工作空间'}</span>
+        <span>${isSuperAdmin() ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : state.user?.localMode ? '本机兼容账号 · 当前设备' : '正式账号 · 云端工作空间'}</span>
         <div class="font-size-setting">
           <span class="font-size-setting-title">界面字号</span>
           <div class="font-size-options" role="group" aria-label="界面字号调整">
@@ -1587,13 +1638,19 @@ function renderProjectList() {
       </div>
       <div class="project-intro-actions"><button class="btn btn-secondary" id="compare-projects-btn">${ICONS.compare}<span>方案对比</span></button><button class="btn btn-secondary" id="import-share-btn">${ICONS.download}<span>接收项目</span></button><button class="btn btn-primary" id="new-project-btn">${ICONS.plus}<span>新建测算项目</span></button></div>
     </div>
-    ${state.projects.length ? `<div class="project-grid">${cards}${newProjectCard()}</div>` : emptyProjectState()}`;
+    ${state.projectLoadError ? `<div class="warning-list project-load-warning"><div class="warning-item"><strong>项目数据未完整加载</strong><span>${escapeHtml(state.projectLoadError)}。账号仍保持登录，模块不会因此隐藏。</span><button class="btn btn-secondary btn-sm" id="retry-projects">重新加载项目</button></div></div>` : ''}
+    ${state.projects.length ? `<div class="project-grid">${cards}${newProjectCard()}</div>` : state.projectLoadError ? '' : emptyProjectState()}`;
   shell(content, 'projects', false);
   document.getElementById('new-project-btn')?.addEventListener('click', openNewProjectModal);
   document.getElementById('compare-projects-btn')?.addEventListener('click', openCompareProjectsModal);
   document.getElementById('import-share-btn')?.addEventListener('click', openImportShareModal);
   document.getElementById('new-project-card')?.addEventListener('click', openNewProjectModal);
   document.getElementById('empty-new-project')?.addEventListener('click', openNewProjectModal);
+  document.getElementById('retry-projects')?.addEventListener('click', async () => {
+    setBusy(true);
+    try { await loadProjects(); renderProjectList(); }
+    finally { setBusy(false); }
+  });
   document.querySelectorAll('[data-project-id]').forEach(card => card.addEventListener('click', event => {
     if (event.target.closest('[data-delete-project], [data-share-project], [data-duplicate-project]')) return;
     openProject(card.dataset.projectId);
@@ -2453,7 +2510,7 @@ function adminUserTable() {
       const meta = adminStatusMeta(user.status);
       const projectCount = state.adminProjects.filter(project => project.userId === user.id).length;
       const actions = [];
-      if (user.role !== 'super_admin') {
+      if (normalizeUserRole(user.role) !== 'super_admin') {
         if (user.status !== 'approved') actions.push(`<button class="admin-action approve" data-admin-user="${user.id}" data-admin-status="approved">${user.status === 'pending' ? '批准' : '重新启用'}</button>`);
         if (user.status !== 'rejected') actions.push(`<button class="admin-action reject" data-admin-user="${user.id}" data-admin-status="rejected">拒绝</button>`);
         if (user.status === 'approved') actions.push(`<button class="admin-action disable" data-admin-user="${user.id}" data-admin-status="disabled">停用</button>`);
@@ -2461,7 +2518,7 @@ function adminUserTable() {
       return `<tr>
         <td><div class="admin-user-cell"><span class="admin-avatar">${escapeHtml((user.display_name || user.username || '?').slice(0, 1))}</span><div><strong>${escapeHtml(user.display_name || user.username)}</strong><small>@${escapeHtml(user.username)}</small></div></div></td>
         <td><span class="status-badge ${meta.className}">${meta.label}</span></td>
-        <td>${user.role === 'super_admin' ? '<span class="role-badge">超级管理员</span>' : '普通用户'}</td>
+        <td>${normalizeUserRole(user.role) === 'super_admin' ? '<span class="role-badge">超级管理员</span>' : '普通用户'}</td>
         <td><strong>${projectCount}</strong> 个</td>
         <td><span class="admin-date">${escapeHtml(fmtDate(user.created_at))}</span><small class="admin-date">${user.last_login_at ? '最近 ' + escapeHtml(fmtDate(user.last_login_at)) : '尚未登录'}</small></td>
         <td><div class="admin-actions">${actions.length ? actions.join('') : '<span class="admin-locked">当前账号受保护</span>'}</div></td>
@@ -2521,19 +2578,25 @@ function bindAdminListActions() {
 }
 
 async function loadAdminData() {
-  const [userPayload, projectPayload, auditPayload] = await Promise.all([
-    api('/api/admin/users'),
-    api('/api/admin/projects'),
-    api('/api/admin/audit'),
-  ]);
-  state.adminUsers = userPayload.users || [];
-  state.adminProjects = projectPayload.projects || [];
-  state.adminLogs = auditPayload.logs || [];
+  state.adminUsers = [];
+  state.adminProjects = [];
+  state.adminLogs = [];
+  const tasks = [
+    ['用户与审核数据', '/api/admin/users', payload => { state.adminUsers = payload.users || []; }],
+    ['项目总览数据', '/api/admin/projects', payload => { state.adminProjects = payload.projects || []; }],
+    ['管理操作记录', '/api/admin/audit', payload => { state.adminLogs = payload.logs || []; }],
+  ];
+  const results = await Promise.allSettled(tasks.map(item => api(item[1])));
+  state.adminWarnings = [];
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') tasks[index][2](result.value);
+    else state.adminWarnings.push(`${tasks[index][0]}加载失败：${result.reason?.message || '未知错误'}`);
+  });
   state.adminLoaded = true;
 }
 
 async function openAdminDashboard(force = false) {
-  if (state.user?.role !== 'super_admin') return toast('仅超级管理员可访问用户管理', 'error');
+  if (!isSuperAdmin()) return toast('仅超级管理员可访问用户管理', 'error');
   state.current = null;
   state.result = null;
   state.preview = null;
@@ -2562,6 +2625,7 @@ function renderAdminDashboard() {
         <p>只有你授权的账号才能进入工作台。这里可查看所有正式用户、审核状态、项目测算摘要与最近管理操作。</p>
       </div>
     </div>
+    ${state.adminWarnings.length ? `<div class="warning-list admin-warning-list">${state.adminWarnings.map(message => `<div class="warning-item">${escapeHtml(message)}</div>`).join('')}</div>` : ''}
     <div class="admin-kpis">
       <div class="admin-kpi urgent"><span>待审核账号</span><strong>${pending}</strong><small>${pending ? '请及时处理注册申请' : '当前没有待审核申请'}</small></div>
       <div class="admin-kpi"><span>已授权用户</span><strong>${approved}</strong><small>含超级管理员账号</small></div>

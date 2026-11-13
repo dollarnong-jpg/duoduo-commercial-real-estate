@@ -95,9 +95,19 @@ async function ensureLocalAccount(username, password, displayName = '') {
 function localUserResponse(username, user, extra = {}) {
   return {
     token: tokenFor(username),
-    user: { username, displayName: user.displayName || username, role: user.role || 'user', status: 'approved', localMode: true },
+    user: { username, displayName: user.displayName || username, role: normalizeUserRole(user.role), status: 'approved', localMode: true },
     ...extra,
   };
+}
+
+function normalizeUserRole(value) {
+  const role = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return ['super_admin', 'superadmin', 'admin', 'owner', 'administrator'].includes(role) ? 'super_admin' : 'user';
+}
+
+function isCloudConnectivityError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  return ['CLOUD_NETWORK', 'CLOUD_TIMEOUT', 'CLOUD_UNAVAILABLE'].includes(code) || Number(error?.status || 0) >= 500;
 }
 
 function tokenFor(username) {
@@ -122,7 +132,7 @@ async function currentUser(init) {
   const localUsername = usernameFromToken(token);
   if (localUsername) {
     const users = await ensureUsers();
-    return users[localUsername] ? { username: localUsername, displayName: users[localUsername].displayName || localUsername, role: users[localUsername].role || 'user', status: 'approved', localMode: true } : null;
+    return users[localUsername] ? { username: localUsername, displayName: users[localUsername].displayName || localUsername, role: normalizeUserRole(users[localUsername].role), status: 'approved', localMode: true } : null;
   }
   if (CLOUD_ENABLED) return cloudCurrentUser(init);
   return null;
@@ -284,7 +294,7 @@ async function cloudCurrentUser(init = {}) {
     id: profile.id,
     username: profile.username,
     displayName: profile.display_name || profile.username,
-    role: profile.role || 'user',
+    role: normalizeUserRole(profile.role),
     status: profile.status,
     isCloud: true,
     createdAt: profile.created_at,
@@ -317,7 +327,7 @@ function cloudProject(row) {
 
 async function cloudRequireAdmin(init) {
   const user = await cloudCurrentUser(init);
-  if (user.role !== 'super_admin') throw Object.assign(new Error('仅超级管理员可访问此功能'), { status: 403 });
+  if (normalizeUserRole(user.role) !== 'super_admin') throw Object.assign(new Error('仅超级管理员可访问此功能'), { status: 403 });
   return user;
 }
 
@@ -328,6 +338,52 @@ async function cloudProjectSummary(project) {
   } catch {
     return { ...project, summary: {} };
   }
+}
+
+function localProjectMigrationKey(userId) {
+  return `duoduo_local_cloud_migration_v1_${userId}`;
+}
+
+async function migrateLocalProjectsToCloud(user, token, cloudRows) {
+  const localRows = getProjects(user.username);
+  if (!localRows.length) return { rows: cloudRows, migrated: 0, failed: 0 };
+  const migrationKey = localProjectMigrationKey(user.id);
+  const migrated = readJSON(migrationKey, {});
+  let migratedCount = 0;
+  let failedCount = 0;
+  for (const localProject of localRows) {
+    if (!localProject?.id || migrated[localProject.id]) continue;
+    const alreadyImported = cloudRows.some(row => row?.model?._duoduoLocalProjectId === localProject.id);
+    if (alreadyImported) {
+      migrated[localProject.id] = cloudRows.find(row => row?.model?._duoduoLocalProjectId === localProject.id)?.id || 'existing';
+      writeJSON(migrationKey, migrated);
+      continue;
+    }
+    try {
+      const model = JSON.parse(JSON.stringify(localProject.model || {}));
+      model._duoduoLocalProjectId = localProject.id;
+      const created = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at', {
+        method: 'POST',
+        token,
+        body: {
+          user_id: user.id,
+          name: String(model.project?.name || '本机项目').trim() || '本机项目',
+          model,
+        },
+        headers: { Prefer: 'return=representation' },
+      });
+      const row = Array.isArray(created) ? created[0] : null;
+      if (!row) throw new Error('云端未返回导入项目');
+      migrated[localProject.id] = row.id;
+      writeJSON(migrationKey, migrated);
+      cloudRows.unshift(row);
+      migratedCount += 1;
+    } catch (error) {
+      failedCount += 1;
+      console.warn('本机项目迁移失败', localProject.id, error);
+    }
+  }
+  return { rows: cloudRows, migrated: migratedCount, failed: failedCount };
 }
 
 async function requestJSON(init) {
@@ -371,7 +427,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style6', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style7', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3384,24 +3440,19 @@ async function handleApi(path, init) {
           id: profile.id,
           username: profile.username,
           displayName: profile.display_name || profile.username,
-          role: profile.role,
+          role: normalizeUserRole(profile.role),
           status: profile.status,
+          isCloud: true,
         },
       });
     } catch (error) {
       const users = await ensureUsers();
       const existingLocal = users[username];
-      if (existingLocal && existingLocal.passwordHash === await sha256(password)) {
+      const canUseExistingLocal = isCloudConnectivityError(error)
+        && existingLocal
+        && existingLocal.passwordHash === await sha256(password);
+      if (canUseExistingLocal) {
         return jsonResponse(localUserResponse(username, existingLocal, { cloudFallback: true, cloudPending: true }));
-      }
-      const canCreateLocalFallback = error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT' || String(error.code || '').startsWith('ACCOUNT_');
-      if (canCreateLocalFallback) {
-        try {
-          const result = await ensureLocalAccount(username, password, username);
-          return jsonResponse(localUserResponse(username, result.user, { cloudFallback: true, cloudPending: true }));
-        } catch (localError) {
-          if (localError.status === 409) return jsonResponse({ error: localError.message }, 409);
-        }
       }
       if (error.status === 403) return jsonResponse({ error: error.message, code: error.code || '', status: error.accountStatus || '' }, 403);
       if (error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT') return jsonResponse({ error: error.message, code: error.code }, 503);
@@ -3439,8 +3490,7 @@ async function handleApi(path, init) {
         token: CLOUD_CONFIG.anonKey,
       });
       if (!auth?.access_token || !auth?.user?.id) {
-        const local = await ensureLocalAccount(username, password, displayName);
-        return jsonResponse(localUserResponse(username, local.user, { cloudPending: true, cloudFallback: true }));
+        return jsonResponse({ pending: true, message: '注册申请已提交，请等待超级管理员审核授权。' });
       }
       const profile = await cloudProfileWithToken(auth.access_token, auth.user.id);
       if (profile?.status === 'approved') {
@@ -3452,20 +3502,20 @@ async function handleApi(path, init) {
             id: profile.id,
             username: profile.username,
             displayName: profile.display_name || profile.username,
-            role: profile.role,
+            role: normalizeUserRole(profile.role),
             status: profile.status,
+            isCloud: true,
           },
-          firstAdmin: profile.role === 'super_admin',
+          firstAdmin: normalizeUserRole(profile.role) === 'super_admin',
         });
       }
       await cloudRequest('/auth/v1/logout', { method: 'POST', token: auth.access_token }).catch(() => {});
       clearCloudSession();
-      const local = await ensureLocalAccount(username, password, displayName);
-      return jsonResponse(localUserResponse(username, local.user, { cloudPending: true, cloudFallback: true }));
+      return jsonResponse({ pending: true, message: '注册申请已提交，请等待超级管理员审核授权。' });
     } catch (error) {
       const detail = String(error.message || '');
       if (/already|registered|duplicate|unique/i.test(detail)) return jsonResponse({ error: '该用户名已被使用，请更换后重试' }, 409);
-      if (error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT' || error.code === 'CLOUD_UNAVAILABLE' || Number(error.status) >= 500) {
+      if (isCloudConnectivityError(error)) {
         try {
           const local = await ensureLocalAccount(username, password, displayName);
           return jsonResponse(localUserResponse(username, local.user, { cloudPending: true, cloudFallback: true }));
@@ -3495,7 +3545,7 @@ async function handleApi(path, init) {
     if (!CLOUD_ENABLED) return jsonResponse({ error: '用户管理仅在云端模式可用' }, 503);
     await cloudRequireAdmin(init);
     const token = await cloudAccessToken();
-    const rows = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&order=updated_at.desc&limit=200', { token });
+    const rows = await cloudJSON('/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&order=updated_at.desc&limit=1000', { token });
     const projects = [];
     for (const row of Array.isArray(rows) ? rows : []) projects.push(await cloudProjectSummary(cloudProject(row)));
     return jsonResponse({ projects });
@@ -3522,7 +3572,7 @@ async function handleApi(path, init) {
     const rows = await cloudJSON(`/rest/v1/profiles?id=eq.${encodeURIComponent(targetId)}&select=id,username,display_name,status,role`, { token });
     const target = Array.isArray(rows) ? rows[0] : null;
     if (!target) return jsonResponse({ error: '目标用户不存在' }, 404);
-    if (target.role === 'super_admin' && nextStatus !== 'approved') return jsonResponse({ error: '不能停用或拒绝超级管理员账号' }, 400);
+    if (normalizeUserRole(target.role) === 'super_admin' && nextStatus !== 'approved') return jsonResponse({ error: '不能停用或拒绝超级管理员账号' }, 400);
     const patch = {
       status: nextStatus,
       approved_at: nextStatus === 'approved' ? new Date().toISOString() : null,
@@ -3720,10 +3770,15 @@ async function handleApi(path, init) {
 
   if (pathname.endsWith('/api/projects') && method === 'GET') {
     const projects = [];
+    let migratedLocalProjects = 0;
+    let localProjectMigrationFailures = 0;
     if (user.isCloud) {
       const token = await cloudAccessToken();
-      const rows = await cloudJSON(`/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&user_id=eq.${encodeURIComponent(user.id)}&order=updated_at.desc`, { token });
-      for (const row of Array.isArray(rows) ? rows : []) projects.push(await cloudProjectSummary(cloudProject(row)));
+      const rows = await cloudJSON(`/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&user_id=eq.${encodeURIComponent(user.id)}&order=updated_at.desc&limit=1000`, { token });
+      const migration = await migrateLocalProjectsToCloud(user, token, Array.isArray(rows) ? rows : []);
+      migratedLocalProjects = migration.migrated;
+      localProjectMigrationFailures = migration.failed;
+      for (const row of migration.rows) projects.push(await cloudProjectSummary(cloudProject(row)));
     } else {
       await ensureDemoProject(user.username);
       const rows = getProjects(user.username);
@@ -3734,7 +3789,7 @@ async function handleApi(path, init) {
       }
     }
     projects.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-    return jsonResponse({ projects });
+    return jsonResponse({ projects, migratedLocalProjects, localProjectMigrationFailures });
   }
 
   if (pathname.endsWith('/api/projects') && method === 'POST') {
