@@ -3,7 +3,8 @@ from __future__ import annotations
 import copy
 import math
 import re
-from datetime import datetime
+from calendar import monthrange
+from datetime import date, datetime, timedelta
 from typing import Any
 
 
@@ -71,6 +72,13 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "startYear": datetime.now().year + 1,
             "constructionYears": 2,
             "leasingPeriodMonths": 12,
+            "investmentDate": "",
+            "constructionStartDate": "",
+            "constructionEndDate": "",
+            "handoverDate": "",
+            "leasingStartDate": "",
+            "openingDate": "",
+            "operationEndDate": "",
             "startupReserveMonths": 3,
             "operationYears": 20,
             "landArea": 0.0,
@@ -152,6 +160,14 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "growthRate": 0.03,
             "annualIncrease": 0.0,
             "stepYears": 3,
+            "paymentTiming": "arrears",
+            "paymentFrequency": "monthly",
+            "paymentStartDate": "",
+            "rentFreeStartDate": "",
+            "rentFreeEndDate": "",
+            "depositAmount": 0.0,
+            "depositPaymentDate": "",
+            "depositRefundDate": "",
         },
         "shops": [],
         "floors": [
@@ -167,6 +183,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "comparables": [],
         },
         "costs": {
+            "inputMode": "rate",
             "preconstructionRate": 250.0,
             "constructionRate": 3800.0,
             "municipalFeeRate": 0.0,
@@ -176,6 +193,17 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "equipmentRate": 650.0,
             "otherEngineeringRate": 150.0,
             "workingCapitalRate": 0.03,
+            "amounts": {
+                "preconstruction": 0.0,
+                "construction": 0.0,
+                "municipalFee": 0.0,
+                "civilDefenseFee": 0.0,
+                "otherPublicFee": 0.0,
+                "fitout": 0.0,
+                "equipment": 0.0,
+                "otherEngineering": 0.0,
+            },
+            "specialInvestments": [],
         },
         "revenues": {
             "propertyFee": 18.0,
@@ -185,6 +213,12 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "otherIncomeRatio": 0.05,
             "parkingSpaces": 0,
             "parkingMonthly": 300.0,
+            "propertyFeeStartDate": "",
+            "propertyFeeFreeUntil": "",
+            "commercialManagementFeeStartDate": "",
+            "commercialManagementFeeFreeUntil": "",
+            "centralAcStartDate": "",
+            "centralAcFreeUntil": "",
         },
         "operations": {
             "rentGrowth": 0.03,
@@ -204,6 +238,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "stableOccupancy": 0.95,
             "stableYear": 3,
             "rentFreeMonths": 3.0,
+            "rentFreeUntilDate": "",
             "collectionRate": 0.98,
             "renewalCycle": 3,
             "commissionMonths": 1.0,
@@ -224,6 +259,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "rampY2": 0.90,
             "annualCostAdjustments": {},
             "leasingAdjustmentPeriods": [],
+            "leasingMilestones": [],
             "annualCostOverrides": {
                 "propertyOps": 0.0,
                 "energy": 0.0,
@@ -345,6 +381,9 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "vatConcession": 0.06,
             "inputVatShare": 0.60,
             "inputVatRate": 0.06,
+            "ownerRentInvoiceAvailable": True,
+            "ownerRentInputVatRate": 0.09,
+            "ownerRentInputVatCreditRatio": 1.0,
             "cityTax": 0.07,
             "educationSurcharge": 0.03,
             "localEducationSurcharge": 0.02,
@@ -401,6 +440,77 @@ def deep_merge(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]
     return base
 
 
+def parse_iso_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y年%m月%d日", "%Y-%m", "%Y/%m", "%Y年%m月"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            return parsed.date()
+        except ValueError:
+            continue
+    return None
+
+
+def iso_date(value: date | None) -> str:
+    return value.isoformat() if value else ""
+
+
+def add_months(value: date, months: int) -> date:
+    year = value.year + (value.month - 1 + months) // 12
+    month = (value.month - 1 + months) % 12 + 1
+    day = min(value.day, monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def months_between(start: date, end: date) -> int:
+    if end <= start:
+        return 0
+    value = (end.year - start.year) * 12 + (end.month - start.month)
+    if end.day > start.day:
+        value += 1
+    return max(0, value)
+
+
+def normalize_project_timeline(project: dict[str, Any]) -> dict[str, Any]:
+    construction_years = max(0, min(10, int(as_float(project.get("constructionYears"), 2))))
+    operation_years = max(1, min(50, int(as_float(project.get("operationYears"), 20))))
+    leasing_period_months = max(0, min(60, int(as_float(project.get("leasingPeriodMonths"), 12))))
+    fallback_start = date(max(2000, min(2200, int(as_float(project.get("startYear"), datetime.now().year + 1)))), 1, 1)
+    investment_date = parse_iso_date(project.get("investmentDate")) or add_months(fallback_start, -1)
+    construction_start = parse_iso_date(project.get("constructionStartDate")) or fallback_start
+    construction_end = parse_iso_date(project.get("constructionEndDate")) or add_months(construction_start, construction_years * 12)
+    handover_date = parse_iso_date(project.get("handoverDate")) or construction_end
+    leasing_start = parse_iso_date(project.get("leasingStartDate")) or handover_date
+    opening_date = parse_iso_date(project.get("openingDate")) or add_months(leasing_start, leasing_period_months)
+    operation_end = parse_iso_date(project.get("operationEndDate")) or (add_months(opening_date, operation_years * 12) - timedelta(days=1))
+    construction_months = months_between(construction_start, construction_end)
+    derived_leasing_months = months_between(leasing_start, opening_date)
+    project["investmentDate"] = iso_date(investment_date)
+    project["constructionStartDate"] = iso_date(construction_start)
+    project["constructionEndDate"] = iso_date(construction_end)
+    project["handoverDate"] = iso_date(handover_date)
+    project["leasingStartDate"] = iso_date(leasing_start)
+    project["openingDate"] = iso_date(opening_date)
+    project["operationEndDate"] = iso_date(operation_end)
+    project["startYear"] = construction_start.year
+    project["constructionYears"] = max(0, min(10, math.ceil(construction_months / 12)))
+    project["leasingPeriodMonths"] = max(0, min(60, derived_leasing_months))
+    operation_months = max(1, months_between(opening_date, operation_end))
+    project["operationYears"] = max(1, min(50, math.ceil(operation_months / 12)))
+    project["timelineDerived"] = {
+        "constructionMonths": construction_months,
+        "leasingMonths": derived_leasing_months,
+        "operationMonths": operation_months,
+    }
+    return project
+
+
 def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
     model = default_model()
     default_marketing_budget = copy.deepcopy(model["marketingBudget"])
@@ -410,6 +520,44 @@ def normalize_model(raw: dict[str, Any] | None) -> dict[str, Any]:
         deep_merge(model, raw)
     model["project"]["gbaOverride"] = round_area(model["project"].get("gbaOverride"))
     model["project"]["landArea"] = round_area(model["project"].get("landArea"))
+    normalize_project_timeline(model["project"])
+    operations = model.get("operations") if isinstance(model.get("operations"), dict) else {}
+    milestones = []
+    for index, item in enumerate(operations.get("leasingMilestones", []) if isinstance(operations.get("leasingMilestones"), list) else []):
+        if not isinstance(item, dict):
+            continue
+        milestone_date = parse_iso_date(item.get("date"))
+        if not milestone_date:
+            continue
+        milestones.append({
+            "date": iso_date(milestone_date),
+            "occupancy": min(1.0, max(0.0, as_float(item.get("occupancy")))),
+            "note": str(item.get("note") or ""),
+        })
+    milestones.sort(key=lambda item: item["date"])
+    operations["leasingMilestones"] = milestones
+    operations["rentFreeUntilDate"] = iso_date(parse_iso_date(operations.get("rentFreeUntilDate")))
+    model["operations"] = operations
+    revenues = model.get("revenues") if isinstance(model.get("revenues"), dict) else {}
+    for key in ("propertyFeeStartDate", "propertyFeeFreeUntil", "commercialManagementFeeStartDate", "commercialManagementFeeFreeUntil", "centralAcStartDate", "centralAcFreeUntil"):
+        revenues[key] = iso_date(parse_iso_date(revenues.get(key)))
+    model["revenues"] = revenues
+    owner_rent_model = model.get("ownerRent") if isinstance(model.get("ownerRent"), dict) else {}
+    for key in ("paymentStartDate", "rentFreeStartDate", "rentFreeEndDate", "depositPaymentDate", "depositRefundDate"):
+        owner_rent_model[key] = iso_date(parse_iso_date(owner_rent_model.get(key)))
+    model["ownerRent"] = owner_rent_model
+    costs_model = model.get("costs") if isinstance(model.get("costs"), dict) else {}
+    costs_model["inputMode"] = "amount" if str(costs_model.get("inputMode") or "rate") == "amount" else "rate"
+    costs_model["specialInvestments"] = [
+        {
+            "name": str(item.get("name") or "专项经营投资").strip() or "专项经营投资",
+            "type": str(item.get("type") or "外部经营点位").strip() or "外部经营点位",
+            "amount": max(0.0, as_float(item.get("amount"))),
+            "note": str(item.get("note") or ""),
+        }
+        for item in costs_model.get("specialInvestments", []) if isinstance(item, dict)
+    ] if isinstance(costs_model.get("specialInvestments"), list) else []
+    model["costs"] = costs_model
     raw_organization = (raw or {}).get("organization") if isinstance((raw or {}).get("organization"), dict) else None
     if raw_organization is not None and "annualSalaryMonths" not in raw_organization:
         previous_bonus = max(0.0, as_float(raw_organization.get("annualBonusMonths")))
@@ -1164,15 +1312,25 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     land_price = max(0.0, as_float(project.get("landPrice")))
     deed_tax = land_price * as_float(taxes.get("deedTax"))
-    preconstruction = gba * as_float(costs.get("preconstructionRate")) / 10000
-    construction = gba * as_float(costs.get("constructionRate")) / 10000
-    municipal_fee = gba * as_float(costs.get("municipalFeeRate")) / 10000
-    civil_defense = gba * as_float(costs.get("civilDefenseFeeRate")) / 10000
-    other_public = gba * as_float(costs.get("otherPublicFeeRate")) / 10000
-    fitout = gba * as_float(costs.get("fitoutRate")) / 10000
-    equipment = gba * as_float(costs.get("equipmentRate")) / 10000
-    other_engineering = gba * as_float(costs.get("otherEngineeringRate")) / 10000
-    direct_engineering = preconstruction + construction + fitout + equipment + other_engineering + municipal_fee + civil_defense + other_public
+    cost_amounts = costs.get("amounts") if isinstance(costs.get("amounts"), dict) else {}
+    amount_mode = str(costs.get("inputMode") or "rate") == "amount"
+
+    def cost_value(rate_key: str, amount_key: str) -> float:
+        if amount_mode:
+            return max(0.0, as_float(cost_amounts.get(amount_key)))
+        return gba * max(0.0, as_float(costs.get(rate_key))) / 10000
+
+    preconstruction = cost_value("preconstructionRate", "preconstruction")
+    construction = cost_value("constructionRate", "construction")
+    municipal_fee = cost_value("municipalFeeRate", "municipalFee")
+    civil_defense = cost_value("civilDefenseFeeRate", "civilDefenseFee")
+    other_public = cost_value("otherPublicFeeRate", "otherPublicFee")
+    fitout = cost_value("fitoutRate", "fitout")
+    equipment = cost_value("equipmentRate", "equipment")
+    other_engineering = cost_value("otherEngineeringRate", "otherEngineering")
+    special_investment_items = costs.get("specialInvestments") if isinstance(costs.get("specialInvestments"), list) else []
+    special_investment = sum(max(0.0, as_float(item.get("amount"))) for item in special_investment_items if isinstance(item, dict))
+    direct_engineering = preconstruction + construction + fitout + equipment + other_engineering + special_investment + municipal_fee + civil_defense + other_public
     contingency = direct_engineering * as_float(project.get("contingencyRate"))
     commission = total_monthly_revenue * as_float(operations.get("commissionMonths")) * as_float(operations.get("occupancyY1")) / 10000
     preopening_marketing = as_float(project.get("preOpeningMarketing"))
@@ -1191,8 +1349,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     marketing_proxy = annual_marketing_total if bool(marketing_budget.get("amountMode", True)) else total_monthly_revenue * 12 * 0.95 / 10000 * as_float(operations.get("marketingRate"))
     property_proxy = max(0.0, as_float(annual_cost_overrides.get("propertyOps"))) or gba * as_float(operations.get("propertyOpsCost")) * 12 / 10000
     energy_proxy = max(0.0, as_float(annual_cost_overrides.get("energy"))) or gba * as_float(operations.get("energyCost")) * 12 / 10000
-    base_maintenance_proxy = max(0.0, as_float(annual_cost_overrides.get("baseMaintenance"))) or (construction + fitout + equipment + other_engineering + contingency) * as_float(operations.get("repairRate"))
-    insurance_proxy = max(0.0, as_float(annual_cost_overrides.get("insurance"))) or (construction + fitout + equipment + other_engineering) * as_float(operations.get("insuranceRate"))
+    base_maintenance_proxy = max(0.0, as_float(annual_cost_overrides.get("baseMaintenance"))) or (construction + fitout + equipment + other_engineering + special_investment + contingency) * as_float(operations.get("repairRate"))
+    insurance_proxy = max(0.0, as_float(annual_cost_overrides.get("insurance"))) or (construction + fitout + equipment + other_engineering + special_investment) * as_float(operations.get("insuranceRate"))
     other_opex_proxy = max(0.0, as_float(annual_cost_overrides.get("otherOpex"))) or total_monthly_revenue * 12 * 0.95 / 10000 * as_float(operations.get("otherOpexRate"))
     stable_opex_proxy = (
         property_proxy + energy_proxy + personnel_proxy + office_proxy + structured_leasing_cost
@@ -1207,6 +1365,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "前期及建安工程", "value": preconstruction + construction + other_engineering},
         {"name": "公共配套及规费", "value": municipal_fee + civil_defense + other_public},
         {"name": "装修及设施设备", "value": fitout + equipment},
+        {"name": "专项经营投资", "value": special_investment},
         {"name": "预备费", "value": contingency},
         {"name": "招商及开办", "value": commission + preopening_marketing + other_preopening},
         {"name": "铺底流动资金", "value": working_capital},
@@ -1244,7 +1403,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     depreciation_fitout_years = max(1, int(as_float(formulas.get("fitoutDepreciationYears"), 5)))
     depreciation_equipment_years = max(1, int(as_float(formulas.get("equipmentDepreciationYears"), 10)))
     depreciation_building = (preconstruction + construction + municipal_fee + civil_defense + other_public + other_engineering + contingency) / depreciation_building_years
-    depreciation_fitout = fitout / depreciation_fitout_years
+    depreciation_fitout = (fitout + special_investment) / depreciation_fitout_years
     depreciation_equipment = equipment / depreciation_equipment_years
     annual_depreciation = depreciation_building + depreciation_fitout + depreciation_equipment
 
@@ -1314,7 +1473,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             factor = (1 + owner_rent_growth_rate) ** steps
         else:
             factor = (1 + owner_rent_growth_rate) ** periods
-        return owner_land_rent_base_annual * factor, owner_property_rent_base_annual * factor
+        payment_factor = 1.0
+        if operation_year == 1:
+            payment_factor = max(0.0, min(1.0, billable_months_for_fee(
+                operation_year,
+                owner_rent_config.get("paymentStartDate") or project.get("openingDate"),
+                owner_rent_config.get("rentFreeEndDate"),
+            ) / 12))
+        return owner_land_rent_base_annual * factor * payment_factor, owner_property_rent_base_annual * factor * payment_factor
 
     annual_cost_adjustments = operations.get("annualCostAdjustments") if isinstance(operations.get("annualCostAdjustments"), dict) else {}
 
@@ -1351,6 +1517,57 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     def leasing_stage_for_year(operation_year: int) -> dict[str, Any] | None:
         return next((period for period in leasing_adjustment_periods if period["startYear"] <= operation_year <= period["endYear"]), None)
+
+    opening_date = parse_iso_date(project.get("openingDate")) or date(int(project.get("startYear") or datetime.now().year) + construction_years + leasing_years, 1, 1)
+    operation_end_date = parse_iso_date(project.get("operationEndDate")) or add_months(opening_date, operation_years * 12)
+    milestone_dates = []
+    for item in operations.get("leasingMilestones", []) if isinstance(operations.get("leasingMilestones"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        milestone_date = parse_iso_date(item.get("date"))
+        if milestone_date:
+            milestone_dates.append((milestone_date, min(1.0, max(0.0, as_float(item.get("occupancy"))))))
+    milestone_dates.sort(key=lambda pair: pair[0])
+
+    def occupancy_for_operation_year(operation_year: int, default_occupancy: float) -> float:
+        if not milestone_dates:
+            return default_occupancy
+        year_start = add_months(opening_date, (operation_year - 1) * 12)
+        total = 0.0
+        first_target = milestone_dates[0][1]
+        for month in range(12):
+            sample_date = add_months(year_start, month)
+            occupancy = first_target if sample_date < milestone_dates[0][0] else milestone_dates[-1][1]
+            for milestone_date, target in milestone_dates:
+                if milestone_date <= sample_date:
+                    occupancy = target
+                else:
+                    break
+            total += occupancy
+        return total / 12
+
+    def billable_months_for_fee(operation_year: int, start_value: Any, free_until_value: Any) -> float:
+        year_start = add_months(opening_date, (operation_year - 1) * 12)
+        year_end = add_months(year_start, 12)
+        start_date = parse_iso_date(start_value) or opening_date
+        free_until = parse_iso_date(free_until_value)
+        billable_start = max(year_start, opening_date, start_date)
+        if free_until and free_until > billable_start:
+            billable_start = max(billable_start, free_until)
+        if billable_start >= year_end:
+            return 0.0
+        return float(min(12, max(0, months_between(billable_start, year_end))))
+
+    def fee_factor_for_year(operation_year: int, start_value: Any, free_until_value: Any) -> float:
+        return 1.0 if operation_year > 1 else max(0.0, min(1.0, billable_months_for_fee(operation_year, start_value, free_until_value) / 12))
+
+    def rent_free_factor(operation_year: int) -> float:
+        if operation_year > 1:
+            return 1.0
+        free_until = parse_iso_date(operations.get("rentFreeUntilDate"))
+        if free_until:
+            return max(0.0, min(1.0, billable_months_for_fee(operation_year, opening_date, free_until) / 12))
+        return max(0.0, min(1.0, 1 - as_float(operations.get("rentFreeMonths")) / 12))
 
     for idx in range(total_periods):
         period = idx + 1
@@ -1410,7 +1627,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         occupancy = occupancy_for_year(op_year, operations)
         if leasing_stage and leasing_stage["targetOccupancy"] > 0:
             occupancy = leasing_stage["targetOccupancy"]
-        free_factor = 1 - as_float(operations.get("rentFreeMonths")) / 12 if op_year == 1 else 1
+        occupancy = occupancy_for_operation_year(op_year, occupancy)
+        free_factor = rent_free_factor(op_year)
+        property_fee_factor = fee_factor_for_year(op_year, revenues.get("propertyFeeStartDate"), revenues.get("propertyFeeFreeUntil"))
+        commercial_management_fee_factor = fee_factor_for_year(op_year, revenues.get("commercialManagementFeeStartDate"), revenues.get("commercialManagementFeeFreeUntil"))
+        central_ac_fee_factor = fee_factor_for_year(op_year, revenues.get("centralAcStartDate"), revenues.get("centralAcFreeUntil"))
         growth_mode = str(formulas.get("rentGrowthMode") or "compound")
         rent_growth_periods = op_year - 1
         base_rent_growth_factor = growth_factor_for_year(
@@ -1455,9 +1676,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         guarantee_gross = total_monthly_guarantee * 12 * occupancy * free_factor * rent_growth_factor / 10000
         concession_gross = total_monthly_concession * 12 * occupancy * free_factor * sales_growth_factor / 10000
         rent_gross = guarantee_gross + concession_gross
-        property_management_gross = property_fee_base_monthly * 12 * occupancy * property_fee_growth_factor / 10000
-        commercial_management_gross = commercial_management_base_monthly * 12 * occupancy * commercial_management_growth_factor / 10000
-        central_ac_gross = central_ac_base_monthly * 12 * occupancy * central_ac_growth_factor / 10000
+        property_management_gross = property_fee_base_monthly * 12 * occupancy * property_fee_factor * property_fee_growth_factor / 10000
+        commercial_management_gross = commercial_management_base_monthly * 12 * occupancy * commercial_management_fee_factor * commercial_management_growth_factor / 10000
+        central_ac_gross = central_ac_base_monthly * 12 * occupancy * central_ac_fee_factor * central_ac_growth_factor / 10000
         property_gross = property_management_gross + commercial_management_gross + central_ac_gross
         other_gross = (
             rent_gross * as_float(revenues.get("otherIncomeRatio"))
@@ -1536,12 +1757,22 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         leasing *= leasing_adjustment_factor
         leasing_stage_cost = leasing_stage["oneOffLeasingCost"] if leasing_stage and op_year == leasing_stage["startYear"] else 0.0
         operating_cost_gross = property_ops + energy + staff + admin + leasing + marketing + repair + insurance + bad_debt + other_opex + owner_rent + extra_operating_cost + leasing_stage_cost
-        input_vat = min(
-            output_vat,
-            (property_ops + energy + staff + admin + leasing + marketing + repair + insurance + other_opex + owner_rent + leasing_stage_cost)
-            * as_float(taxes.get("inputVatShare"))
-            * safe_div(as_float(taxes.get("inputVatRate")), 1 + as_float(taxes.get("inputVatRate"))),
+        owner_invoice_available = str(taxes.get("ownerRentInvoiceAvailable", True)).strip().lower() not in {"false", "0", "no", "n", "否"}
+        owner_rent_input_vat = (
+            owner_rent
+            * max(0.0, min(1.0, as_float(taxes.get("ownerRentInputVatCreditRatio"), 1.0)))
+            * safe_div(as_float(taxes.get("ownerRentInputVatRate"), 0.09), 1 + as_float(taxes.get("ownerRentInputVatRate"), 0.09))
+            if owner_invoice_available else 0.0
         )
+        other_input_vat = (
+            (property_ops + energy + staff + admin + leasing + marketing + repair + insurance + other_opex + leasing_stage_cost)
+            * as_float(taxes.get("inputVatShare"))
+            * safe_div(as_float(taxes.get("inputVatRate")), 1 + as_float(taxes.get("inputVatRate")))
+        )
+        raw_input_vat = owner_rent_input_vat + other_input_vat
+        input_vat = min(output_vat, raw_input_vat)
+        owner_rent_input_vat_actual = owner_rent_input_vat * safe_div(input_vat, raw_input_vat)
+        other_input_vat_actual = other_input_vat * safe_div(input_vat, raw_input_vat)
         operating_cost_net = operating_cost_gross - input_vat
         rent_net = guarantee_gross / (1 + as_float(taxes.get("vatRent"))) + concession_gross / (1 + as_float(taxes.get("vatConcession")))
         property_tax_base = guarantee_gross / (1 + as_float(taxes.get("vatRent")))
@@ -1664,6 +1895,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "taxes": total_taxes,
                 "outputVat": output_vat,
                 "inputVat": input_vat,
+                "ownerRentInputVat": owner_rent_input_vat_actual,
+                "otherInputVat": other_input_vat_actual,
+                "ownerRentInputVatRaw": owner_rent_input_vat,
+                "otherInputVatRaw": other_input_vat,
                 "vatPayable": max(0.0, output_vat - input_vat),
                 "propertyTax": property_tax,
                 "propertyTaxBase": property_tax_base,
@@ -1812,6 +2047,73 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_monthly_operating_cost = (stable_operating_cost + stable_taxes) / 12
     startup_reserve_months = max(0.0, as_float(project.get("startupReserveMonths"), 3.0))
     recommended_startup_capital = peak_equity_funding + stable_monthly_operating_cost * startup_reserve_months
+    key_cash_events: list[dict[str, Any]] = []
+
+    def add_cash_event(event_date: Any, name: str, amount: float, category: str) -> None:
+        parsed_date = parse_iso_date(event_date)
+        if not parsed_date or abs(amount) < 1e-9:
+            return
+        key_cash_events.append({
+            "date": iso_date(parsed_date),
+            "name": name,
+            "category": category,
+            "amount": amount,
+        })
+
+    construction_start_date = parse_iso_date(project.get("constructionStartDate")) or opening_date
+    construction_end_date = parse_iso_date(project.get("constructionEndDate")) or construction_start_date
+    add_cash_event(construction_start_date, "建设投资首批支出", -hard_investment * 0.55, "建设投资")
+    add_cash_event(construction_end_date, "建设投资完工支出", -hard_investment * 0.45, "建设投资")
+    add_cash_event(project.get("leasingStartDate"), "筹备招商投入首批支出", -soft_preopening_investment * 0.50, "筹备支出")
+    add_cash_event(project.get("openingDate"), "筹备招商投入开业前支出", -soft_preopening_investment * 0.50, "筹备支出")
+    tenant_deposit_total = total_monthly_revenue * max(0.0, as_float(operations.get("depositMonths"))) / 10000
+    add_cash_event(project.get("leasingStartDate"), "商户租赁保证金收取", tenant_deposit_total, "保证金")
+    add_cash_event(project.get("operationEndDate"), "商户租赁保证金退还", -tenant_deposit_total, "保证金")
+    owner_deposit = max(0.0, as_float(owner_rent_config.get("depositAmount")))
+    add_cash_event(owner_rent_config.get("depositPaymentDate") or project.get("leasingStartDate"), "向业主支付租赁保证金", -owner_deposit, "保证金")
+    add_cash_event(owner_rent_config.get("depositRefundDate") or project.get("operationEndDate"), "收回业主租赁保证金", owner_deposit, "保证金")
+
+    frequency_months = {"monthly": 1, "quarterly": 3, "semiannual": 6, "annual": 12}
+    payment_interval = frequency_months.get(str(owner_rent_config.get("paymentFrequency") or "monthly"), 1)
+    payment_base_monthly = owner_rent_base_annual / 12
+    if payment_base_monthly > 0:
+        payment_start = parse_iso_date(owner_rent_config.get("paymentStartDate")) or opening_date
+        if str(owner_rent_config.get("paymentTiming") or "arrears") == "arrears":
+            payment_start = add_months(payment_start, payment_interval)
+        cursor = payment_start
+        event_count = 0
+        while cursor <= operation_end_date and event_count < 600:
+            elapsed_months = max(0, months_between(opening_date, cursor))
+            growth_periods = elapsed_months // 12
+            if owner_rent_growth_mode == "none":
+                factor = 1.0
+            elif owner_rent_growth_mode == "simple":
+                factor = 1 + owner_rent_growth_rate * growth_periods
+            elif owner_rent_growth_mode == "step":
+                factor = (1 + owner_rent_growth_rate) ** (growth_periods // owner_rent_step_years)
+            elif owner_rent_growth_mode == "fixed_amount":
+                factor = safe_div(owner_rent_base_annual + owner_rent_annual_increase * growth_periods, owner_rent_base_annual)
+            else:
+                factor = (1 + owner_rent_growth_rate) ** growth_periods
+            add_cash_event(cursor, f"业主租金{('预付' if str(owner_rent_config.get('paymentTiming') or 'arrears') == 'prepay' else '应付')}", -payment_base_monthly * payment_interval * factor, "业主租金")
+            cursor = add_months(cursor, payment_interval)
+            event_count += 1
+    key_cash_events.sort(key=lambda item: item["date"])
+    leasing_milestone_analysis = []
+    for milestone in operations.get("leasingMilestones", []) if isinstance(operations.get("leasingMilestones"), list) else []:
+        if not isinstance(milestone, dict):
+            continue
+        milestone_date = parse_iso_date(milestone.get("date"))
+        if not milestone_date:
+            continue
+        target = min(1.0, max(0.0, as_float(milestone.get("occupancy"))))
+        leasing_milestone_analysis.append({
+            "date": iso_date(milestone_date),
+            "occupancy": target,
+            "monthlyRentPotential": total_monthly_revenue * target,
+            "annualRentPotential": total_monthly_revenue * target * 12 / 10000,
+            "note": str(milestone.get("note") or ""),
+        })
     peak_month_index = min(range(len(monthly_funding_plan)), key=lambda index: as_float(monthly_funding_plan[index].get("cumulativeProjectCashFlow"))) if monthly_funding_plan else -1
     cash_flow_break_even_month = next((row.get("month") for row in monthly_funding_plan[peak_month_index + 1:] if as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_month_index >= 0 else None
     peak_annual_index = min(range(len(annual_rows)), key=lambda index: as_float(annual_rows[index].get("cumulativeProjectCashFlow"))) if annual_rows else -1
@@ -2021,6 +2323,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "operationPeriodOutputVat": operation_period_output_vat,
             "operationPeriodInputVat": operation_period_input_vat,
             "operationPeriodVatPayable": operation_period_vat_payable,
+            "operationPeriodOwnerRentInputVat": sum(as_float(row.get("ownerRentInputVat")) for row in annual_rows),
+            "operationPeriodOtherInputVat": sum(as_float(row.get("otherInputVat")) for row in annual_rows),
             "operationPeriodPropertyTax": operation_period_property_tax,
             "operationPeriodLandUseTax": operation_period_land_use_tax,
             "operationPeriodStampDuty": operation_period_stamp_duty,
@@ -2033,8 +2337,15 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "operationPeriodInterest": operation_period_interest,
             "fullCycleCostExcludingFinancing": full_cycle_cost_excluding_financing,
             "fullCycleCashCostIncludingFinancing": full_cycle_cash_cost_including_financing,
-            "constructionPeriodMonths": construction_years * 12,
+            "constructionPeriodMonths": int(as_float(project.get("timelineDerived", {}).get("constructionMonths"), construction_years * 12)),
             "leasingPeriodMonths": leasing_period_months,
+            "investmentDate": project.get("investmentDate"),
+            "constructionStartDate": project.get("constructionStartDate"),
+            "constructionEndDate": project.get("constructionEndDate"),
+            "handoverDate": project.get("handoverDate"),
+            "leasingStartDate": project.get("leasingStartDate"),
+            "openingDate": project.get("openingDate"),
+            "operationEndDate": project.get("operationEndDate"),
             "peakProjectFundingRequirement": peak_project_funding,
             "peakEquityFundingRequirement": peak_equity_funding,
             "recommendedStartupCapital": recommended_startup_capital,
@@ -2100,11 +2411,21 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "ownerPropertyRentBaseAnnual": owner_property_rent_base_annual,
             "ownerLandMonthlyRentComputed": land_monthly_rent,
             "ownerPropertyMonthlyRentComputed": property_monthly_rent,
+            "ownerRentPaymentTiming": str(owner_rent_config.get("paymentTiming") or "arrears"),
+            "ownerRentPaymentFrequency": str(owner_rent_config.get("paymentFrequency") or "monthly"),
+            "ownerRentPaymentStartDate": owner_rent_config.get("paymentStartDate") or "",
+            "ownerRentFreeStartDate": owner_rent_config.get("rentFreeStartDate") or "",
+            "ownerRentFreeEndDate": owner_rent_config.get("rentFreeEndDate") or "",
+            "ownerDepositAmount": max(0.0, as_float(owner_rent_config.get("depositAmount"))),
+            "ownerDepositPaymentDate": owner_rent_config.get("depositPaymentDate") or "",
+            "ownerDepositRefundDate": owner_rent_config.get("depositRefundDate") or "",
             "stableExtraOperatingCost": stable_extra_operating_cost,
             "stableOperatingCost": stable_operating_cost,
             "stableTaxes": stable_taxes,
             "stableOutputVat": stable_output_vat,
             "stableInputVat": stable_input_vat,
+            "stableOwnerRentInputVat": as_float(stable_row.get("ownerRentInputVat")),
+            "stableOtherInputVat": as_float(stable_row.get("otherInputVat")),
             "stableVatPayable": stable_vat_payable,
             "stablePropertyTax": stable_property_tax,
             "stablePropertyTaxBase": stable_property_tax_base,
@@ -2117,6 +2438,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableTotalTaxAndIncomeTax": stable_total_tax_and_income_tax,
             "stableTaxCashOutflow": stable_vat_payable + stable_taxes + stable_income_tax,
             "stableTaxOccupancy": stable_tax_occupancy,
+            "specialInvestmentTotal": special_investment,
+            "costInputMode": str(costs.get("inputMode") or "rate"),
             "stableMonthlyTaxes": stable_taxes / 12,
             "stableMonthlyTaxAndIncomeTax": stable_total_tax_and_income_tax / 12,
             "noiYield": safe_div(stable_noi, total_investment),
@@ -2132,9 +2455,42 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         },
         "confidenceChecks": confidence_checks,
         "investmentBreakdown": investment_breakdown,
+        "specialInvestmentBreakdown": special_investment_items,
+        "timeline": {
+            "investmentDate": project.get("investmentDate"),
+            "constructionStartDate": project.get("constructionStartDate"),
+            "constructionEndDate": project.get("constructionEndDate"),
+            "handoverDate": project.get("handoverDate"),
+            "leasingStartDate": project.get("leasingStartDate"),
+            "openingDate": project.get("openingDate"),
+            "operationEndDate": project.get("operationEndDate"),
+            "constructionMonths": as_float(project.get("timelineDerived", {}).get("constructionMonths")),
+            "leasingMonths": as_float(project.get("timelineDerived", {}).get("leasingMonths")),
+            "operationMonths": as_float(project.get("timelineDerived", {}).get("operationMonths")),
+            "ownerRentPaymentTiming": owner_rent_config.get("paymentTiming") or "arrears",
+            "ownerRentPaymentFrequency": owner_rent_config.get("paymentFrequency") or "monthly",
+            "ownerRentPaymentStartDate": owner_rent_config.get("paymentStartDate") or "",
+            "ownerRentFreeStartDate": owner_rent_config.get("rentFreeStartDate") or "",
+            "ownerRentFreeEndDate": owner_rent_config.get("rentFreeEndDate") or "",
+            "ownerDepositAmount": max(0.0, as_float(owner_rent_config.get("depositAmount"))),
+            "ownerDepositPaymentDate": owner_rent_config.get("depositPaymentDate") or "",
+            "ownerDepositRefundDate": owner_rent_config.get("depositRefundDate") or "",
+        },
+        "leasingMilestones": operations.get("leasingMilestones", []),
+        "invoiceChain": {
+            "ownerRentInvoiceAvailable": str(taxes.get("ownerRentInvoiceAvailable", True)).strip().lower() not in {"false", "0", "no", "n", "否"},
+            "ownerRentInputVatRate": as_float(taxes.get("ownerRentInputVatRate")),
+            "ownerRentInputVatCreditRatio": as_float(taxes.get("ownerRentInputVatCreditRatio"), 1.0),
+            "stableOutputVat": stable_output_vat,
+            "stableOwnerRentInputVat": as_float(stable_row.get("ownerRentInputVat")),
+            "stableOtherInputVat": as_float(stable_row.get("otherInputVat")),
+            "stableVatPayable": stable_vat_payable,
+        },
         "phaseCostBreakdown": phase_cost_breakdown,
         "phaseCashFlowSummary": phase_cash_flow_summary,
         "monthlyFundingPlan": monthly_funding_plan,
+        "keyCashEvents": key_cash_events,
+        "leasingMilestoneAnalysis": leasing_milestone_analysis,
         "organizationBreakdown": organization_breakdown,
         "positionBreakdown": position_breakdown,
         "propertyServiceBreakdown": property_service_breakdown,
@@ -2332,10 +2688,37 @@ def build_diagnostics(
     if not as_float(taxes.get("landUseTax")):
         items.append({"level": "warning", "title": "城镇土地使用税未核定", "detail": f"{jurisdiction_name(model)}不同土地等级适用税额不同，请按最新政策填写。"})
     costs = model.get("costs", {})
-    if not as_float(costs.get("municipalFeeRate")):
+    cost_input_mode = str(costs.get("inputMode") or "rate")
+    cost_amounts = costs.get("amounts") if isinstance(costs.get("amounts"), dict) else {}
+    if (cost_input_mode == "rate" and not as_float(costs.get("municipalFeeRate"))) or (cost_input_mode == "amount" and not as_float(cost_amounts.get("municipalFee"))):
         items.append({"level": "warning", "title": "市政基础设施配套费未录入", "detail": "该费用通常与项目类型、区位和属地政策相关。"})
-    if not as_float(costs.get("civilDefenseFeeRate")):
+    if (cost_input_mode == "rate" and not as_float(costs.get("civilDefenseFeeRate"))) or (cost_input_mode == "amount" and not as_float(cost_amounts.get("civilDefenseFee"))):
         items.append({"level": "warning", "title": "人防易地建设费未录入", "detail": "若规划条件要求配建防空地下室或异地建设，请补充。"})
+    project = model.get("project", {})
+    construction_start = parse_iso_date(project.get("constructionStartDate"))
+    construction_end = parse_iso_date(project.get("constructionEndDate"))
+    handover_date = parse_iso_date(project.get("handoverDate"))
+    leasing_start = parse_iso_date(project.get("leasingStartDate"))
+    opening_date = parse_iso_date(project.get("openingDate"))
+    operation_end = parse_iso_date(project.get("operationEndDate"))
+    if construction_start and construction_end and construction_end <= construction_start:
+        items.append({"level": "error", "title": "竣工日期早于开工日期", "detail": "请检查项目时间轴中的建设开工和计划竣工日期。"})
+    if construction_end and handover_date and handover_date < construction_end:
+        items.append({"level": "warning", "title": "项目接管日期早于竣工日期", "detail": "提前进场可以成立，但需确认工程界面、安全责任和接管条件。"})
+    if handover_date and leasing_start and leasing_start < handover_date:
+        items.append({"level": "warning", "title": "招商启动日期早于项目接管日期", "detail": "请确认招商团队是否在接管前提前进场。"})
+    if leasing_start and opening_date and opening_date <= leasing_start:
+        items.append({"level": "error", "title": "计划开业日期早于或等于招商启动日期", "detail": "请调整开业日期或招商启动日期。"})
+    if opening_date and operation_end and operation_end <= opening_date:
+        items.append({"level": "error", "title": "运营结束日期早于或等于开业日期", "detail": "请调整招商运营年限或运营结束日期。"})
+    leasing_milestones = model.get("operations", {}).get("leasingMilestones", [])
+    if isinstance(leasing_milestones, list):
+        for index, milestone in enumerate(leasing_milestones):
+            if not isinstance(milestone, dict) or not parse_iso_date(milestone.get("date")):
+                items.append({"level": "warning", "title": f"招商里程碑{index + 1}日期无效", "detail": "请填写有效的目标日期和招商率。"})
+        for previous, current in zip(leasing_milestones, leasing_milestones[1:]):
+            if as_float(current.get("occupancy")) + 1e-9 < as_float(previous.get("occupancy")):
+                items.append({"level": "warning", "title": "招商率里程碑出现下降", "detail": "请确认是否为新开业期、租户调整或录入顺序错误。"})
     if total_investment > 0 and total_monthly_rent > 0:
         items.append({"level": "info", "title": "测算已形成", "detail": "当前结果由输入假设自动生成，建议继续核对土地、工程、税费和出租率假设。"})
     if not items:

@@ -428,7 +428,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style9', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style17', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -947,6 +947,13 @@ function parseShopWorkbook(base64, filename) {
         const text = String(value);
         projectHints.project.developmentType = /旧改|存量|改造/.test(text) ? 'renovation' : /运营中/.test(text) ? 'operating' : /轻资产/.test(text) ? 'light_asset' : 'new_build';
       }
+      else if (/项目立项.*进场日期|立项日期/.test(rawLabel)) projectHints.project.investmentDate = String(value).trim();
+      else if (/建设开工日期|开工日期/.test(rawLabel)) projectHints.project.constructionStartDate = String(value).trim();
+      else if (/计划竣工日期|竣工日期/.test(rawLabel)) projectHints.project.constructionEndDate = String(value).trim();
+      else if (/项目接管.*进场日期|接管日期/.test(rawLabel)) projectHints.project.handoverDate = String(value).trim();
+      else if (/招商启动日期/.test(rawLabel)) projectHints.project.leasingStartDate = String(value).trim();
+      else if (/计划开业日期|开业日期/.test(rawLabel)) projectHints.project.openingDate = String(value).trim();
+      else if (/招商运营年限/.test(rawLabel)) projectHints.project.operationYears = safeNumber(value);
       else if (/起始年份/.test(rawLabel)) projectHints.project.startYear = safeNumber(value);
       else if (/建设期/.test(rawLabel)) projectHints.project.constructionYears = safeNumber(value);
       else if (/总建筑面积/.test(rawLabel)) projectHints.project.gbaOverride = roundArea(value);
@@ -1308,6 +1315,8 @@ function excelSheetPurpose(name) {
     '税费与规费统计': '增值税、房产税、土地使用税、附加及所得税',
     '筹备期成本明细': '筹备团队、物业服务与行政开办明细',
     '资金计划': '月度资金缺口、资本金和现金流安排',
+    '项目时间轴': '立项、开工、竣工、招商、开业、运营结束及关键资金节点',
+    '招商开业里程碑': '分阶段招商率、可实现月租金和年化租金',
     '公式与参数': '计算公式、函数和关键参数说明',
     '函数注解': 'Excel 函数语法、含义与使用注意事项',
     '投资构成': '土地、工程、装修、设备、预备费与开办投入',
@@ -1445,8 +1454,13 @@ function formatDataSheet(ws, sheetName, profile, inputSheets) {
   if (!ws || !ws['!ref']) return;
   const range = XLSX.utils.decode_range(ws['!ref']);
   const noHeader = new Set(['项目概览', '使用说明']);
+  const explicitHeaderRows = { '项目时间轴': 19 };
   const referenceOnly = new Set(['薪酬口径说明', '个税税率表']);
-  const detected = noHeader.has(sheetName) ? { headerRow: -1, titleRow: excelRowStats(ws, range.s.r, range.s.c, range.e.c).count === 1 ? range.s.r : -1 } : findExcelHeaderRow(ws, range);
+  const detected = noHeader.has(sheetName)
+    ? { headerRow: -1, titleRow: excelRowStats(ws, range.s.r, range.s.c, range.e.c).count === 1 ? range.s.r : -1 }
+    : explicitHeaderRows[sheetName] !== undefined
+      ? { headerRow: explicitHeaderRows[sheetName], titleRow: 0 }
+      : findExcelHeaderRow(ws, range);
   const { headerRow, titleRow } = detected;
   const headerCount = headerRow >= 0 ? excelRowStats(ws, headerRow, range.s.c, range.e.c).count : 0;
   const tableEndCol = headerRow >= 0 ? Math.max(range.s.c + headerCount - 1, range.s.c + 1) : range.e.c;
@@ -1771,6 +1785,13 @@ function shopTemplate() {
     ['首年物业管理费单价（元/㎡/月）', 18, '物业管理服务费，默认适用于全部铺位'],
     ['首年商业管理费单价（元/㎡/月）', 0, '商业运营管理服务费，如项目不收可填0'],
     ['默认中央空调使用费单价（元/㎡/月）', 0, '作为楼栋收费配置的参考单价；实际是否收取在“楼栋收费设置”表开启'],
+    ['项目立项 / 进场日期', '', 'YYYY-MM-DD，用于启动资金和时间轴'],
+    ['建设开工日期', '', 'YYYY-MM-DD'],
+    ['计划竣工日期', '', 'YYYY-MM-DD'],
+    ['项目接管 / 进场日期', '', 'YYYY-MM-DD'],
+    ['招商启动日期', '', 'YYYY-MM-DD'],
+    ['计划开业日期', '', 'YYYY-MM-DD'],
+    ['招商运营年限', 20, '年；可填1–50年'],
     ['起始年份', 2027, '建设第1年'],
     ['建设期', 2, '年'],
     ['总建筑面积', '', '㎡；可留空，由商铺建筑面积反推'],
@@ -1933,6 +1954,161 @@ const PROPERTY_SERVICE_MODE_LABELS = {
   resident_outsourced: '第三方常驻外包',
   non_resident: '第三方非常驻服务',
 };
+
+function modelValueAtPath(model, path, fallback = '') {
+  let value = model;
+  for (const key of String(path || '').split('.')) {
+    if (value === null || value === undefined || typeof value !== 'object') return fallback;
+    value = value[key];
+  }
+  return value === null || value === undefined ? fallback : value;
+}
+
+function exportCurrentPreopeningBudget(result) {
+  const model = result.model || {};
+  const project = model.project || {};
+  const budget = model.preOpeningBudget || {};
+  const team = budget.team || {};
+  const property = budget.property || {};
+  const admin = budget.admin || {};
+  const wb = XLSX.utils.book_new();
+  addSheet(wb, '使用说明', [
+    ['筹备期成本当前数据'],
+    ['本文件导出当前项目已经录入的筹备团队、物业服务、物业一次性费用和行政开办明细，可用于线下复核或回传导入。'],
+    ['金额单位：团队工资为元/月，物业岗位工资为元/月，物业一次性费用为万元，行政开办金额按“金额口径”列执行。'],
+  ], [24, 110]);
+  addSheet(wb, '基础参数', [
+    ['参数', '当前值', '说明'],
+    ['单位社保公积金综合比例（%）', Number(team.socialInsuranceRate || 0) * 100, '按当前项目组织架构口径'],
+    ['招聘培训费率（%）', Number(team.recruitmentTrainingRate || 0) * 100, '按筹备团队工资与单位社保计提'],
+    ['自营物业招聘培训费率（%）', Number(property.selfRecruitmentRate || 0) * 100, '用于自营物业岗位'],
+    ['筹备招商总周期（月）', Number(project.leasingPeriodMonths || 0), '当前项目筹备招商周期'],
+  ], [34, 16, 72]);
+  addSheet(wb, '筹备团队', [
+    ['部门', '岗位', '编制人数', '税前月薪（元/月）', '筹备月数', '岗位职责/说明'],
+    ...(team.positions || []).map(item => [item.department, item.position, Number(item.headcount || 0), Number(item.monthlySalary || 0), Number(item.months || 0), item.note || '']),
+  ], [18, 22, 14, 24, 14, 60]);
+  const propertyRows = [];
+  const propertyServiceRows = [];
+  (property.services || []).forEach(service => {
+    const positions = Array.isArray(service.positions) && service.positions.length ? service.positions : [{ name: service.name || '物业岗位', headcount: service.headcount || 0, monthlySalary: service.monthlySalary || 0, note: '' }];
+    const headcount = positions.reduce((sum, position) => sum + Number(position.headcount || 0), 0);
+    const weightedSalary = headcount > 0 ? positions.reduce((sum, position) => sum + Number(position.headcount || 0) * Number(position.monthlySalary || 0), 0) / headcount : Number(service.monthlySalary || 0);
+    propertyServiceRows.push([service.name || '', propertyLabel(service.mode), headcount, weightedSalary, Number(service.months || 0), Number(service.nonResidentFactor ?? 0.7) * 100, Number(service.managementFeeRate || 0) * 100, '']);
+    positions.forEach(position => propertyRows.push([service.name || '', position.name || '', Number(position.headcount || 0), Number(position.monthlySalary || 0), position.note || '']));
+  });
+  addSheet(wb, '物业服务', [
+    ['服务类别', '服务模式', '编制人数', '参考月薪（元/月）', '服务月数', '非驻场折算比例（%）', '综合管理费率（%）', '说明'],
+    ...propertyServiceRows,
+  ], [18, 26, 14, 24, 14, 24, 24, 56]);
+  addSheet(wb, '物业服务岗位', [
+    ['服务类别', '岗位名称', '编制人数', '参考月薪（元/月）', '岗位说明'],
+    ...propertyRows,
+  ], [18, 22, 14, 24, 62]);
+  addSheet(wb, '物业一次性费用', [
+    ['费用项目', '金额（万元）', '说明'],
+    ...(property.oneOffItems || []).map(item => [item.name || '', Number(item.amount || 0), item.note || '']),
+  ], [24, 18, 72]);
+  addSheet(wb, '行政开办', [
+    ['费用科目', '金额（元）', '金额口径', '月数', '说明'],
+    ...(admin.items || []).map(item => [item.name || '', Number(item.amount || 0), item.period === 'monthly' ? '每月' : '一次性总额', Number(item.months || 0), item.note || '']),
+  ], [26, 18, 18, 14, 72]);
+  return formatWorkbook(wb, {
+    profile: 'report',
+    title: '筹备期成本当前明细',
+    subtitle: '用于线下复核、合作方调整和回传导入',
+    fileKind: '筹备期成本导出',
+    projectName: project.name || '商业地产项目',
+  });
+}
+
+function propertyLabel(mode) {
+  return PROPERTY_SERVICE_MODE_LABELS[String(mode || 'self')] || PROPERTY_SERVICE_MODE_LABELS.self;
+}
+
+function exportCurrentOperatingBudget(result) {
+  const model = result.model || {};
+  const project = model.project || {};
+  const organization = model.organization || {};
+  const propertyService = model.propertyService || {};
+  const officeBudget = model.officeBudget || {};
+  const leasingBudget = model.leasingBudget || {};
+  const marketingBudget = model.marketingBudget || {};
+  const maintenanceBudget = model.maintenanceBudget || {};
+  const operations = model.operations || {};
+  const wb = XLSX.utils.book_new();
+  addSheet(wb, '使用说明', [
+    ['运营成本当前数据'],
+    ['本文件导出当前项目已录入的组织架构、物业服务模式、办公预算、招商预算、营销预算和维保预算。'],
+    ['可用于线下复核和伙伴调整；导入系统时请保持工作表和表头名称不变。'],
+  ], [24, 110]);
+  addSheet(wb, '基础参数', [
+    ['参数', '当前值', '单位', '说明'],
+    ...BUDGET_BASIC_DEFS.map(item => [item.label, modelValueAtPath(model, item.path, item.value), item.unit, item.description || '']),
+  ], [32, 18, 16, 62]);
+  const orgRows = [];
+  (organization.departments || []).forEach(department => {
+    (department.positions || []).forEach(position => orgRows.push([department.name || '', position.name || '', Number(position.headcount || 0), Number(position.avgMonthlySalary || position.monthlySalary || 0), position.note || '']));
+  });
+  addSheet(wb, '组织架构', [
+    ['部门', '岗位', '编制人数', '税前应发月薪（元/月）', '岗位职责说明'],
+    ...orgRows,
+  ], [20, 24, 14, 26, 64]);
+  addSheet(wb, '物业服务模式', [
+    ['服务类别', '服务模式', '非驻场折算比例（%）', '综合管理费率（%）', '说明'],
+    ...PROPERTY_SERVICE_DEFS.map(item => {
+      const config = propertyService[item.key] || {};
+      return [item.name, propertyLabel(config.mode), Number(config.nonResidentFactor ?? 0.7) * 100, Number(config.managementFeeRate || 0) * 100, item.note];
+    }),
+  ], [24, 26, 26, 24, 60]);
+  addSheet(wb, '办公预算', [
+    ['费用项目', '录入金额（元/期）', '录入周期', '说明'],
+    ...(officeBudget.items || []).map(item => [item.name || '', Number(item.annual || 0), item.period === 'monthly' ? '按月' : '按年', item.note || '']),
+  ], [26, 22, 16, 60]);
+  addSheet(wb, '招商预算', [
+    ['费用项目', '年度金额（万元）', '说明'],
+    ['渠道及代理费', Number(leasingBudget.channelFeeAnnual || 0), '按招商渠道及代理合同'],
+    ['招商活动', Number(leasingBudget.eventsAnnual || 0), ''],
+    ['招商物料', Number(leasingBudget.materialsAnnual || 0), ''],
+    ['招商差旅', Number(leasingBudget.travelAnnual || 0), ''],
+    ['招商平台及系统', Number(leasingBudget.platformAnnual || 0), ''],
+    ['其他招商费用', Number(leasingBudget.otherAnnual || 0), ''],
+  ], [24, 20, 70]);
+  addSheet(wb, '招商渠道核算', [
+    ['参数', '当前值', '单位', '说明'],
+    ['渠道费核算方式', leasingBudget.channelCalculationMode === 'area_rent' ? '按面积及首年月租金' : '按金额', '', ''],
+    ['渠道招商面积比例（%）', Number(leasingBudget.channelAreaRatio || 0) * 100, '%', ''],
+    ['渠道首年月租金单价（元/㎡/月）', Number(leasingBudget.channelRentPerSqmMonth || 0), '元/㎡/月', ''],
+    ['佣金月数', Number(leasingBudget.channelCommissionMonths || 0), '月', ''],
+  ], [32, 20, 18, 62]);
+  addSheet(wb, '营销常规预算', [
+    ['营销类别', '年度金额（万元）', '费用内容'],
+    ...(marketingBudget.annualItems || []).map(item => [item.name || '', Number(item.amount || 0), item.note || '']),
+  ], [24, 20, 70]);
+  addSheet(wb, '开业首年营销', [
+    ['开业专项', '首年金额（万元）', '费用内容'],
+    ...(marketingBudget.openingYearItems || []).map(item => [item.name || '', Number(item.amount || 0), item.note || '']),
+  ], [24, 20, 70]);
+  addSheet(wb, '招商调整阶段', [
+    ['阶段名称', '起始运营年', '结束运营年', '租金调整率（%）', '目标出租率（%）', '一次性招商成本（万元）', '说明'],
+    ...(operations.leasingAdjustmentPeriods || []).map(item => [item.name || '', Number(item.startYear || 0), Number(item.endYear || 0), Number(item.rentAdjustmentRate || 0) * 100, Number(item.targetOccupancy || 0) * 100, Number(item.oneOffLeasingCost || 0), item.note || '']),
+  ], [24, 14, 14, 18, 18, 24, 60]);
+  addSheet(wb, '维保预算', [
+    ['维保项目', '年度金额（万元）'],
+    ['电梯维保', Number(maintenanceBudget.elevatorAnnual || 0)],
+    ['暖通空调维保', Number(maintenanceBudget.hvacAnnual || 0)],
+    ['消防维保', Number(maintenanceBudget.fireAnnual || 0)],
+    ['景观绿化养护', Number(maintenanceBudget.landscapeAnnual || 0)],
+    ['其他专项维保', Number(maintenanceBudget.otherAnnual || 0)],
+  ], [28, 22]);
+  return formatWorkbook(wb, {
+    profile: 'report',
+    title: '运营成本当前预算',
+    subtitle: '组织架构、物业服务、办公招商、营销和维保预算',
+    fileKind: '运营预算导出',
+    projectName: project.name || '商业地产项目',
+  });
+}
 
 function operatingBudgetTemplate() {
   const wb = XLSX.utils.book_new();
@@ -2518,6 +2694,7 @@ async function exportExcel(result) {
     ['多多 · 商业地产投资测算'], [''],
     ['项目名称', s.projectName], ['项目位置', s.location], ['项目开发状态', developmentLabels[s.developmentType] || s.developmentType || '新建项目'], ['商业项目形态', model.project.projectType], ['产权状态', propertyRightsLabels[model.project.propertyRightsStatus] || '自有产权'], ['取得方式', acquisitionMethodLabels[model.project.acquisitionMethod] || '招拍挂/市场竞得'], ['建设/经营状态', buildingStatusLabels[model.project.buildingStatus] || '在建/待建'], ['商户租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['业主租金支付面积口径', model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'], ['测算模式', s.calculationMode === 'preliminary' ? '楼层均价初步测算' : '一铺一价精细测算'],
     ['总建筑面积（㎡）', s.grossFloorArea], ['可租赁面积（㎡）', s.leasableArea], ['商铺/楼层数量', s.calculationMode === 'preliminary' ? s.floorCount : s.shopsCount],
+    ['项目立项 / 进场日期', s.investmentDate || ''], ['建设开工日期', s.constructionStartDate || ''], ['计划竣工日期', s.constructionEndDate || ''], ['项目接管 / 进场日期', s.handoverDate || ''], ['招商启动日期', s.leasingStartDate || ''], ['计划开业日期', s.openingDate || ''], ['运营结束日期', s.operationEndDate || ''],
     ['项目总投资（万元）', s.totalInvestment], ['稳定期营业收入（万元/年）', s.stableRevenue], ['稳定期物业管理费收入（万元/年）', s.stablePropertyManagementIncome || 0], ['稳定期商业管理费收入（万元/年）', s.stableCommercialManagementIncome || 0], ['稳定期中央空调费收入（万元/年）', s.stableCentralAcIncome || 0], ['稳定期三项费用收入合计（万元/年）', s.stablePropertyFeeIncome || 0], ['业主租金支出（万元/年）', s.stableOwnerRentCost || 0], ['稳定期NOI（万元/年）', s.stableNoi],
     ['NOI回报率', s.noiYield], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback],
     [''], ['说明', '本表由浏览器版多多·商业地产自动生成，用于投资初筛与方案比较，不替代可研、审计、评估或税务鉴证。'],
@@ -2526,7 +2703,7 @@ async function exportExcel(result) {
     ['参数大类', '参数', '数值'],
     ['项目', '开发状态', developmentLabels[model.project.developmentType] || model.project.developmentType || '新建项目'], ['项目', '起始年份', model.project.startYear], ['项目', '建设期（年）', model.project.constructionYears],
     ['项目', '产权状态', propertyRightsLabels[model.project.propertyRightsStatus] || '自有产权'], ['项目', '取得方式', acquisitionMethodLabels[model.project.acquisitionMethod] || '招拍挂/市场竞得'], ['项目', '建设/经营状态', buildingStatusLabels[model.project.buildingStatus] || '在建/待建'],
-    ['项目', '招商运营年限（年）', model.project.operationYears], ['项目', '商户租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['项目', '业主租金支付面积口径', model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'], ['项目', '建筑面积调节系数', model.project.commonAreaFactor],
+    ['项目', '招商运营年限（年）', model.project.operationYears], ['项目', '项目立项日期', model.project.investmentDate || ''], ['项目', '建设开工日期', model.project.constructionStartDate || ''], ['项目', '计划竣工日期', model.project.constructionEndDate || ''], ['项目', '项目接管日期', model.project.handoverDate || ''], ['项目', '招商启动日期', model.project.leasingStartDate || ''], ['项目', '计划开业日期', model.project.openingDate || ''], ['项目', '运营结束日期', model.project.operationEndDate || ''], ['项目', '商户租金核算面积口径', model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'], ['项目', '业主租金支付面积口径', model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'], ['项目', '建筑面积调节系数', model.project.commonAreaFactor],
     ['业主租金', '是否支付', model.ownerRent?.enabled ? '是' : '否'], ['业主租金', '租赁标的', ownerRentLeaseLabels[model.ownerRent?.leaseType] || '仅物业租赁'],
     ['业主租金', '土地计价方式', model.ownerRent?.landPricingMode === 'unit' ? '按面积单价' : '按月度总额'],
     ['业主租金', '土地面积（㎡）', model.ownerRent?.landArea || 0], ['业主租金', '土地单价（元/㎡/月）', model.ownerRent?.landUnitRent || 0],
@@ -2537,6 +2714,8 @@ async function exportExcel(result) {
     ['业主租金', '物业月租金（万元/月）', model.ownerRent?.propertyMonthlyRent || 0], ['业主租金', '物业支付月数', model.ownerRent?.propertyPaymentMonths || 0],
     ['业主租金', '递增方式', ownerRentGrowthLabels[model.ownerRent?.growthMode] || '不复递增'],
     ['业主租金', '递增率', model.ownerRent?.growthRate || 0], ['业主租金', '每年增加额（万元/年）', model.ownerRent?.annualIncrease || 0],
+    ['业主租金', '付款时点', model.ownerRent?.paymentTiming === 'prepay' ? '先付后用' : '先用后付'], ['业主租金', '付款频率', model.ownerRent?.paymentFrequency || 'monthly'], ['业主租金', '起付日期', model.ownerRent?.paymentStartDate || ''], ['业主租金', '免租开始日期', model.ownerRent?.rentFreeStartDate || ''], ['业主租金', '免租结束日期', model.ownerRent?.rentFreeEndDate || ''], ['业主租金', '保证金（万元）', model.ownerRent?.depositAmount || 0],
+    ['成本', '投资录入方式', model.costs?.inputMode === 'amount' ? '按实际投资总额' : '按建筑面积单价'], ['成本', '专项经营投资（万元）', s.specialInvestmentTotal || 0],
     ['成本', '前期工程单价（元/㎡）', model.costs.preconstructionRate], ['成本', '土建工程单价（元/㎡）', model.costs.constructionRate],
     ['成本', '装修单价（元/㎡）', model.costs.fitoutRate], ['成本', '设备单价（元/㎡）', model.costs.equipmentRate],
     ['运营', '首年出租率', model.operations.occupancyY1], ['运营', '第二年出租率', model.operations.occupancyY2],
@@ -2683,6 +2862,8 @@ async function exportExcel(result) {
     ['项目', '稳定年（万元）', '月均（万元）', '运营期累计（万元）', '出租率联动'],
     ['销项税', s.stableOutputVat || 0, (s.stableOutputVat || 0) / 12, s.operationPeriodOutputVat || 0, '是'],
     ['可抵扣进项税', s.stableInputVat || 0, (s.stableInputVat || 0) / 12, s.operationPeriodInputVat || 0, '随可抵扣成本'],
+    ['其中：业主租金进项税', s.stableOwnerRentInputVat || 0, (s.stableOwnerRentInputVat || 0) / 12, s.operationPeriodOwnerRentInputVat || 0, '随租金和专票'],
+    ['其中：其他成本进项税', s.stableOtherInputVat || 0, (s.stableOtherInputVat || 0) / 12, s.operationPeriodOtherInputVat || 0, '随可抵扣成本'],
     ['应纳增值税', s.stableVatPayable || 0, (s.stableVatPayable || 0) / 12, s.operationPeriodVatPayable || 0, '是'],
     ['城建税及教育附加', s.stableVatSurcharge || 0, (s.stableVatSurcharge || 0) / 12, s.operationPeriodVatSurcharge || 0, '随增值税'],
     ['房产税', s.stablePropertyTax || 0, (s.stablePropertyTax || 0) / 12, s.operationPeriodPropertyTax || 0, model.taxes?.propertyTaxMethod === 'value' ? '否' : '是'],
@@ -2918,6 +3099,33 @@ async function exportExcel(result) {
     [''], ['数据边界', detection.coverageNote || '公开地图数据不含人口、销售额和授权租金；正式决策需结合实地调查。']
   ], [22, 30, 70]);
   addSheet(wb, '竞品租金样本', [['样本名称', '地址', '楼层', '业态', '可租赁面积（㎡）', '月租金（元/㎡/月）', '数据日期', '距项目（km）', '备注'], ...(model.market?.comparables || []).map(x => [x.name, x.address, x.floor, x.category, x.leasableArea, x.rent, x.date, x.distanceKm, x.note])], [24, 30, 10, 16, 18, 22, 14, 14, 28]);
+  addSheet(wb, '项目时间轴', [
+    ['开发经营时间轴与关键资金节点'],
+    ['项目立项 / 进场日期', result.timeline?.investmentDate || ''],
+    ['建设开工日期', result.timeline?.constructionStartDate || ''],
+    ['计划竣工日期', result.timeline?.constructionEndDate || ''],
+    ['项目接管 / 进场日期', result.timeline?.handoverDate || ''],
+    ['招商启动日期', result.timeline?.leasingStartDate || ''],
+    ['计划开业日期', result.timeline?.openingDate || ''],
+    ['运营结束日期', result.timeline?.operationEndDate || ''],
+    ['建设期（月）', result.timeline?.constructionMonths || 0],
+    ['筹备招商期（月）', result.timeline?.leasingMonths || 0],
+    ['运营期（月）', result.timeline?.operationMonths || 0],
+    ['业主租金支付时点', result.timeline?.ownerRentPaymentTiming === 'prepay' ? '先付后用' : '先用后付'],
+    ['业主租金支付频率', result.timeline?.ownerRentPaymentFrequency || 'monthly'],
+    ['业主租金起付日期', result.timeline?.ownerRentPaymentStartDate || ''],
+    ['业主租赁保证金（万元）', result.timeline?.ownerDepositAmount || 0],
+    ['业主保证金支付日期', result.timeline?.ownerDepositPaymentDate || ''],
+    ['业主保证金退还日期', result.timeline?.ownerDepositRefundDate || ''],
+    [''],
+    ['关键资金节点'],
+    ['日期', '节点', '类型', '金额（万元）'],
+    ...(result.keyCashEvents || []).map(x => [x.date, x.name, x.category, x.amount]),
+  ], [28, 36, 22, 22]);
+  addSheet(wb, '招商开业里程碑', [
+    ['日期', '目标招商率', '可实现月租金（元）', '年化租金（万元）', '说明'],
+    ...(result.leasingMilestoneAnalysis || []).map(x => [x.date, x.occupancy, x.monthlyRentPotential, x.annualRentPotential, x.note]),
+  ], [18, 18, 24, 24, 60]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
   addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '招商调整阶段', '阶段租金调整因子', '基础租金递增因子', '最终租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '租金收入', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '阶段招商成本', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.phase || '运营期', x.calendarYear, x.leasingStageName || '', x.leasingStageRentFactor || 1, x.baseRentGrowthFactor || x.rentGrowthFactor, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.rentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.projectIncomeTax, x.taxCashOutflow, x.equityIncomeTax || x.incomeTax || 0, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.leasingStageCost || 0, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - (x.leasingStageCost || 0) - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,16,10,14,16,16,16,16,20,20,20,18,16,14,14,16,14,14,14,14,14,16,16,18,18,22,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
 
@@ -3047,7 +3255,7 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
   });
   const phaseCashRows = [['阶段', '项目净现金流（万元）', '资本金净现金流（万元）'], ...(result.phaseCashFlowSummary || []).map(x => [x.phase, Number(x.projectCashFlow || 0).toFixed(2), Number(x.equityCashFlow || 0).toFixed(2)])];
   slide.addTable(phaseCashRows, { x: 0.65, y: 2.7, w: 11.9, colW: [3.3, 4.3, 4.3], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.43, autoFit: false });
-  slide.addText('资金计划按建设期、筹备招商期和开业首年均匀铺排；实际应结合工程付款、招商合同、融资提款和租金收取节奏调整。', { x: 0.65, y: 5.8, w: 11.9, h: 0.45, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.1 });
+  slide.addText(`关键日期：开工 ${result.timeline?.constructionStartDate || '待定'}｜开业 ${result.timeline?.openingDate || '待定'}｜运营结束 ${result.timeline?.operationEndDate || '待定'}。资金计划按年度金额拆分月度，业主租金付款、保证金、招商率和费用起收日期应结合合同与发票进一步校准。`, { x: 0.65, y: 5.8, w: 11.9, h: 0.45, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.1 });
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '年度运营成本与营销预算', '稳定运营年｜金额单位：万元/年');
@@ -3104,7 +3312,7 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
   addSlideTitle(slide, '测算公式（二）', '税费、融资、折旧、现金流与收益指标');
   slide.addTable([
     ['模块', '公式', '使用函数'],
-    ['税费', '销项税 = Σ[含税收入÷(1+税率)×税率]；进项税 = MIN(销项税,可抵扣成本×比例×税率÷(1+税率))', 'SUM / MIN'],
+    ['税费', '销项税 = Σ[商户含税收入÷(1+税率)×税率]；进项税 = MIN(销项税, 业主租金专票进项 + 其他可抵扣成本进项)', 'SUM / MIN'],
     ['房产税', 'IF(从租, 不含税租金×12%, 房产原值×(1-扣除比例)×1.2%)', 'IF'],
     ['融资', '贷款利息 = (期初余额+当年提款÷2)×年利率；等额本金=贷款额÷期限', 'IF / MIN'],
     ['折旧', '年折旧 = 建筑投资÷年限 + 装修投资÷年限 + 设备投资÷年限', 'SUM'],
@@ -3615,6 +3823,20 @@ async function handleApi(path, init) {
     return fileResponse(await workbookBlob(exportShopAuditWorkbook(result)), `${result.summary?.projectName || '项目'}_一铺一价核算表_含公式.xlsx`, XLSX_MIME);
   }
 
+  if (pathname.endsWith('/api/export/preopening-budget-detail') && method === 'POST') {
+    const body = await requestJSON(init);
+    const model = await normalizeModel(body.model || body);
+    const result = await calculate(model, false);
+    return fileResponse(await workbookBlob(exportCurrentPreopeningBudget(result)), `${result.summary?.projectName || '项目'}_筹备期成本当前明细.xlsx`, XLSX_MIME);
+  }
+
+  if (pathname.endsWith('/api/export/operating-budget-detail') && method === 'POST') {
+    const body = await requestJSON(init);
+    const model = await normalizeModel(body.model || body);
+    const result = await calculate(model, false);
+    return fileResponse(await workbookBlob(exportCurrentOperatingBudget(result)), `${result.summary?.projectName || '项目'}_运营成本当前预算.xlsx`, XLSX_MIME);
+  }
+
   if (pathname.endsWith('/api/import-shops') && method === 'POST') {
     const body = await requestJSON(init);
     if (!body.contentBase64) return jsonResponse({ error: '请选择要导入的文件' }, 400);
@@ -3922,7 +4144,7 @@ window.fetch = async function duoduoFetch(input, init = {}) {
       '/api/admin/users', '/api/admin/audit', '/api/share/users',
     ];
     const fastRequest = fastEndpoints.some(path => url.pathname.endsWith(path)) || /\/api\/admin\/users\/[0-9a-f-]+\/status$/i.test(url.pathname);
-    const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|preopening-budget|market-comps)$/.test(url.pathname) || /\/export\/(xlsx|shop-audit)$/.test(url.pathname);
+    const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|preopening-budget|market-comps)$/.test(url.pathname) || /\/export\/(xlsx|shop-audit|preopening-budget-detail|operating-budget-detail)$/.test(url.pathname);
     const needsPptx = /\/export\/pptx$/.test(url.pathname);
     if (needsXlsx) await ensureXlsxLibrary();
     if (needsPptx) await ensurePptxLibrary();
