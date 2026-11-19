@@ -311,6 +311,12 @@ def audit_engine_invariants() -> None:
 
     rows = {row["opYear"]: row for row in result["annual"] if row.get("opYear", 0) > 0}
     assert close(summary["periodNetProfit"], sum(row["netProfit"] for row in rows.values()))
+    all_cash_rows = list(result["constructionCashflow"]) + list(result["annual"])
+    assert close(summary["projectProfitTotal"], sum(row["projectCashFlow"] for row in all_cash_rows))
+    operation_recovery = sum(row["noi"] - row["capexReserve"] - row["projectIncomeTax"] for row in rows.values())
+    assert close(summary["operationCashAvailableForInitialRecovery"], operation_recovery)
+    assert close(summary["capitalRecoveredByOperation"], max(0.0, operation_recovery))
+    assert close(summary["unrecoveredInitialInvestment"], max(0.0, summary["totalInvestment"] - max(0.0, operation_recovery)))
     for year, row in rows.items():
         assert close(row["revenue"] - row["operatingCost"] - row["taxes"], row["noi"]), f"NOI mismatch {year}"
         assert close(row["noi"] - row["projectCapex"] - row["projectIncomeTax"] + row["exitValue"], row["projectCashFlow"]), f"project CF mismatch {year}"
@@ -505,6 +511,18 @@ def audit_monthly_cash_flow() -> None:
     assert category_cash
     assert close(sum(item["depositCashInflow"] for item in category_cash), result["summary"]["merchantDepositCashInflow"])
     assert close(sum(item["prepaidRentCashInflow"] for item in category_cash), result["summary"]["merchantPrepaidRentCashInflow"])
+    assert close(sum(row["prepaidRentInflow"] for row in plan), result["summary"]["merchantPrepaidRentCashInflow"])
+    assert sum(row["prepaidRentAmortization"] for row in plan) <= sum(row["prepaidRentInflow"] for row in plan) + 1e-6
+    preopening_events = -sum(event["amount"] for event in result["keyCashEvents"] if event["category"] == "筹备支出")
+    management_costs = sum(row["preopeningManagementOutflow"] for row in plan)
+    assert close(preopening_events + management_costs, result["summary"]["softPreopeningInvestment"])
+    hard_events = -sum(event["amount"] for event in result["keyCashEvents"] if event["category"] == "建设投资")
+    assert close(hard_events, result["summary"]["hardInvestment"])
+    all_cash_rows = list(result["constructionCashflow"]) + list(result["annual"])
+    assert close(result["summary"]["projectProfitTotal"], sum(row["projectCashFlow"] for row in all_cash_rows))
+    assert all(close(row["operatingCost"], row["operatingCostExOwnerRent"] + row["ownerRent"]) for row in result["annual"])
+    for row in result["naturalYearReport"]:
+        assert close(row["totalExpense"], row["cashOperatingCost"] + row["taxes"] + row["projectIncomeTax"] + row["projectCapex"])
     assert result["summary"]["peakProjectFundingDate"] in {row["date"] for row in plan}
 
 

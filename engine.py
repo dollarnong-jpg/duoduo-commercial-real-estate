@@ -2288,6 +2288,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     period_operating_noi = sum(as_float(row.get("noi")) for row in operation_rows)
     period_revenue_total = sum(as_float(row.get("revenue")) for row in operation_rows)
     period_profit_margin = safe_div(period_net_profit, period_revenue_total)
+    operation_cash_available_for_initial_recovery = sum(
+        as_float(row.get("noi")) - as_float(row.get("capexReserve")) - as_float(row.get("projectIncomeTax"))
+        for row in operation_rows
+    )
+    capital_recovered_by_operation = max(0.0, operation_cash_available_for_initial_recovery)
+    unrecovered_initial_investment = max(0.0, total_investment - capital_recovered_by_operation)
+    initial_investment_recovery_rate = max(0.0, safe_div(operation_cash_available_for_initial_recovery, total_investment))
+    initial_investment_fully_recovered = operation_cash_available_for_initial_recovery >= total_investment
     preopening_investment = total_investment
     full_cycle_cost_excluding_financing = preopening_investment + operation_period_operating_cost + operation_period_taxes
     full_cycle_cash_cost_including_financing = full_cycle_cost_excluding_financing + operation_period_interest
@@ -3040,6 +3048,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "leverageMultiple": leverage_multiple,
             "projectNetCashProfit": project_net_cash_profit,
             "projectProfitTotal": project_net_cash_profit,
+            "hardInvestment": hard_investment,
+            "softPreopeningInvestment": soft_preopening_investment,
+            "workingCapital": working_capital,
+            "operationCashAvailableForInitialRecovery": operation_cash_available_for_initial_recovery,
+            "capitalRecoveredByOperation": capital_recovered_by_operation,
+            "unrecoveredInitialInvestment": unrecovered_initial_investment,
+            "initialInvestmentRecoveryRate": initial_investment_recovery_rate,
+            "initialInvestmentFullyRecovered": initial_investment_fully_recovered,
             "equityNetCashProfit": equity_net_cash_profit,
             "periodNetProfit": period_net_profit,
             "periodOperatingNoi": period_operating_noi,

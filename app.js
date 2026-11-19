@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-profitlabel1';
+import './backend.js?v=20261120-recovery1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.31';
+const APP_VERSION = '1.28.32';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6680,6 +6680,7 @@ function renderNaturalYearReportCard() {
   const result = state.result || state.preview;
   const rows = result?.naturalYearReport || [];
   if (!rows.length) return '';
+  const s = result?.summary || {};
   const years = Number(result.model?.project?.operationYears || state.current?.model?.project?.operationYears || 20);
   const totalIncome = rows.reduce((sum, row) => sum + Number(row.totalIncome || 0), 0);
   const totalExpense = rows.reduce((sum, row) => sum + Number(row.totalExpense || 0), 0);
@@ -6689,13 +6690,14 @@ function renderNaturalYearReportCard() {
   return `<div class="card natural-year-report-card">
     <div class="natural-year-head"><div><span class="eyebrow">Natural-year report</span><h3>自然年运营收入与支出报表</h3><p>项目设定运营周期 <strong>${fmt(years, 0)}年</strong>，按开业日期拆分到自然年；首尾不足一年按实际日期和有效月数核算。共形成 <strong>${rows.length}个自然年度</strong>。</p></div><div class="natural-year-actions"><button class="btn btn-secondary btn-sm" id="natural-template-download">${ICONS.download}<span>下载调整模板</span></button><button class="btn btn-secondary btn-sm" id="natural-report-export">${ICONS.excel}<span>导出自然年报表</span></button><button class="btn btn-secondary btn-sm" id="natural-adjustment-import">${ICONS.upload}<span>导入调整</span></button><input type="file" id="natural-adjustment-file" accept=".xlsx,.xlsm" hidden></div></div>
     <div class="natural-year-kpis"><div><span>自然年总收入</span><strong>${fmt(totalIncome, 2)}</strong><em>万元</em></div><div><span>自然年总支出</span><strong>${fmt(totalExpense, 2)}</strong><em>万元</em></div><div class="${totalNet < 0 ? 'danger' : 'positive'}"><span>自然年经营净现金流</span><strong>${fmt(totalNet, 2)}</strong><em>万元</em></div><div class="${projectProfitTotal < 0 ? 'danger' : 'positive'}"><span>项目盈利合计</span><strong>${fmt(projectProfitTotal, 2)}</strong><em>万元 · 已扣除建设投资、商管启动成本、运营成本、业主租金及税费</em></div></div>
+    <div class="natural-year-kpis" style="margin-top:8px"><div><span>原始建设投资</span><strong>${fmt(s.hardInvestment, 2)}</strong><em>万元</em></div><div><span>招商运营启动投入</span><strong>${fmt(s.softPreopeningInvestment, 2)}</strong><em>万元</em></div><div><span>运营现金回收</span><strong>${fmt(s.capitalRecoveredByOperation, 2)}</strong><em>万元 · 回收率 ${fmtPct(s.initialInvestmentRecoveryRate)}</em></div><div class="${Number(s.initialInvestmentFullyRecovered) ? 'positive' : 'danger'}"><span>原始投入尚未回收</span><strong>${fmt(s.unrecoveredInitialInvestment, 2)}</strong><em>万元 · ${s.initialInvestmentFullyRecovered ? '已全部回收' : '尚未全部回收'}</em></div></div>
 
     <div class="subsection-heading natural-year-subsection-heading"><div><strong>逐年经营收入明细</strong><span>单位：万元；按每个自然年实际计费区间拆分</span></div></div>
     <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table natural-year-income-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">有效月数</th><th class="num">招商率</th><th class="num">收租率</th><th class="num">应收租金</th><th class="num">未收租金</th><th class="num">实收租金</th><th class="num">物业管理费收入</th><th class="num">商业管理费收入</th><th class="num">中央空调费收入</th><th class="num">三项费用合计</th><th class="num">其他收入</th><th class="num">总收入</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(row.activeMonths, 0)}</td><td class="num">${fmtPct(row.occupancy)}</td><td class="num">${fmtPct(row.rentCollectionRate)}</td><td class="num">${fmt(row.scheduledRentRevenue, 2)}</td><td class="num neg">${fmt(row.uncollectedRentRevenue, 2)}</td><td class="num"><strong>${fmt(row.rentRevenue, 2)}</strong></td><td class="num">${fmt(row.propertyManagementRevenue, 2)}</td><td class="num">${fmt(row.commercialManagementRevenue, 2)}</td><td class="num">${fmt(row.centralAcRevenue, 2)}</td><td class="num"><strong>${fmt(feeTotal(row), 2)}</strong></td><td class="num">${fmt(row.otherRevenue, 2)}</td><td class="num"><strong>${fmt(row.totalIncome, 2)}</strong></td></tr>`).join('')}</tbody></table></div>
 
     <div class="subsection-heading natural-year-subsection-heading"><div><strong>逐年成本、税费与现金流</strong><span>单位：万元；运营成本不含业主租金，业主租金单列并计入总支出与NOI</span></div></div>
     <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">运营成本<br>（不含业主租金）</th><th class="num">业主租金</th><th class="num">税费</th><th class="num">项目所得税</th><th class="num">资本支出</th><th class="num">总支出</th><th class="num">NOI</th><th class="num">调整后净现金流</th><th class="num">累计运营现金流</th><th>调整说明</th></tr></thead><tbody>${rows.map(row => { const ownerRent = Number(row.ownerRent ?? 0); const operatingExOwner = Number(row.cashOperatingCostExOwnerRent ?? (Number(row.cashOperatingCost || 0) - ownerRent)); return `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(operatingExOwner, 2)}</td><td class="num ${ownerRent > 0 ? 'neg' : ''}">${fmt(ownerRent, 2)}</td><td class="num">${fmt(row.taxes, 2)}</td><td class="num">${fmt(row.projectIncomeTax, 2)}</td><td class="num">${fmt(row.projectCapex, 2)}</td><td class="num"><strong>${fmt(row.totalExpense, 2)}</strong></td><td class="num ${Number(row.noi || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.noi, 2)}</td><td class="num ${row.adjustedProjectCashFlow < 0 ? 'neg' : 'pos'}"><strong>${fmt(row.adjustedProjectCashFlow, 2)}</strong></td><td class="num">${fmt(row.cumulativeOperationCashFlow, 2)}</td><td>${escapeHtml(row.adjustmentNote || (Math.abs((row.revenueAdjustment || 0) + (row.operatingCostAdjustment || 0) + (row.taxAdjustment || 0) + (row.capexAdjustment || 0)) > 0.005 ? '已应用导入调整' : ''))}</td></tr>`; }).join('')}</tbody></table></div>
-    <div class="field-help">自然年报表的原始数据由项目设定的运营年限和开业日期决定；下载模板后只能修改“调整额”和备注，导入后会保留原始测算与调整前数据，并重新计算调整后净现金流。</div>
+    <div class="field-help">自然年报表的原始数据由项目设定的运营年限和开业日期决定；项目盈利合计按全周期现金口径计算，已扣除建设投资、招商运营启动投入、运营成本、业主租金、税费和所得税。业主租金虽与运营成本分列，但只扣一次；建设投资在建设阶段计入，不会在运营成本中重复扣除。运营现金回收按 NOI 扣除资本性支出预留及项目所得税后汇总，用于判断原始投入是否已通过运营现金流回收。</div>
   </div>`;
 }
 
