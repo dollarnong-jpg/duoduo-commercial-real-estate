@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-periodprofit1';
+import './backend.js?v=20261120-noexit1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.29';
+const APP_VERSION = '1.28.30';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6015,6 +6015,11 @@ function renderTaxExpenseSummary(preview) {
 
 function renderTaxProfitStep() {
   const preview = state.preview || state.result;
+  const currentModel = state.current.model;
+  const currentOwnerRent = currentModel.ownerRent || {};
+  const ownerRentEnabled = currentOwnerRent.enabled === true || [1, '1', 'true', 'yes', '是'].includes(String(currentOwnerRent.enabled || '').toLowerCase());
+  const ownerRentPropertyLease = ownerRentEnabled && ['property', 'land_and_property'].includes(String(currentOwnerRent.leaseType || 'property'));
+  const exitValueApplicable = ['owned', 'equity'].includes(String(currentModel.project?.propertyRightsStatus || 'owned')) && !ownerRentPropertyLease;
   return `
     <div class="callout">${ICONS.info}<div>本页同时展示税费支出统计、税率参数、融资和退出假设。租金类收入税费按项目设定的出租率计算，固定土地税费不随出租率变化；业主租金专票进项税单独核算。</div></div>
     <div class="formula-actions" style="margin-bottom:14px"><button class="btn btn-secondary btn-sm" id="tax-export-workbook">${ICONS.download}<span>导出税费与全周期现金流 Excel</span></button></div>
@@ -6051,6 +6056,7 @@ function renderTaxProfitStep() {
       <summary>融资与退出假设</summary>
       <div class="advanced-body">
         ${formulaPanel('融资、折旧、所得税与退出公式', '贷款额 = 总投资 × 债务比例\n利息 =（期初余额 + 当年提款÷2）× 年利率\n年折旧 = 建筑投资÷建筑年限 + 装修投资÷装修年限 + 设备投资÷设备年限\n项目现金流 = NOI - 资本化改造 - 融资前项目所得税 + 期末退出价值\n股权现金流 = NOI - 资本化改造 - 融资后所得税 - 利息 - 本金 + 退出价值\nNPV = Σ[CFt ÷（1+r）^t]；IRR：NPV(IRR)=0', ['IF', 'SUM', 'MAX', 'POWER', 'NPV', 'IRR'], '折旧年限、亏损结转、还款方式、退出方法和敏感性区间均可在下方“公式参数”中调整。')}
+        ${exitValueApplicable ? '' : '<div class="field-help"><strong>当前项目不计算期末资产退出价值：</strong>物业资产不属于项目公司，或已计入业主物业租金。系统会自动按退出价值0元测算，避免最后一年出现虚假的资产变卖现金流入。</div>'}
         <div class="form-grid">
           ${textField('债务融资比例', 'finance.debtRatio', { type: 'number', unit: '%', scale: 0.01 })}
           ${textField('年贷款利率', 'finance.loanRate', { type: 'number', unit: '%', scale: 0.01 })}
@@ -6759,6 +6765,7 @@ function renderLeverageProfitCard() {
       <div><span>资本金净收益率</span><strong class="${profitClass}">${fmtPct(s.equityProfitRate)}</strong><em>全周期现金口径</em></div>
       <div><span>股权IRR</span><strong>${s.equityIrr == null ? '不适用' : fmtPct(s.equityIrr)}</strong><em>融资后</em></div>
     </div>
+    <div class="leverage-note">期末退出价值：${s.exitValueIncluded ? `${fmt(s.exitValue, 2)} 万元，已计入最后一年现金流` : `0.00 万元${s.exitValueBlockedReason ? ` · ${escapeHtml(s.exitValueBlockedReason)}` : ''}`}。</div>
     <div class="leverage-note">示例理解：若自有资本金300万元、项目总投3亿元，则杠杆倍数为100倍。系统会进一步计算项目整体盈利，以及扣除融资、利息和还款后的资本金净收益。杠杆越高，收益放大和偿债风险也会同时放大。</div>
   </div>`;
 }

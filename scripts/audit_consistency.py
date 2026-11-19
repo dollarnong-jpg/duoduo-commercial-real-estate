@@ -393,6 +393,14 @@ def audit_engine_invariants() -> None:
     full_owner_years = [row["ownerRent"] for row in owner_building["naturalYearReport"] if row.get("activeDays", 0) >= 365]
     assert full_owner_years and all(close(value, 120) for value in full_owner_years), full_owner_years
 
+    leasehold_model = engine.default_model("租赁物业退出价值审计")
+    leasehold_model["project"]["propertyRightsStatus"] = "leased"
+    leasehold_model["project"]["acquisitionMethod"] = "lease"
+    leasehold_model["ownerRent"].update({"enabled": True, "leaseType": "property", "propertyMonthlyRent": 100, "propertyPaymentMonths": 12})
+    leasehold_result = engine.calculate_model(leasehold_model, False)
+    assert leasehold_result["summary"]["exitValueAllowed"] is False
+    assert close(leasehold_result["summary"]["exitValue"], 0)
+
     month_conflict = engine.default_model("筹备月数冲突")
     month_conflict["preOpeningBudget"]["mode"] = "detailed"
     month_conflict["preOpeningBudget"]["team"]["positions"][0]["months"] = 18

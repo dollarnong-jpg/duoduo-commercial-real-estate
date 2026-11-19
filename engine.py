@@ -1508,6 +1508,18 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     owner_rent_enabled_value = owner_rent_config.get("enabled")
     owner_rent_enabled = owner_rent_enabled_value is True or str(owner_rent_enabled_value).strip().lower() in {"true", "1", "yes", "y", "是"}
     owner_rent_lease_type = str(owner_rent_config.get("leaseType") or "property")
+    property_rights_status = str(project.get("propertyRightsStatus") or "owned")
+    project_has_owned_asset_for_exit = property_rights_status in {"owned", "equity"}
+    owner_rent_property_lease = owner_rent_enabled and owner_rent_lease_type in {"property", "land_and_property"}
+    exit_value_allowed = bool(valuation.get("includeExit")) and project_has_owned_asset_for_exit and not owner_rent_property_lease
+    if not bool(valuation.get("includeExit")):
+        exit_value_blocked_reason = "未启用期末退出价值"
+    elif owner_rent_property_lease:
+        exit_value_blocked_reason = "项目计入业主物业租金，物业资产不属于项目，不能计算资产退出价值"
+    elif not project_has_owned_asset_for_exit:
+        exit_value_blocked_reason = "当前为非自有产权，不能按自有物业计算期末退出价值"
+    else:
+        exit_value_blocked_reason = ""
     include_land_rent = owner_rent_enabled and owner_rent_lease_type in {"land", "land_and_property"}
     include_property_rent = owner_rent_enabled and owner_rent_lease_type in {"property", "land_and_property"}
     land_pricing_mode = str(owner_rent_config.get("landPricingMode") or "total")
@@ -1935,7 +1947,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             project_tax_loss_carry.append((op_year, -ebit))
         net_profit = pretax_profit - income_tax
         exit_value = 0.0
-        if idx == total_periods - 1 and bool(valuation.get("includeExit")):
+        if idx == total_periods - 1 and exit_value_allowed:
             if str(formulas.get("exitValueMethod") or "noi_cap") == "revenue_multiple":
                 exit_value = max(0.0, revenue_net) * as_float(formulas.get("exitRevenueMultiple"), 1.0) * (1 - as_float(taxes.get("exitTaxRate")))
             else:
@@ -3130,6 +3142,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "staticPayback": payback_static,
             "dynamicPayback": payback_dynamic,
             "exitValue": sum(as_float(row.get("exitValue")) for row in annual_rows),
+            "exitValueAllowed": exit_value_allowed,
+            "exitValueIncluded": any(as_float(row.get("exitValue")) != 0 for row in annual_rows),
+            "exitValueBlockedReason": exit_value_blocked_reason,
             "status": analysis["status"],
             "confidenceScore": confidence_score,
             "confidenceLevel": confidence_level,

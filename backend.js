@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-periodprofit1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-noexit1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2884,7 +2884,7 @@ async function exportExcel(result) {
     ['总建筑面积（㎡）', s.grossFloorArea], ['可租赁面积（㎡）', s.leasableArea], ['商铺/楼层数量', s.calculationMode === 'preliminary' ? s.floorCount : s.shopsCount],
     ['项目立项 / 进场日期', s.investmentDate || ''], ['建设开工日期', s.constructionStartDate || ''], ['计划竣工日期', s.constructionEndDate || ''], ['项目接管 / 进场日期', s.handoverDate || ''], ['招商启动日期', s.leasingStartDate || ''], ['计划开业日期', s.openingDate || ''], ['运营结束日期', s.operationEndDate || ''],
     ['项目总投资（万元）', s.totalInvestment], ['稳定期营业收入（万元/年）', s.stableRevenue], ['稳定期物业管理费收入（万元/年）', s.stablePropertyManagementIncome || 0], ['稳定期商业管理费收入（万元/年）', s.stableCommercialManagementIncome || 0], ['稳定期中央空调费收入（万元/年）', s.stableCentralAcIncome || 0], ['稳定期三项费用收入合计（万元/年）', s.stablePropertyFeeIncome || 0], ['业主租金支出（万元/年）', s.stableOwnerRentCost || 0], ['稳定期NOI（万元/年）', s.stableNoi],
-    ['NOI回报率', s.noiYield], ['周期净利润（万元）', s.periodNetProfit || 0], ['周期净利率', s.periodProfitMargin || 0], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback],
+    ['NOI回报率', s.noiYield], ['周期净利润（万元）', s.periodNetProfit || 0], ['周期净利率', s.periodProfitMargin || 0], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback], ['期末退出价值（万元）', s.exitValueIncluded ? (s.exitValue || 0) : 0], ['期末退出价值口径', s.exitValueIncluded ? '已计入最后一年现金流' : (s.exitValueBlockedReason || '不计入')],
     [''], ['说明', '本表由浏览器版多多·商业地产自动生成，用于投资初筛与方案比较，不替代可研、审计、评估或税务鉴证。'],
   ], [26, 32, 22, 22]);
   addSheet(wb, '核心参数', [
@@ -3176,6 +3176,8 @@ async function exportExcel(result) {
     ['资本金净收益（万元）', s.equityNetCashProfit || 0],
     ['周期净利润（万元）', s.periodNetProfit || 0],
     ['周期净利率', s.periodProfitMargin || 0],
+    ['期末退出价值（万元）', s.exitValueIncluded ? (s.exitValue || 0) : 0],
+    ['期末退出价值口径', s.exitValueIncluded ? '已计入最后一年现金流' : (s.exitValueBlockedReason || '不计入')],
     ['资本金回报倍数', s.equityReturnMultiple || 0],
     ['资本金净收益率', s.equityProfitRate || 0],
     ['股权IRR', s.equityIrr == null ? '不适用' : s.equityIrr],
