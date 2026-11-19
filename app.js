@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-decimals2';
+import './backend.js?v=20261119-rentcalc1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.19';
+const APP_VERSION = '1.28.20';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3612,15 +3612,26 @@ function syncFloorRentToShops(path, previousRent, nextRent) {
   const floor = model.floors?.[floorIndex];
   if (!floor) return;
   const key = buildingFloorKey(floor);
-  const ratio = Number(previousRent) > 0 && Number(nextRent) > 0 ? Number(nextRent) / Number(previousRent) : 0;
-  model.shops.forEach(shop => {
-    if (buildingFloorKey(shop) !== key) return;
-    const currentRent = Number(shop.rentOverride || 0);
-    if (currentRent > 0 && ratio > 0) {
-      shop.rentOverride = Number((currentRent * ratio).toFixed(2));
-    } else if (currentRent <= 0 && Number(nextRent) > 0 && shop.rentOverride !== null && shop.rentOverride !== undefined) {
-      shop.rentOverride = Number(nextRent);
-    }
+  const targetRent = Math.max(0, Number(nextRent) || 0);
+  if (targetRent <= 0) {
+    state.preview = null;
+    return;
+  }
+  const matchingShops = model.shops.filter(shop => buildingFloorKey(shop) === key);
+  const overrideShops = matchingShops.filter(shop => shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0);
+  if (!overrideShops.length) {
+    state.preview = null;
+    return;
+  }
+  const overrideArea = overrideShops.reduce((sum, shop) => sum + rentAreaFor(shop, model), 0);
+  const overrideMonthly = overrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0) * rentAreaFor(shop, model), 0);
+  const currentOverrideAverage = overrideArea > 0 ? overrideMonthly / overrideArea : 0;
+  // A floor rent edit is authoritative: force the weighted shop-override average back to the edited floor rent.
+  const baseRent = currentOverrideAverage > 0 ? currentOverrideAverage : Number(previousRent);
+  if (baseRent <= 0) return;
+  const ratio = targetRent / baseRent;
+  overrideShops.forEach(shop => {
+    shop.rentOverride = Number((Number(shop.rentOverride || 0) * ratio).toFixed(2));
   });
   state.preview = null;
 }
@@ -3724,12 +3735,16 @@ function renderFloorEditor(m, mode, preview) {
   const concessionEnabled = revenueMode !== 'rent';
   const previewFloors = new Map((preview?.floors || []).map(floor => [buildingFloorKey(floor), floor]));
   const buildingOptions = [...new Set([...(floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])];
+  const detailedOverrideCount = mode === 'detailed'
+    ? (m.shops || []).filter(shop => shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0).length
+    : 0;
   return `<div class="form-section">
     <div class="section-title">楼层均价与面积</div>
     <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层均价将作为一铺一价的基础：再乘业态系数并叠加铺位条件溢价。'}</div>
-    ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层均价\n联营扣点月收益 = 商户计租面积 × 销售基数 × 扣点率\n实际加权收益 = 楼层月收益合计 ÷ 商户计租面积', ['SUM', 'MAX', 'IF'], '项目商户默认口径可被楼层、铺位单独覆盖；业主租金支付口径不参与这里的商户租金计算。')}
+    ${detailedOverrideCount ? `<div class="callout soft"><div>当前有 <strong>${detailedOverrideCount}</strong> 个铺位设置了“租金单价覆盖”。实际加权收益按铺位覆盖价计算；修改楼层均价时，系统会强制把该层铺位覆盖价的加权平均同步到楼层均价。</div><button type="button" class="btn btn-secondary btn-sm" data-sync-all-floor-rents>全部按楼层均价同步</button></div>` : ''}
+    ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层基准满租月收益 = 商户计租面积 × 楼层基准租金\n实际楼层平均租金 = 该层实际月租金收入 ÷ 该层商户计租面积\n项目平均租金 = 项目实际月租金收入 ÷ 项目商户计租面积', ['SUM', 'MAX', 'IF'], '一铺一价下，铺位租金覆盖价优先；修改楼层基准租金时，系统会同步铺位覆盖价，使该层实际加权平均租金回到楼层值。')}
     <div class="data-table-wrap floor-table-wrap">
-      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">保底/平均租金（元/㎡）</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th class="num">实际加权收益</th><th></th></tr></thead><tbody>
+      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">${mode === 'detailed' ? '楼层基准租金（元/㎡/月）' : '楼层平均租金（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">${mode === 'detailed' ? '基准满租月收益（元）' : '满租月收益（元）'}</th><th class="num">${mode === 'detailed' ? '实际平均租金（元/㎡/月）' : '实际加权收益'}</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
           const ratio = Number(floor.buildingArea) ? Number(floor.leasableArea) / Number(floor.buildingArea) : 0;
           const area = rentAreaFor(floor, m);
@@ -3737,6 +3752,9 @@ function renderFloorEditor(m, mode, preview) {
           const concession = area * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
           const monthly = revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee;
           const calculated = previewFloors.get(buildingFloorKey(floor));
+          const floorOverrideCount = mode === 'detailed'
+            ? (m.shops || []).filter(shop => buildingFloorKey(shop) === buildingFloorKey(floor) && shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0).length
+            : 0;
           return `<tr>
             <td><input class="table-input floor-name-input" data-path="floors.${i}.building" data-type="text" list="building-options" value="${escapeHtml(floor.building || '1号楼')}"></td>
             <td><input class="table-input floor-name-input" data-path="floors.${i}.name" data-type="text" value="${escapeHtml(floor.name || '')}"></td>
@@ -3747,8 +3765,8 @@ function renderFloorEditor(m, mode, preview) {
             <td class="num"><input class="table-input highlight-input" data-path="floors.${i}.avgRent" data-type="number" type="number" step="any" value="${floor.avgRent ?? 0}"></td>
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
             <td class="num" data-floor-monthly="${escapeHtml(buildingFloorKey(floor))}">${fmt(monthly)}</td>
-            <td class="num" data-floor-actual="${escapeHtml(buildingFloorKey(floor))}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 2) : '待计算'}</td>
-            <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
+            <td class="num"><span data-floor-actual="${escapeHtml(buildingFloorKey(floor))}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 2) : '待计算'}</span>${floorOverrideCount ? `<small class="rent-source">铺位覆盖价 ${floorOverrideCount} 个</small>` : ''}</td>
+            <td>${floorOverrideCount ? `<button type="button" class="btn btn-secondary btn-sm" data-sync-floor-rent="${i}" title="按本层均价同步该层铺位覆盖价">同步铺位</button>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
           </tr>`;
         }).join('') : `<tr><td colspan="${concessionEnabled ? 12 : 10}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
       </tbody></table>
@@ -7871,7 +7889,7 @@ function ensureFloorsFromShops(model, options = {}) {
     if (floor) {
       if (!Number(floor.buildingArea)) floor.buildingArea = group.buildingArea;
       if (!Number(floor.leasableArea)) floor.leasableArea = group.leasableArea;
-      if (!Number(floor.avgRent)) floor.avgRent = Number(avg.toFixed(2));
+      floor.avgRent = Number(avg.toFixed(2));
     } else {
       model.floors.push({ building: group.building, name: group.name, rentAreaBasis: 'inherit', buildingArea: group.buildingArea, leasableArea: group.leasableArea, avgRent: Number(avg.toFixed(2)) });
     }
@@ -8032,6 +8050,31 @@ function bindShopsStep() {
     renderWorkspace();
     scheduleLivePreview();
   }));
+  document.querySelectorAll('[data-sync-floor-rent]').forEach(btn => btn.addEventListener('click', () => {
+    const index = Number(btn.dataset.syncFloorRent);
+    const floor = state.current.model.floors?.[index];
+    if (!floor || Number(floor.avgRent || 0) <= 0) return toast('请先填写本层平均租金', 'error');
+    syncFloorRentToShops(`floors.${index}.avgRent`, 0, Number(floor.avgRent || 0));
+    state.dirty = true;
+    state.preview = null;
+    state.result = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast('已按本层平均租金同步铺位覆盖价', 'success');
+  }));
+  document.querySelector('[data-sync-all-floor-rents]')?.addEventListener('click', () => {
+    const floors = state.current.model.floors || [];
+    floors.forEach((floor, index) => {
+      const rent = Number(floor.avgRent || 0);
+      if (rent > 0) syncFloorRentToShops(`floors.${index}.avgRent`, 0, rent);
+    });
+    state.dirty = true;
+    state.preview = null;
+    state.result = null;
+    renderWorkspace();
+    scheduleLivePreview();
+    toast('已按各楼层均价同步全部铺位覆盖价', 'success');
+  });
   const fileInput = document.getElementById('shop-file');
   document.getElementById('choose-file')?.addEventListener('click', () => fileInput.click());
   fileInput?.addEventListener('change', () => fileInput.files[0] && handleShopImport(fileInput.files[0]));
