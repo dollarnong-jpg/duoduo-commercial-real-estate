@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-previewSync1';
+import './backend.js?v=20261119-floorSync1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.8';
+const APP_VERSION = '1.28.9';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3838,7 +3838,7 @@ function renderDetailedPricing(m, shops, preview) {
       <div><span>运营周期实收租金</span><strong data-live="operationRent">${fmt(operationPeriodRentRevenue, 1)}</strong><em>万元 · 应收 ${fmt(operationPeriodScheduledRent, 1)}，未收 ${fmt(operationPeriodUncollectedRent, 1)}；收租率 ${fmtPct(rentCollectionRate)}</em></div>
     </div>
     <div class="rent-average-check">
-      <div class="rent-average-formula"><strong>项目租金均价核算</strong><span>项目租金均价 = 满租月租金总收入 ÷ 商户计租面积合计</span><code>${fmt(monthlyRentPreview, 2)} 元/月 ÷ ${fmtArea(totalRentArea)}㎡ = ${fmt(revenueImpliedAverageRent, 2)} 元/㎡/月</code></div>
+      <div class="rent-average-formula"><strong>项目租金均价核算</strong><span>项目租金均价 = 满租月租金总收入 ÷ 商户计租面积合计</span><code data-live="rentFormula">${fmt(monthlyRentPreview, 2)} 元/月 ÷ ${fmtArea(totalRentArea)}㎡ = ${fmt(revenueImpliedAverageRent, 2)} 元/㎡/月</code></div>
       <div class="rent-average-metrics">
         <div><span>导入单价面积加权值</span><strong>${fmt(weightedOverrideRent, 2)}</strong><em>仅作导入单价核对</em></div>
         <div><span>简单算术均价</span><strong>${fmt(simpleOverrideRent, 2)}</strong><em>铺位单价直接平均，仅作参考</em></div>
@@ -3852,9 +3852,10 @@ function renderDetailedPricing(m, shops, preview) {
             const area = Number(floor.rentArea || 0);
             const monthly = Number(floor.monthlyRevenue || 0);
             const share = monthlyRentPreview > 0 ? monthly / monthlyRentPreview : 0;
-            return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || floor.floor || '—')}</td><td class="num">${fmtArea(area)}</td><td class="num">${fmt(monthly, 2)}</td><td class="num">${fmt(monthly * 3 / 10000, 2)}</td><td class="num">${fmt(monthly * 12 / 10000, 2)}</td><td class="num"><strong>${fmt(area ? monthly / area : 0, 2)}</strong></td><td class="num">${fmt(operationPeriodRentRevenue * share, 2)}</td><td>${fmt(monthly, 2)} ÷ ${fmtArea(area)}</td></tr>`;
+            const floorKey = buildingFloorKey(floor);
+            return `<tr data-floor-avg-row="${escapeHtml(floorKey)}"><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || floor.floor || '—')}</td><td class="num" data-floor-avg-area>${fmtArea(area)}</td><td class="num" data-floor-avg-monthly>${fmt(monthly, 2)}</td><td class="num" data-floor-avg-quarterly>${fmt(monthly * 3 / 10000, 2)}</td><td class="num" data-floor-avg-annual>${fmt(monthly * 12 / 10000, 2)}</td><td class="num" data-floor-avg-rent><strong>${fmt(area ? monthly / area : 0, 2)}</strong></td><td class="num" data-floor-avg-allocated>${fmt(operationPeriodRentRevenue * share, 2)}</td><td data-floor-avg-formula>${fmt(monthly, 2)} ÷ ${fmtArea(area)}</td></tr>`;
           }).join('') || '<tr><td colspan="9" class="admin-empty">暂无楼层测算数据，请先导入铺位并完成实时测算。</td></tr>'}
-        </tbody><tfoot><tr class="total-row"><td colspan="2"><strong>全项目合计</strong></td><td class="num"><strong>${fmtArea(floorAverageTotal.rentArea)}</strong></td><td class="num"><strong>${fmt(floorAverageTotal.monthlyRevenue, 2)}</strong></td><td class="num"><strong>${fmt(floorAverageTotal.monthlyRevenue * 3 / 10000, 2)}</strong></td><td class="num"><strong>${fmt(floorAverageTotal.monthlyRevenue * 12 / 10000, 2)}</strong></td><td class="num"><strong>${fmt(floorAverageTotal.rentArea ? floorAverageTotal.monthlyRevenue / floorAverageTotal.rentArea : 0, 2)}</strong></td><td class="num"><strong>${fmt(operationPeriodRentRevenue, 2)}</strong></td><td>${fmt(floorAverageTotal.monthlyRevenue, 2)} ÷ ${fmtArea(floorAverageTotal.rentArea)}</td></tr></tfoot></table></div>
+        </tbody><tfoot><tr class="total-row"><td colspan="2"><strong>全项目合计</strong></td><td class="num"><strong data-project-rent-area>${fmtArea(floorAverageTotal.rentArea)}</strong></td><td class="num"><strong data-project-rent-monthly>${fmt(floorAverageTotal.monthlyRevenue, 2)}</strong></td><td class="num"><strong data-project-rent-quarterly>${fmt(floorAverageTotal.monthlyRevenue * 3 / 10000, 2)}</strong></td><td class="num"><strong data-project-rent-annual>${fmt(floorAverageTotal.monthlyRevenue * 12 / 10000, 2)}</strong></td><td class="num"><strong data-project-rent-avg>${fmt(floorAverageTotal.rentArea ? floorAverageTotal.monthlyRevenue / floorAverageTotal.rentArea : 0, 2)}</strong></td><td class="num"><strong data-project-rent-allocated>${fmt(operationPeriodRentRevenue, 2)}</strong></td><td data-project-rent-formula>${fmt(floorAverageTotal.monthlyRevenue, 2)} ÷ ${fmtArea(floorAverageTotal.rentArea)}</td></tr></tfoot></table></div>
       </div>
       <p>项目均价和楼层均价均按“该层级满租月租金收入 ÷ 该层级商户计租面积合计”计算。季度租金按满租月租金 × 3，满租年租金按满租月租金 × 12；运营周期实收租金按各年度招商率、免租期、递增因子和收租率逐年汇总；应收租金与未收租金同时展示。分楼层运营期租金按各层稳定月租金占比分摊，仅用于结构分析。</p>
     </div>
@@ -7545,6 +7546,31 @@ function updateQuickRentEstimateFromModel() {
   document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(totalMonthly * 12 / 10000, 1); });
   document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(averageRent, 2); });
   document.querySelectorAll('[data-live="operationRent"]').forEach(el => { el.textContent = '计算中…'; });
+  const floorMap = new Map(floors.map(floor => [buildingFloorKey(floor), floor]));
+  document.querySelectorAll('[data-floor-avg-row]').forEach(rowEl => {
+    const floor = floorMap.get(rowEl.dataset.floorAvgRow);
+    if (!floor) return;
+    const area = rentAreaFor(floor, model);
+    const guarantee = area * Number(floor.avgRent || 0);
+    const concession = area * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
+    const monthly = revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee;
+    const setText = (selector, value) => { const node = rowEl.querySelector(selector); if (node) node.textContent = value; };
+    setText('[data-floor-avg-area]', fmtArea(area));
+    setText('[data-floor-avg-monthly]', fmt(monthly, 2));
+    setText('[data-floor-avg-quarterly]', fmt(monthly * 3 / 10000, 2));
+    setText('[data-floor-avg-annual]', fmt(monthly * 12 / 10000, 2));
+    setText('[data-floor-avg-rent]', fmt(area ? monthly / area : 0, 2));
+    setText('[data-floor-avg-allocated]', '计算中…');
+    setText('[data-floor-avg-formula]', `${fmt(monthly, 2)} ÷ ${fmtArea(area)}`);
+  });
+  document.querySelectorAll('[data-project-rent-area]').forEach(el => { el.textContent = fmtArea(totalArea); });
+  document.querySelectorAll('[data-project-rent-monthly]').forEach(el => { el.textContent = fmt(totalMonthly, 2); });
+  document.querySelectorAll('[data-project-rent-quarterly]').forEach(el => { el.textContent = fmt(totalMonthly * 3 / 10000, 2); });
+  document.querySelectorAll('[data-project-rent-annual]').forEach(el => { el.textContent = fmt(totalMonthly * 12 / 10000, 2); });
+  document.querySelectorAll('[data-project-rent-avg]').forEach(el => { el.textContent = fmt(averageRent, 2); });
+  document.querySelectorAll('[data-project-rent-allocated]').forEach(el => { el.textContent = '计算中…'; });
+  document.querySelectorAll('[data-project-rent-formula]').forEach(el => { el.textContent = `${fmt(totalMonthly, 2)} ÷ ${fmtArea(totalArea)}`; });
+  document.querySelectorAll('[data-live="rentFormula"]').forEach(el => { el.textContent = `${fmt(totalMonthly, 2)} 元/月 ÷ ${fmtArea(totalArea)}㎡ = ${fmt(averageRent, 2)} 元/㎡/月`; });
   document.querySelectorAll('[data-live="statusAdvice"]').forEach(el => { el.textContent = '租金指标已按当前输入即时更新，NOI/NPV正在重算'; });
 }
 
