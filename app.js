@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-acfloors1';
+import './backend.js?v=20261119-acfloors2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.15';
+const APP_VERSION = '1.28.16';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -5383,6 +5383,7 @@ function renderRevenueAssumptionsSection() {
   };
   const configs = normalizeCentralAcBuildingConfigs(model);
   const areas = centralAcBuildingAreas(model);
+  const breakdowns = centralAcBuildingAreaBreakdown(model);
   const occupancy = Math.max(0, Number(operations.stableOccupancy ?? 0.95));
   const defaultCentralAcFee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
   const enabledCentralAcBuildings = configs.filter(item => item.enabled).length;

@@ -174,6 +174,10 @@ def audit_defaults_and_units() -> None:
     require_text(app, "remove-office-budget-item", "office budget delete action")
     require_text(app, "feeCustomized", "building central AC fee override")
     require_text(app, "enable-all-central-ac", "central AC bulk enable action")
+    revenue_assumptions = function_segment(app, "renderRevenueAssumptionsSection")
+    assert "breakdowns.get(" in revenue_assumptions
+    require_text(revenue_assumptions, "const breakdowns = centralAcBuildingAreaBreakdown(model);", "central AC floor breakdown initialization")
+    require_text(revenue_assumptions, "central-ac-floor-row", "central AC floor breakdown rows")
 
     office = function_segment(app, "renderOfficeBudgetSection")
     leasing = function_segment(app, "renderLeasingBudgetSection")
