@@ -2243,6 +2243,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     if stable_row is None:
         stable_row = next((row for row in reversed(annual_rows) if row.get("opYear", 0) > 0), {})
     stable_noi = as_float(stable_row.get("noi"))
+    stable_net_profit = as_float(stable_row.get("netProfit"))
     stable_revenue = as_float(stable_row.get("revenue"))
     stable_property_fee_income = as_float(stable_row.get("propertyRevenue"))
     stable_property_management_income = as_float(stable_row.get("propertyManagementRevenue"))
@@ -3081,6 +3082,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "stableCommercialManagementIncome": stable_commercial_management_income,
             "stableCentralAcIncome": stable_central_ac_income,
             "stableNoi": stable_noi,
+            "stableNetProfit": stable_net_profit,
             "stableNoiMargin": safe_div(stable_noi, stable_revenue),
             "stableHeadcount": structured_headcount,
             "staffCostMode": staff_cost_mode,
