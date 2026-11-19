@@ -428,7 +428,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style17', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261112-style19', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1315,11 +1315,13 @@ function excelSheetPurpose(name) {
     '税费与规费统计': '增值税、房产税、土地使用税、附加及所得税',
     '筹备期成本明细': '筹备团队、物业服务与行政开办明细',
     '资金计划': '月度资金缺口、资本金和现金流安排',
+    '资金用途明细': '建设、筹备招商和开业首年的逐项资金用途与来源',
     '项目时间轴': '立项、开工、竣工、招商、开业、运营结束及关键资金节点',
     '招商开业里程碑': '分阶段招商率、可实现月租金和年化租金',
     '公式与参数': '计算公式、函数和关键参数说明',
     '函数注解': 'Excel 函数语法、含义与使用注意事项',
     '投资构成': '土地、工程、装修、设备、预备费与开办投入',
+    '投资构成明细': '各项投资的面积、单价、合同额、公式和金额明细',
     '楼层均价': '按楼栋楼层汇总面积、租金和三项费用',
     '租赁联营规则': '业态租金、扣点和行业参考区间',
     '周边市场分析': '竞品租金分位、项目定价位置与结论',
@@ -2974,12 +2976,23 @@ async function exportExcel(result) {
     ['资本金净收益率', s.equityProfitRate || 0],
     ['股权IRR', s.equityIrr == null ? '不适用' : s.equityIrr],
     [''],
+    ['分阶段资金需求'],
+    ['阶段', '项目口径需准备（万元）', '资本金口径需准备（万元）', '阶段项目净现金流（万元）', '阶段资本金净现金流（万元）'],
+    ...(result.phaseFundingRequirements || []).filter(x => ['建设期', '筹备招商期', '开业首年'].includes(x.phase)).map(x => [x.phase, x.projectFundingNeed, x.equityFundingNeed, x.projectCashFlow, x.equityCashFlow]),
+    [''],
     ['阶段', '项目净现金流（万元）', '资本金净现金流（万元）'],
     ...(result.phaseCashFlowSummary || []).map(x => [x.phase, x.projectCashFlow, x.equityCashFlow]),
     [''],
     ['月份', '阶段', '日历年', '项目净现金流（万元）', '项目累计现金流（万元）', '资本金净现金流（万元）', '资本金累计现金流（万元）'],
     ...(result.monthlyFundingPlan || []).map(x => [x.month, x.phase, x.calendarYear, x.projectCashFlow, x.cumulativeProjectCashFlow, x.equityCashFlow, x.cumulativeEquityCashFlow]),
   ], [20, 32, 22, 26, 28, 28, 30]);
+  addSheet(wb, '资金用途明细', [
+    ['资金阶段', '用途项目', '说明', '金额（万元）'],
+    ...(result.fundingUseBreakdown || []).map(x => [x.phase, x.item, x.note, x.amount]),
+    [''],
+    ['资金来源', '说明', '金额（万元）'],
+    ...(result.fundingSourceBreakdown || []).map(x => [x.item, x.note, x.amount]),
+  ], [20, 30, 70, 20]);
   const formulaRows = [
     ['面积', '总建筑面积', '手动总建筑面积；若为0：一铺一价=商铺建筑面积合计×(1+公区系数)，初步测算=楼层建筑面积合计', ['IF','SUM'], '先判断是否手动填写总建筑面积；没有则按商铺面积和公区系数推算；结果进入建设投资和单位投资指标计算。', '优先填规划面积或测绘面积；没有时用商铺面积反推。调整公区系数后观察总投资和单位投资变化。', 'project.commonAreaFactor', model.project.commonAreaFactor, '公区系数增加会同步增加建安、装修、设备和规费。'],
     ['租金', '有效出租率', 'IF(运营年=1,首年出租率,IF(运营年<稳定年,第二年出租率,稳定出租率))', ['IF'], '按运营年份选择出租率：首年、爬坡第二年或稳定期；再乘租金、物业费和停车收入。', '出租率按招商计划和同类项目爬坡速度设置。先看首年出租率，再调稳定出租率；两者都会影响NOI和NPV。', 'operations.occupancyY1', model.operations.occupancyY1, '首年出租率影响首年现金流和招商佣金。'],
@@ -3031,7 +3044,12 @@ async function exportExcel(result) {
     ['函数','语法','含义','项目示例','调整注意事项'],
     ...Object.entries(EXPORT_FUNCTIONS).map(([name, f]) => [name, f.syntax, f.meaning, f.example, f.note])
   ], [16, 38, 55, 55, 70]);
-  addSheet(wb, '投资构成', [['项目', '金额（万元）', '占比'], ...result.investmentBreakdown.map(x => [x.name, x.value, s.totalInvestment ? x.value / s.totalInvestment : 0])], [28, 18, 14]);
+  addSheet(wb, '投资构成', [['项目', '金额（万元）', '占比'], ...result.investmentBreakdown.map(x => [x.name, x.value, s.totalInvestment ? x.value / s.totalInvestment : 0]), ['项目总投资', s.totalInvestment || 0, 1]], [28, 18, 14]);
+  addSheet(wb, '投资构成明细', [
+    ['投资大类', '明细项目', '计算过程/依据', '计算基数', '单位', '单价/费率', '金额（万元）', '占总投比例', '录入方式'],
+    ...(result.investmentDetail || []).map(x => [x.category, x.item, x.formula, x.quantity, x.unit, x.unitRate, x.amount, x.share, x.inputMode === 'amount' ? '按实际投资总额' : '按建筑面积单价']),
+    ['', '项目总投资', '各项投资明细合计', '', '', '', s.totalInvestment || 0, 1, ''],
+  ], [18, 24, 58, 18, 12, 18, 18, 16, 20]);
   const floorWs = addSheet(wb, '楼层均价', [['楼栋', '楼层', '商户计租口径', '铺位/楼层建筑面积（㎡，不含公区）', '实用面积（㎡）', '商户计租面积（㎡）', '平均月租金（元/㎡/月）', '物业费单价（元/㎡/月）', '商管费单价（元/㎡/月）', '空调费单价（元/㎡/月）', '满租月租金（万元）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '满租年三项费用（万元）', '租金收入占比'], ...(result.floors || []).map(x => { const monthlyWan = Number(x.monthlyRevenue || x.monthlyRent || 0) / 10000; const monthlyProperty = Number(x.monthlyPropertyFee || 0); const monthlyCommercial = Number(x.monthlyCommercialManagementFee || 0); const monthlyCentral = Number(x.monthlyCentralAcFee || 0); return [x.building || '1号楼', x.name, x.rentAreaBasis === 'building' ? '建筑面积' : x.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径', roundArea(x.buildingArea), roundArea(x.leasableArea), roundArea(x.rentArea), x.weightedRent || x.avgRent, Number(x.propertyFee || 0), Number(x.commercialManagementFee || 0), Number(x.centralAcFee || 0), monthlyWan, monthlyProperty, monthlyCommercial, monthlyCentral, monthlyProperty + monthlyCommercial + monthlyCentral, (monthlyProperty + monthlyCommercial + monthlyCentral) * 12 / 10000, s.totalMonthlyRent ? (Number(x.monthlyRevenue || x.monthlyRent || 0) / s.totalMonthlyRent) : 0]; })], [12, 10, 14, 18, 18, 18, 24, 22, 22, 22, 22, 22, 22, 22, 26, 24, 16]);
 
   setSheetColumnNumberFormat(floorWs, [3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15], '0.00');
@@ -3253,8 +3271,8 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
     const x = 0.65 + index * 3.12;
     slide.addText(`${card[0]}\n${typeof card[1] === 'number' ? card[1].toFixed(2) + ' 万元' : card[1]}\n${card[2]}`, { x, y: 1.35, w: 2.9, h: 1.05, fontFace: 'Microsoft YaHei', fontSize: 10, bold: true, color: index === 0 ? '76591C' : '103B33', fill: { color: index === 0 ? 'F7ECD4' : 'F7FAF8' }, margin: 0.12, breakLine: false });
   });
-  const phaseCashRows = [['阶段', '项目净现金流（万元）', '资本金净现金流（万元）'], ...(result.phaseCashFlowSummary || []).map(x => [x.phase, Number(x.projectCashFlow || 0).toFixed(2), Number(x.equityCashFlow || 0).toFixed(2)])];
-  slide.addTable(phaseCashRows, { x: 0.65, y: 2.7, w: 11.9, colW: [3.3, 4.3, 4.3], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.43, autoFit: false });
+  const phaseCashRows = [['阶段', '项目口径需准备（万元）', '资本金口径需准备（万元）', '阶段项目净现金流（万元）'], ...(result.phaseFundingRequirements || []).filter(x => ['建设期', '筹备招商期', '开业首年'].includes(x.phase)).map(x => [x.phase, Number(x.projectFundingNeed || 0).toFixed(2), Number(x.equityFundingNeed || 0).toFixed(2), Number(x.projectCashFlow || 0).toFixed(2)])];
+  slide.addTable(phaseCashRows, { x: 0.65, y: 2.7, w: 11.9, colW: [2.3, 3.3, 3.3, 3.0], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 9, margin: 0.05, rowH: 0.43, autoFit: false });
   slide.addText(`关键日期：开工 ${result.timeline?.constructionStartDate || '待定'}｜开业 ${result.timeline?.openingDate || '待定'}｜运营结束 ${result.timeline?.operationEndDate || '待定'}。资金计划按年度金额拆分月度，业主租金付款、保证金、招商率和费用起收日期应结合合同与发票进一步校准。`, { x: 0.65, y: 5.8, w: 11.9, h: 0.45, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.1 });
 
   slide = pptx.addSlide();

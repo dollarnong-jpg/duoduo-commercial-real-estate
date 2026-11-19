@@ -1371,6 +1371,55 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "铺底流动资金", "value": working_capital},
     ]
 
+    investment_detail: list[dict[str, Any]] = []
+
+    def add_investment_detail(category: str, item: str, basis: str, quantity: Any, unit: str, unit_rate: Any, amount: float, formula: str) -> None:
+        investment_detail.append({
+            "category": category,
+            "item": item,
+            "basis": basis,
+            "quantity": quantity,
+            "unit": unit,
+            "unitRate": unit_rate,
+            "amount": amount,
+            "share": safe_div(amount, total_investment),
+            "formula": formula,
+            "inputMode": str(costs.get("inputMode") or "rate"),
+        })
+
+    add_investment_detail("土地及契税", "土地取得价款", "土地合同价款", "", "万元", "", land_price, "直接采用土地取得价款")
+    add_investment_detail("土地及契税", "契税", f"土地价款×契税率 {as_float(taxes.get('deedTax')) * 100:.2f}%", land_price, "万元", as_float(taxes.get("deedTax")), deed_tax, "土地价款 × 契税率")
+    if amount_mode:
+        add_investment_detail("前期及建安工程", "前期工程费", "实际投资额", "", "万元", "", preconstruction, "直接录入实际投资额")
+        add_investment_detail("前期及建安工程", "建安工程费", "实际投资额", "", "万元", "", construction, "直接录入实际投资额")
+        add_investment_detail("前期及建安工程", "其他工程费", "实际投资额", "", "万元", "", other_engineering, "直接录入实际投资额")
+        add_investment_detail("公共配套及规费", "市政基础设施配套费", "实际投资额", "", "万元", "", municipal_fee, "直接录入实际投资额")
+        add_investment_detail("公共配套及规费", "人防易地建设费", "实际投资额", "", "万元", "", civil_defense, "直接录入实际投资额")
+        add_investment_detail("公共配套及规费", "其他公共规费", "实际投资额", "", "万元", "", other_public, "直接录入实际投资额")
+        add_investment_detail("装修及设施设备", "公共区域精装", "实际投资额", "", "万元", "", fitout, "直接录入实际投资额")
+        add_investment_detail("装修及设施设备", "设施设备", "实际投资额", "", "万元", "", equipment, "直接录入实际投资额")
+    else:
+        add_investment_detail("前期及建安工程", "前期工程费", f"总建筑面积 {gba:.2f}㎡ × {as_float(costs.get('preconstructionRate')):.2f}元/㎡ ÷ 10000", gba, "㎡", as_float(costs.get("preconstructionRate")), preconstruction, "总建筑面积 × 前期工程单价 ÷ 10000")
+        add_investment_detail("前期及建安工程", "建安工程费", f"总建筑面积 {gba:.2f}㎡ × {as_float(costs.get('constructionRate')):.2f}元/㎡ ÷ 10000", gba, "㎡", as_float(costs.get("constructionRate")), construction, "总建筑面积 × 建安工程单价 ÷ 10000")
+        add_investment_detail("前期及建安工程", "其他工程费", f"总建筑面积 {gba:.2f}㎡ × {as_float(costs.get('otherEngineeringRate')):.2f}元/㎡ ÷ 10000", gba, "㎡", as_float(costs.get("otherEngineeringRate")), other_engineering, "总建筑面积 × 其他工程单价 ÷ 10000")
+        add_investment_detail("公共配套及规费", "市政基础设施配套费", f"总建筑面积 {gba:.2f}㎡ × {as_float(costs.get('municipalFeeRate')):.2f}元/㎡ ÷ 10000", gba, "㎡", as_float(costs.get("municipalFeeRate")), municipal_fee, "总建筑面积 × 市政配套费单价 ÷ 10000")
+        add_investment_detail("公共配套及规费", "人防易地建设费", f"总建筑面积 {gba:.2f}㎡ × {as_float(costs.get('civilDefenseFeeRate')):.2f}元/㎡ ÷ 10000", gba, "㎡", as_float(costs.get("civilDefenseFeeRate")), civil_defense, "总建筑面积 × 人防易地建设费单价 ÷ 10000")
+        add_investment_detail("公共配套及规费", "其他公共规费", f"总建筑面积 {gba:.2f}㎡ × {as_float(costs.get('otherPublicFeeRate')):.2f}元/㎡ ÷ 10000", gba, "㎡", as_float(costs.get("otherPublicFeeRate")), other_public, "总建筑面积 × 其他公共规费单价 ÷ 10000")
+        add_investment_detail("装修及设施设备", "公共区域精装", f"总建筑面积 {gba:.2f}㎡ × {as_float(costs.get('fitoutRate')):.2f}元/㎡ ÷ 10000", gba, "㎡", as_float(costs.get("fitoutRate")), fitout, "总建筑面积 × 精装单价 ÷ 10000")
+        add_investment_detail("装修及设施设备", "设施设备", f"总建筑面积 {gba:.2f}㎡ × {as_float(costs.get('equipmentRate')):.2f}元/㎡ ÷ 10000", gba, "㎡", as_float(costs.get("equipmentRate")), equipment, "总建筑面积 × 设备单价 ÷ 10000")
+    for item in special_investment_items:
+        if not isinstance(item, dict):
+            continue
+        amount = max(0.0, as_float(item.get("amount")))
+        add_investment_detail("专项经营投资", str(item.get("name") or item.get("type") or "专项经营投资"), str(item.get("type") or "专项投资"), "", "万元", "", amount, "直接录入专项投资金额")
+    add_investment_detail("预备费", "不可预见费", f"直接工程费 {direct_engineering:.2f}万元 × 预备费率 {as_float(project.get('contingencyRate')) * 100:.2f}%", direct_engineering, "万元", as_float(project.get("contingencyRate")), contingency, "直接工程费 × 预备费率")
+    add_investment_detail("招商及开办", "首开招商佣金", f"满租月租金×佣金月数×首年出租率", total_monthly_revenue, "元/月", as_float(operations.get("commissionMonths")), commission, "满租月租金 × 佣金月数 × 首年出租率 ÷ 10000")
+    add_investment_detail("招商及开办", "筹备期营销费用", "直接录入金额", "", "万元", "", preopening_marketing, "直接录入筹备期营销金额")
+    add_investment_detail("招商及开办", "筹备团队成本", "岗位工资及相关成本汇总", "", "万元", "", preopening_team, "筹备团队明细汇总")
+    add_investment_detail("招商及开办", "筹备物业成本", "物业服务及一次性费用汇总", "", "万元", "", preopening_property, "筹备物业明细汇总")
+    add_investment_detail("招商及开办", "其他前期及开办费用", "直接录入金额", "", "万元", "", preopening_other_direct, "直接录入其他开办金额")
+    add_investment_detail("铺底流动资金", "铺底流动资金", f"稳定运营成本估算 {stable_opex_proxy:.2f}万元 × 铺底比例 {as_float(costs.get('workingCapitalRate')) * 100:.2f}%", stable_opex_proxy, "万元", as_float(costs.get("workingCapitalRate")), working_capital, "稳定运营成本估算 × 铺底流动资金率")
+
     loan_amount = total_investment * as_float(finance.get("debtRatio"))
     construction_years = max(0, min(10, int(as_float(project.get("constructionYears"), 2))))
     leasing_period_months = max(0, min(60, int(as_float(project.get("leasingPeriodMonths"), 12))))
@@ -2013,6 +2062,16 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"phase": "开业首年", "projectCashFlow": as_float(first_operation_row.get("projectCashFlow")), "equityCashFlow": as_float(first_operation_row.get("equityCashFlow"))},
         {"phase": "运营期合计", "projectCashFlow": sum(as_float(row.get("projectCashFlow")) for row in operation_rows), "equityCashFlow": sum(as_float(row.get("equityCashFlow")) for row in operation_rows)},
     ]
+    phase_funding_requirements = [
+        {
+            "phase": item["phase"],
+            "projectFundingNeed": max(0.0, -as_float(item.get("projectCashFlow"))),
+            "equityFundingNeed": max(0.0, -as_float(item.get("equityCashFlow"))),
+            "projectCashFlow": as_float(item.get("projectCashFlow")),
+            "equityCashFlow": as_float(item.get("equityCashFlow")),
+        }
+        for item in phase_cash_flow_summary
+    ]
     monthly_funding_plan: list[dict[str, Any]] = []
     monthly_cumulative_project = 0.0
     monthly_cumulative_equity = 0.0
@@ -2114,6 +2173,45 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "annualRentPotential": total_monthly_revenue * target * 12 / 10000,
             "note": str(milestone.get("note") or ""),
         })
+    construction_interest_total = sum(as_float(row.get("interest")) for row in construction_rows)
+    owner_rent_before_opening = -sum(
+        min(0.0, as_float(item.get("amount")))
+        for item in key_cash_events
+        if item.get("category") == "业主租金" and parse_iso_date(item.get("date")) and parse_iso_date(item.get("date")) < opening_date
+    )
+    startup_reserve_amount = stable_monthly_operating_cost * startup_reserve_months
+    funding_use_breakdown = [
+        {"phase": "建设期", "item": "土地取得价款", "amount": land_price, "note": "土地出让金、转让价款或取得成本"},
+        {"phase": "建设期", "item": "契税", "amount": deed_tax, "note": "土地取得价款 × 契税率"},
+        {"phase": "建设期", "item": "前期工程费", "amount": preconstruction, "note": "咨询、策划、规划、设计、报建、勘察、检测等"},
+        {"phase": "建设期", "item": "建安工程费", "amount": construction, "note": "土建、机电、消防、安装等主体工程"},
+        {"phase": "建设期", "item": "其他工程费", "amount": other_engineering, "note": "室外、配套及未单列工程"},
+        {"phase": "建设期", "item": "公共区域精装", "amount": fitout, "note": "公共区域、走道、卫生间、电梯厅等"},
+        {"phase": "建设期", "item": "设施设备", "amount": equipment, "note": "空调、电梯、消防、智能化及其他设备"},
+        {"phase": "建设期", "item": "公共配套及规费", "amount": municipal_fee + civil_defense + other_public, "note": "市政配套、人防及其他公共规费"},
+        {"phase": "建设期", "item": "专项经营投资", "amount": special_investment, "note": "外摆、外部搭建、广告位、美陈点等"},
+        {"phase": "建设期", "item": "预备费", "amount": contingency, "note": f"直接工程费 × {as_float(project.get('contingencyRate')) * 100:.2f}%"},
+        {"phase": "建设期", "item": "建设期融资利息", "amount": construction_interest_total, "note": "资本金口径需要准备的融资成本"},
+        {"phase": "筹备招商期", "item": "首开招商佣金", "amount": commission, "note": "满租月租金 × 佣金月数 × 首年出租率"},
+        {"phase": "筹备招商期", "item": "筹备期营销费用", "amount": preopening_marketing, "note": "招商推广、品牌发布和市场预热"},
+        {"phase": "筹备招商期", "item": "筹备团队成本", "amount": preopening_team, "note": "筹备岗位工资、社保及招聘培训"},
+        {"phase": "筹备招商期", "item": "筹备物业成本", "amount": preopening_property, "note": "工程介入、保安、保洁、开荒及物业顾问"},
+        {"phase": "筹备招商期", "item": "其他前期及开办费用", "amount": preopening_other_direct, "note": "办公、行政、证照、咨询及其他开办支出"},
+        {"phase": "筹备招商期", "item": "业主租赁保证金", "amount": owner_deposit if parse_iso_date(owner_rent_config.get("depositPaymentDate")) and parse_iso_date(owner_rent_config.get("depositPaymentDate")) < opening_date else 0.0, "note": "按合同在开业前支付的保证金"},
+        {"phase": "筹备招商期", "item": "开业前业主租金", "amount": owner_rent_before_opening, "note": "按业主租金付款日期识别的开业前租金"},
+        {"phase": "开业首年", "item": "铺底流动资金", "amount": working_capital, "note": "稳定运营成本估算 × 铺底流动资金率"},
+        {"phase": "开业首年", "item": "开业首年专项营销", "amount": opening_marketing_total, "note": "导视导览、开业美陈及其他开业专项"},
+        {"phase": "开业首年", "item": "稳定期运营安全垫", "amount": startup_reserve_amount, "note": f"稳定期月均经营成本及税费 × {startup_reserve_months:.1f}个月"},
+    ]
+    funding_source_breakdown = [
+        {"item": "债务融资", "amount": loan_amount, "note": "项目总投资 × 债务融资比例"},
+        {"item": "自有资本金", "amount": max(0.0, total_investment - loan_amount), "note": "项目总投资 - 债务融资"},
+        {"item": "商户租赁保证金流入", "amount": tenant_deposit_total, "note": "可在招商期形成阶段性现金来源，但期末需退还"},
+    ]
+    funding_use_phase_totals = {
+        phase: sum(as_float(item.get("amount")) for item in funding_use_breakdown if item.get("phase") == phase)
+        for phase in ("建设期", "筹备招商期", "开业首年")
+    }
     peak_month_index = min(range(len(monthly_funding_plan)), key=lambda index: as_float(monthly_funding_plan[index].get("cumulativeProjectCashFlow"))) if monthly_funding_plan else -1
     cash_flow_break_even_month = next((row.get("month") for row in monthly_funding_plan[peak_month_index + 1:] if as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_month_index >= 0 else None
     peak_annual_index = min(range(len(annual_rows)), key=lambda index: as_float(annual_rows[index].get("cumulativeProjectCashFlow"))) if annual_rows else -1
@@ -2348,6 +2446,15 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "operationEndDate": project.get("operationEndDate"),
             "peakProjectFundingRequirement": peak_project_funding,
             "peakEquityFundingRequirement": peak_equity_funding,
+            "constructionProjectFundingRequirement": next((x["projectFundingNeed"] for x in phase_funding_requirements if x["phase"] == "建设期"), 0.0),
+            "constructionEquityFundingRequirement": next((x["equityFundingNeed"] for x in phase_funding_requirements if x["phase"] == "建设期"), 0.0),
+            "leasingProjectFundingRequirement": next((x["projectFundingNeed"] for x in phase_funding_requirements if x["phase"] == "筹备招商期"), 0.0),
+            "leasingEquityFundingRequirement": next((x["equityFundingNeed"] for x in phase_funding_requirements if x["phase"] == "筹备招商期"), 0.0),
+            "openingProjectFundingRequirement": next((x["projectFundingNeed"] for x in phase_funding_requirements if x["phase"] == "开业首年"), 0.0),
+            "openingEquityFundingRequirement": next((x["equityFundingNeed"] for x in phase_funding_requirements if x["phase"] == "开业首年"), 0.0),
+            "constructionPhaseUseTotal": funding_use_phase_totals.get("建设期", 0.0),
+            "leasingPhaseUseTotal": funding_use_phase_totals.get("筹备招商期", 0.0),
+            "openingPhaseUseTotal": funding_use_phase_totals.get("开业首年", 0.0),
             "recommendedStartupCapital": recommended_startup_capital,
             "cashFlowBreakEvenMonth": cash_flow_break_even_month,
             "cashFlowBreakEvenYear": cash_flow_break_even_row.get("calendarYear") if cash_flow_break_even_row else None,
@@ -2455,6 +2562,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         },
         "confidenceChecks": confidence_checks,
         "investmentBreakdown": investment_breakdown,
+        "investmentDetail": investment_detail,
         "specialInvestmentBreakdown": special_investment_items,
         "timeline": {
             "investmentDate": project.get("investmentDate"),
@@ -2488,6 +2596,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         },
         "phaseCostBreakdown": phase_cost_breakdown,
         "phaseCashFlowSummary": phase_cash_flow_summary,
+        "phaseFundingRequirements": phase_funding_requirements,
+        "fundingUseBreakdown": funding_use_breakdown,
+        "fundingSourceBreakdown": funding_source_breakdown,
         "monthlyFundingPlan": monthly_funding_plan,
         "keyCashEvents": key_cash_events,
         "leasingMilestoneAnalysis": leasing_milestone_analysis,

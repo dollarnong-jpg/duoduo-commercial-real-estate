@@ -1,7 +1,7 @@
-import './backend.js?v=20261112-style17';
+import './backend.js?v=20261112-style19';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.0';
+const APP_VERSION = '1.27.1';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -5900,6 +5900,7 @@ function renderResultsStep() {
       <div class="card"><h3>${fmt(state.result?.annual?.length || state.current?.model?.project?.operationYears || 20)}年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
       <div class="card"><h3>投资构成</h3><div class="donut-wrap"><canvas id="cost-donut"></canvas><div class="donut-legend">${state.result.investmentBreakdown.map((item, i) => `<div class="donut-item"><i style="background:${donutColor(i)}"></i><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)}万</strong></div>`).join('')}</div></div></div>
     </div>
+    ${renderInvestmentDetailCard()}
     ${renderOperatingResultCards()}
     ${renderPhaseCostCard()}
     ${renderFundingPlanCard()}
@@ -5914,6 +5915,27 @@ function renderResultsStep() {
     </div>
     ${renderFloorResultTable()}
     <div class="export-bar"><div><strong>生成汇报材料</strong><span>Excel用于继续分析；PPT用于内部评审和项目汇报。</span></div><div class="export-actions"><button class="btn btn-secondary" id="export-excel">${ICONS.excel}<span>导出Excel</span></button><button class="btn btn-primary" id="export-ppt">${ICONS.ppt}<span>导出PPT汇报</span></button></div></div>`;
+}
+
+function renderInvestmentDetailCard() {
+  const result = state.result;
+  const rows = result?.investmentDetail || [];
+  if (!rows.length) return '';
+  const total = Number(result.summary?.totalInvestment || 0);
+  const modeLabel = result.summary?.costInputMode === 'amount' ? '按实际投资总额' : '按建筑面积单价';
+  const categories = [...new Set(rows.map(item => item.category))];
+  return `<div class="card investment-detail-card">
+    <div class="section-heading" style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:12px"><div><h3 style="margin:0">投资构成明细与计算依据</h3><p style="margin:6px 0 0;color:var(--muted)">当前采用：${escapeHtml(modeLabel)}。按面积模式：金额 = 总建筑面积 × 单价 ÷ 10000；按实际投资额模式：直接采用合同额或目标成本。</p></div><span class="tag">总投资 ${fmt(total, 2)} 万元</span></div>
+    <div class="data-table-wrap" style="max-height:none"><table class="data-table investment-detail-table"><thead><tr><th>投资大类</th><th>明细项目</th><th>计算过程 / 依据</th><th class="num">计算基数</th><th class="num">单价 / 费率</th><th class="num">金额（万元）</th><th class="num">占总投比例</th></tr></thead><tbody>
+      ${categories.map(category => {
+        const items = rows.filter(item => item.category === category);
+        const subtotal = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        return `${items.map((item, index) => `<tr><td>${index === 0 ? `<strong>${escapeHtml(category)}</strong>` : ''}</td><td>${escapeHtml(item.item)}</td><td>${escapeHtml(item.formula)}</td><td class="num">${item.quantity === '' ? '—' : fmt(item.quantity, 2)}${item.unit && item.quantity !== '' ? ` ${escapeHtml(item.unit)}` : ''}</td><td class="num">${item.unitRate === '' ? '—' : /万元/.test(item.unit) ? fmtPct(item.unitRate) : fmt(item.unitRate, 2)}</td><td class="num">${fmt(item.amount, 2)}</td><td class="num">${fmtPct(item.share)}</td></tr>`).join('')}<tr class="total-row"><td></td><td><strong>${escapeHtml(category)}小计</strong></td><td></td><td></td><td></td><td class="num"><strong>${fmt(subtotal, 2)}</strong></td><td class="num"><strong>${fmtPct(total ? subtotal / total : 0)}</strong></td></tr>`;
+      }).join('')}
+      <tr class="total-row"><td></td><td><strong>项目总投资</strong></td><td>土地及契税 + 工程建设 + 装修设备 + 专项投资 + 预备费 + 招商开办 + 铺底流动资金</td><td></td><td></td><td class="num"><strong>${fmt(total, 2)}</strong></td><td class="num"><strong>100.00%</strong></td></tr>
+    </tbody></table></div>
+    <div class="field-help">如果“前期及建安工程”金额较大，可重点核对总建筑面积、前期工程单价、建安工程单价和其他工程单价；也可以切换为“按实际投资总额”直接录入设计概算或合同金额。</div>
+  </div>`;
 }
 
 function renderLeasingStageResultCard() {
@@ -5945,9 +5967,9 @@ function renderInvestmentOverviewCard() {
     <div class="investment-overview-grid">
       <div><span>01 项目条件</span><strong>${escapeHtml(s.projectName || '未命名项目')}</strong><small>${escapeHtml(rightsLabel)} · ${escapeHtml(statusLabel)}<br>${fmtArea(s.grossFloorArea)}㎡ / 可租 ${fmtArea(s.leasableArea)}㎡</small></div>
       <div><span>02 土地与建设投入</span><strong>${fmt(landBuildInvestment, 2)} 万元</strong><small>土地、前期、建安、装修、设备和预备费</small></div>
-      <div><span>03 筹备与启动资金</span><strong>${fmt(s.recommendedStartupCapital, 2)} 万元</strong><small>筹备期非工程费用 ${fmt(preparationCost, 2)} 万元；资金缺口峰值 ${fmt(s.peakEquityFundingRequirement, 2)} 万元</small></div>
-      <div><span>04 开业后运营利润</span><strong>${fmt(s.stableNoi, 2)} 万元/年</strong><small>稳定收入 ${fmt(s.stableRevenue, 2)} 万元；NOI率 ${fmtPct(s.stableNoiMargin)}</small></div>
-      <div><span>05 项目整体收益</span><strong>${s.projectIrr == null ? '不适用' : fmtPct(s.projectIrr)}</strong><small>NPV ${fmt(s.projectNpv, 2)} 万元；回收期 ${s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 2)}年`}</small></div>
+      <div><span>03 建设启动资金</span><strong>${fmt(s.constructionEquityFundingRequirement, 2)} 万元</strong><small>资本金口径；项目口径 ${fmt(s.constructionProjectFundingRequirement, 2)} 万元<br>含土地、建安、装修设备、规费及建设期利息</small></div>
+      <div><span>04 招商运营资金</span><strong>${fmt(s.leasingEquityFundingRequirement, 2)} 万元</strong><small>资本金口径；筹备非工程费用 ${fmt(preparationCost, 2)} 万元<br>建议总启动资金 ${fmt(s.recommendedStartupCapital, 2)} 万元</small></div>
+      <div><span>05 项目整体收益</span><strong>${s.projectIrr == null ? '不适用' : fmtPct(s.projectIrr)}</strong><small>NPV ${fmt(s.projectNpv, 2)} 万元；回收期 ${s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 2)}年`}<br>稳定NOI ${fmt(s.stableNoi, 2)} 万元/年</small></div>
     </div>
     <div class="confidence-check-grid">${checks.map(item => `<div class="${item.complete ? 'complete' : 'pending'}"><span>${item.complete ? '✓' : '!'}</span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail)}</small></div></div>`).join('')}</div>
     <div class="overview-disclaimer">完备度表示当前测算数据是否充分，不代表项目必然盈利。正式决策仍需补充合同、市场调研、税务意见、工程概算和融资条件。</div>
@@ -5977,6 +5999,9 @@ function renderFundingPlanCard() {
   const result = state.result;
   const s = result?.summary || {};
   const phases = result?.phaseCashFlowSummary || [];
+  const phaseFunding = result?.phaseFundingRequirements || [];
+  const fundingUse = result?.fundingUseBreakdown || [];
+  const fundingSources = result?.fundingSourceBreakdown || [];
   const monthly = result?.monthlyFundingPlan || [];
   const timeline = result?.timeline || {};
   const cashEvents = result?.keyCashEvents || [];
@@ -5985,13 +6010,28 @@ function renderFundingPlanCard() {
   if (!phases.length) return '';
   const breakEvenText = s.cashFlowBreakEvenMonth ? `第 ${s.cashFlowBreakEvenMonth} 个月` : s.cashFlowBreakEvenYear ? `${s.cashFlowBreakEvenYear} 年` : '当前测算期内未转正';
   return `<div class="card funding-plan-card">
-    <h3>项目启动资金与阶段现金流</h3>
+    <h3>项目建设、招商运营与开业资金需求</h3>
     <div class="funding-kpis">
       <div class="highlight"><span>建议启动资金</span><strong>${fmt(s.recommendedStartupCapital, 2)}</strong><em>万元</em></div>
       <div><span>项目资金缺口峰值</span><strong>${fmt(s.peakProjectFundingRequirement, 2)}</strong><em>万元</em></div>
       <div><span>资本金缺口峰值</span><strong>${fmt(s.peakEquityFundingRequirement, 2)}</strong><em>万元</em></div>
       <div><span>累计现金流转正</span><strong>${escapeHtml(breakEvenText)}</strong><em>${s.cashFlowBreakEvenMonth ? '按月资金计划' : '按年现金流'}</em></div>
     </div>
+    <div class="data-table-wrap" style="max-height:none;margin-bottom:16px"><table class="data-table"><thead><tr><th>资金阶段</th><th class="num">项目口径需准备（万元）</th><th class="num">资本金口径需准备（万元）</th><th class="num">阶段净现金流（万元）</th><th>说明</th></tr></thead><tbody>
+      ${phaseFunding.filter(item => ['建设期', '筹备招商期', '开业首年'].includes(item.phase)).map(item => `<tr><td><strong>${escapeHtml(item.phase)}</strong></td><td class="num">${fmt(item.projectFundingNeed, 2)}</td><td class="num">${fmt(item.equityFundingNeed, 2)}</td><td class="num ${item.projectCashFlow < 0 ? 'neg' : 'pos'}">${fmt(item.projectCashFlow, 2)}</td><td>${item.phase === '建设期' ? '土地、工程、装修设备、规费、预备费及建设期利息的阶段性资金需求' : item.phase === '筹备招商期' ? '筹备团队、物业、招商佣金、营销、开办费及业主租金/保证金的阶段性资金需求' : '开业初期运营成本、税费、租金爬坡及安全垫对应的资金需求'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="section-note">项目口径是未考虑融资和商户保证金前的资金需求；资本金口径是扣除贷款提款后的股东资金需求。建议启动资金还包含稳定期运营安全垫 ${fmt(state.current?.model?.project?.startupReserveMonths || 0, 1)} 个月。</div>
+    <details class="advanced" open style="margin-bottom:16px"><summary>分阶段资金用途明细</summary><div class="advanced-body">
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>资金阶段</th><th>用途项目</th><th>说明</th><th class="num">金额（万元）</th></tr></thead><tbody>
+        ${['建设期', '筹备招商期', '开业首年'].map(phase => {
+          const rows = fundingUse.filter(item => item.phase === phase);
+          const total = rows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+          return `${rows.map((item, index) => `<tr><td>${index === 0 ? `<strong>${phase}</strong>` : ''}</td><td>${escapeHtml(item.item)}</td><td>${escapeHtml(item.note || '')}</td><td class="num">${fmt(item.amount, 2)}</td></tr>`).join('')}<tr class="total-row"><td></td><td><strong>${phase}资金用途合计</strong></td><td></td><td class="num"><strong>${fmt(total, 2)}</strong></td></tr>`;
+        }).join('')}
+      </tbody></table></div>
+      <div class="subsection-heading" style="margin-top:16px"><div><strong>资金准备来源</strong><span>区分股权、债务和可临时占用但需退还的商户保证金</span></div></div>
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>资金来源</th><th>说明</th><th class="num">金额（万元）</th></tr></thead><tbody>${fundingSources.map(item => `<tr><td><strong>${escapeHtml(item.item)}</strong></td><td>${escapeHtml(item.note || '')}</td><td class="num">${fmt(item.amount, 2)}</td></tr>`).join('')}</tbody></table></div>
+    </div></details>
     <div class="funding-phase-grid">
       ${phases.map(item => `<div class="funding-phase-item"><strong>${escapeHtml(item.phase)}</strong><span>项目净现金流</span><em>${fmt(item.projectCashFlow, 2)} 万元</em><span>资本金净现金流</span><em>${fmt(item.equityCashFlow, 2)} 万元</em></div>`).join('')}
     </div>
