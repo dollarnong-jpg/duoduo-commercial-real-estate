@@ -1188,3 +1188,6 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
   .share-simple-form { grid-template-columns:1fr; }
   .share-simple-form label { grid-column:auto; flex-direction:column; gap:2px; }
 }
+.project-storage { font-style:normal; font-weight:600; }
+.project-storage.cloud { color:var(--green); }
+.project-storage.local { color:#a44d3f; }

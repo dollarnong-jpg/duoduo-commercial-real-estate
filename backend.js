@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-direct2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-admin3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -4322,7 +4322,7 @@ async function handleApi(path, init) {
       migratedLocalProjects = migration.migrated;
       localProjectMigrationFailures = migration.failed;
       for (const row of migration.rows) {
-        const project = cloudProject(row);
+        const project = { ...cloudProject(row), storage: 'cloud' };
         projects.push(metaOnly ? project : await cloudProjectSummary(project));
       }
     } else {
@@ -4333,7 +4333,7 @@ async function handleApi(path, init) {
         if (!metaOnly) {
           try { summary = (await calculate(project.model, false)).summary; } catch {}
         }
-        projects.push({ ...project, summary });
+        projects.push({ ...project, storage: 'local', summary });
       }
     }
     projects.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));

@@ -118,6 +118,10 @@ def audit_defaults_and_units() -> None:
     require_text(app, "直接发送到伙伴项目工作台", "direct project delivery wording")
     require_text(app, "由 ${escapeHtml(sharedFrom)} 发送，已直接加入工作台", "project sender attribution")
     assert "站内收件箱" not in app
+    require_text(app, "仅本机 · 未进入管理员后台", "project storage status")
+    require_text(app, "发现 ${localOnlyCount} 个仅本机项目", "local-only project warning")
+    require_text(backend, "storage: 'cloud'", "cloud project storage marker")
+    assert "userOK && (!keyword || haystack.includes(keyword))" not in app
     require_text(app, "budget.monthsVersion = 2", "preopening month migration")
     require_text(app, "data-sync-preopening-months", "preopening month sync action")
     require_text(app, "add-office-budget-item", "office budget add action")

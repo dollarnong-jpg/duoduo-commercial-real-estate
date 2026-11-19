@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-direct2';
+import './backend.js?v=20261119-admin3';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.7';
+const APP_VERSION = '1.27.8';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1712,6 +1712,7 @@ function bindShell() {
 function renderProjectList() {
   state.adminActive = false;
   const cards = state.projects.map(project => projectCard(project)).join('');
+  const localOnlyCount = state.projects.filter(project => project.storage === 'local').length;
   const storageCopy = state.user?.username === 'demo'
     ? '演示账号项目只保存在当前浏览器，适合体验功能。' : state.user?.localMode
     ? '离线兼容项目已保存在当前浏览器；系统会在下次云端登录时自动迁移，无需再靠分享码搬运。'
@@ -1727,6 +1728,7 @@ function renderProjectList() {
     </div>
     ${state.projectLoadError ? `<div class="warning-list project-load-warning"><div class="warning-item"><strong>项目数据未完整加载</strong><span>${escapeHtml(state.projectLoadError)}。账号仍保持登录，模块不会因此隐藏。</span><button class="btn btn-secondary btn-sm" id="retry-projects">重新加载项目</button></div></div>` : ''}
     ${state.user?.localMode && state.user?.username !== 'demo' ? `<div class="warning-list"><div class="warning-item"><strong>${state.user.cloudSyncState === 'pending_approval' ? '本机项目等待云端审核' : state.user.cloudSyncState === 'password_mismatch' ? '本机项目等待云端账号验证' : '本机项目待同步到云端'}</strong><span>${escapeHtml(state.user.cloudMessage || '项目已安全保存在当前设备。请保持网络连接，退出后重新登录一次；系统会连接同用户名云端账号，并自动上传全部本机项目。')}</span><button class="btn btn-secondary btn-sm" id="relogin-cloud-sync">重新登录并同步</button></div></div>` : ''}
+    ${localOnlyCount > 0 && !state.user?.localMode ? `<div class="warning-list"><div class="warning-item"><strong>发现 ${localOnlyCount} 个仅本机项目</strong><span>这些项目只保存在当前设备，超级管理员后台无法看到。请点击“上传本机项目”，或导出项目后重新导入云端账号。</span><button class="btn btn-secondary btn-sm" id="relogin-cloud-sync">上传本机项目</button></div></div>` : ''}
     ${state.projects.length ? `<div class="project-grid">${cards}${newProjectCard()}</div>` : state.projectLoadError ? '' : emptyProjectState()}`;
   shell(content, 'projects', false);
   document.getElementById('new-project-btn')?.addEventListener('click', openNewProjectModal);
@@ -2617,6 +2619,7 @@ function projectCard(project) {
   const sharedUsername = shareMeta.sourceUsername || shareMeta.importedFrom || '';
   const sharedName = shareMeta.sourceDisplayName || shareMeta.importedFromName || '';
   const sharedFrom = sharedName && sharedUsername ? `${sharedName} @${sharedUsername}` : (sharedName || (sharedUsername ? `@${sharedUsername}` : ''));
+  const storageLabel = project.storage === 'local' ? '仅本机 · 未进入管理员后台' : project.storage === 'cloud' ? '云端已同步' : '';
   return `<article class="project-card" data-project-id="${project.id}">
     <div class="project-card-status"><span>●</span>${escapeHtml(status)}</div>
     <h3>${escapeHtml(s.projectName || project.model?.project?.name || '未命名项目')}</h3>
@@ -2627,7 +2630,7 @@ function projectCard(project) {
       <div class="project-metric"><strong>${s.projectIrr == null ? '—' : fmtPct(s.projectIrr)}</strong><span>项目IRR</span></div>
       <div class="project-metric"><strong>${s.calculationMode === 'preliminary' ? (s.floorCount || 0) : (s.shopsCount || 0)}</strong><span>${s.calculationMode === 'preliminary' ? '测算楼层' : '铺位数量'}</span></div>
     </div>
-    <div class="project-card-foot"><span>更新于 ${fmtDate(project.updatedAt)}</span><div class="project-card-actions"><button class="btn btn-ghost btn-sm" data-share-project="${project.id}" title="发送或生成分享码">${ICONS.share}<span>发送</span></button><button class="btn btn-ghost btn-sm" data-duplicate-project="${project.id}" title="复制为对比方案">${ICONS.copy}<span>复制</span></button><button class="btn btn-ghost btn-sm" data-delete-project="${project.id}" title="删除项目">${ICONS.trash}</button></div></div>
+    <div class="project-card-foot"><span>更新于 ${fmtDate(project.updatedAt)}${storageLabel ? ` · <em class="project-storage ${project.storage === 'local' ? 'local' : 'cloud'}">${storageLabel}</em>` : ''}</span><div class="project-card-actions"><button class="btn btn-ghost btn-sm" data-share-project="${project.id}" title="发送或生成分享码">${ICONS.share}<span>发送</span></button><button class="btn btn-ghost btn-sm" data-duplicate-project="${project.id}" title="复制为对比方案">${ICONS.copy}<span>复制</span></button><button class="btn btn-ghost btn-sm" data-delete-project="${project.id}" title="删除项目">${ICONS.trash}</button></div></div>
   </article>`;
 }
 
@@ -2655,13 +2658,11 @@ function adminFilteredUsers() {
 
 function adminFilteredProjects() {
   const keyword = state.adminSearch.trim().toLowerCase();
-  const visibleUserIds = new Set(adminFilteredUsers().map(user => user.id));
   return state.adminProjects.filter(project => {
     const owner = adminUserForProject(project) || {};
     const modelProject = project.model?.project || {};
     const haystack = `${project.name || ''} ${modelProject.name || ''} ${modelProject.location || ''} ${owner.username || ''} ${owner.display_name || ''}`.toLowerCase();
-    const userOK = state.adminStatus === 'all' || visibleUserIds.has(project.userId);
-    return userOK && (!keyword || haystack.includes(keyword));
+    return !keyword || haystack.includes(keyword);
   });
 }
 
