@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-admin1';
+import './backend.js?v=20261119-sync1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.2';
+const APP_VERSION = '1.27.3';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1419,10 +1419,10 @@ async function loadProjects() {
     state.projectLoadError = '';
     state.adminLoaded = false;
     if (Number(payload.migratedLocalProjects || 0) > 0) {
-      toast(`已将 ${payload.migratedLocalProjects} 个本机项目迁移到当前云端账号`, 'success');
+      toast(`已将 ${payload.migratedLocalProjects} 个本机项目同步到当前云端账号`, 'success');
     }
     if (Number(payload.localProjectMigrationFailures || 0) > 0) {
-      toast(`有 ${payload.localProjectMigrationFailures} 个本机项目暂未迁移，请稍后点击“重新加载项目”重试`, 'error');
+      toast(`有 ${payload.localProjectMigrationFailures} 个本机项目暂未同步，请稍后点击“重新加载项目”重试`, 'error');
     }
     return payload;
   } catch (error) {
@@ -1448,7 +1448,7 @@ async function syncProjectsAfterFocus() {
     if (!previousCurrent) state.projects = remoteProjects;
     state.projectLoadError = '';
     if (Number(payload.localProjectMigrationFailures || 0) > 0) {
-      toast(`有 ${payload.localProjectMigrationFailures} 个历史项目迁移失败，请稍后重试`, 'error');
+      toast(`有 ${payload.localProjectMigrationFailures} 个历史项目同步失败，请稍后重试`, 'error');
     }
     if (previousCurrent) {
       const latest = remoteProjects.find(project => project.id === previousCurrent.id);
@@ -1516,7 +1516,7 @@ function renderAuth(mode = 'login') {
             ${!isLogin ? '<div class="field"><label>姓名 / 称呼</label><input class="input" name="displayName" autocomplete="name" placeholder="例如：王经理"></div>' : ''}
             <div class="field"><label>用户名</label><input class="input" name="username" autocomplete="username" required placeholder="输入用户名"></div>
             <div class="field"><label>密码 <small>至少6位</small></label><input class="input" type="password" name="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" required placeholder="输入密码"></div>
-            <label class="local-auth-mode"><input type="checkbox" name="localMode" id="local-auth-mode"><span><strong>本机兼容登录</strong><small>云端网络无法连接时使用。账号和项目只保存在当前设备，不跨设备同步；项目可通过分享码或站内收件箱交换。</small></span></label>
+            <label class="local-auth-mode"><input type="checkbox" name="localMode" id="local-auth-mode"><span><strong>离线兼容登录</strong><small>仅在云端暂时无法连接时使用。登录时系统仍会自动尝试连接同用户名云端账号；连接成功后会立即把本机项目迁移到云端，失败时才保留为待同步本机项目。</small></span></label>
             <button class="auth-submit" type="submit">${isLogin ? '进入工作台' : '提交注册申请'}</button>
           </form>
           ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>首次使用可直接体验：账号 <strong>demo</strong>，密码 <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
@@ -1569,7 +1569,13 @@ function renderAuth(mode = 'login') {
       await loadProjects();
       if (!state.token) return;
       renderProjectList();
-      if (payload.cloudPending) toast('云端账号正在审核或暂时无法连接，已自动进入本机兼容工作区；项目可通过分享码迁移', 'success');
+      if (payload.cloudLinked) {
+        toast(payload.cloudRegistered ? '已自动创建并连接云端账号，正在同步本机项目' : '已连接云端账号，正在同步本机项目', 'success');
+      } else if (payload.cloudPending) {
+        toast(payload.cloudMessage || '本机项目已保存，云端账号审核通过后重新登录会自动上传', 'success');
+      } else if (payload.cloudFallback) {
+        toast(payload.cloudMessage || '云端暂时不可用，已进入离线兼容工作区；恢复后重新登录会自动上传', 'success');
+      }
       if (payload.firstAdmin) setTimeout(() => toast('首个正式账号已自动设为超级管理员', 'success'), 120);
     } catch (error) {
       alert.textContent = error.message;
@@ -1606,7 +1612,7 @@ function sidebar(active = 'projects') {
       <div class="sidebar-spacer"></div>
       <div class="user-box">
         <strong>${escapeHtml(state.user?.displayName || state.user?.username || '')}</strong>
-        <span>${isSuperAdmin() ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : state.user?.localMode ? '本机兼容账号 · 当前设备' : '正式账号 · 云端工作空间'}</span>
+        <span>${isSuperAdmin() ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : state.user?.localMode ? '离线兼容账号 · 待云端同步' : '正式账号 · 云端工作空间'}</span>
         <div class="font-size-setting">
           <span class="font-size-setting-title">界面字号</span>
           <div class="font-size-options" role="group" aria-label="界面字号调整">
@@ -1708,7 +1714,7 @@ function renderProjectList() {
   const cards = state.projects.map(project => projectCard(project)).join('');
   const storageCopy = state.user?.username === 'demo'
     ? '演示账号项目只保存在当前浏览器，适合体验功能。' : state.user?.localMode
-    ? '本机兼容账号项目只保存在当前浏览器；云端恢复后可通过分享码或站内收件箱迁移。'
+    ? '离线兼容项目已保存在当前浏览器；系统会在下次云端登录时自动迁移，无需再靠分享码搬运。'
     : '正式账号项目保存在云端，登录后可跨设备继续测算。';
   const content = `
     <div class="page-intro">
@@ -1720,7 +1726,7 @@ function renderProjectList() {
       <div class="project-intro-actions"><button class="btn btn-secondary" id="compare-projects-btn">${ICONS.compare}<span>方案对比</span></button><button class="btn btn-secondary" id="import-share-btn">${ICONS.download}<span>接收项目</span></button><button class="btn btn-primary" id="new-project-btn">${ICONS.plus}<span>新建测算项目</span></button></div>
     </div>
     ${state.projectLoadError ? `<div class="warning-list project-load-warning"><div class="warning-item"><strong>项目数据未完整加载</strong><span>${escapeHtml(state.projectLoadError)}。账号仍保持登录，模块不会因此隐藏。</span><button class="btn btn-secondary btn-sm" id="retry-projects">重新加载项目</button></div></div>` : ''}
-    ${state.user?.localMode && state.user?.username !== 'demo' ? `<div class="warning-list"><div class="warning-item"><strong>当前是本机兼容工作区</strong><span>这里新建或修改的项目只保存在当前设备，不会出现在管理员后台，也不会同步到其他电脑。请退出后使用已审核的正式云端账号登录；同一浏览器中的历史本机项目会在正式账号登录后自动迁移。</span></div></div>` : ''}
+    ${state.user?.localMode && state.user?.username !== 'demo' ? `<div class="warning-list"><div class="warning-item"><strong>${state.user.cloudSyncState === 'pending_approval' ? '本机项目等待云端审核' : state.user.cloudSyncState === 'password_mismatch' ? '本机项目等待云端账号验证' : '本机项目待同步到云端'}</strong><span>${escapeHtml(state.user.cloudMessage || '项目已安全保存在当前设备。请保持网络连接，退出后重新登录一次；系统会连接同用户名云端账号，并自动上传全部本机项目。')}</span><button class="btn btn-secondary btn-sm" id="relogin-cloud-sync">重新登录并同步</button></div></div>` : ''}
     ${state.projects.length ? `<div class="project-grid">${cards}${newProjectCard()}</div>` : state.projectLoadError ? '' : emptyProjectState()}`;
   shell(content, 'projects', false);
   document.getElementById('new-project-btn')?.addEventListener('click', openNewProjectModal);
@@ -1732,6 +1738,10 @@ function renderProjectList() {
     setBusy(true);
     try { await loadProjects(); renderProjectList(); }
     finally { setBusy(false); }
+  });
+  document.getElementById('relogin-cloud-sync')?.addEventListener('click', () => {
+    if (!confirm('将退出当前本机会话。请使用同一账号密码重新登录，系统会连接云端并自动上传本机项目；本机项目不会删除。确定继续吗？')) return;
+    logout();
   });
   document.querySelectorAll('[data-project-id]').forEach(card => card.addEventListener('click', event => {
     if (event.target.closest('[data-delete-project], [data-share-project], [data-duplicate-project]')) return;
@@ -2758,7 +2768,7 @@ function renderAdminDashboard() {
     </section>
     <section class="admin-section">
       <div class="admin-section-head"><div><span class="eyebrow">Project oversight</span><h2>全部用户项目</h2></div></div>
-      <div class="admin-cloud-note"><strong>这里是云端项目总览</strong><span>只显示已同步到云端的正式项目。伙伴如勾选“本机兼容登录”，项目只保存在其当前设备，管理员后台不会出现；请伙伴退出本机兼容模式，用已审核账号重新登录。</span></div>
+      <div class="admin-cloud-note"><strong>这里是云端项目总览</strong><span>只显示已经获得云端用户归属的项目。伙伴在离线兼容模式下创建的项目，会在其重新登录且云端连接成功后自动上传；未完成云端身份验证前，任何管理员都无法远程读取其浏览器里的本机数据。</span></div>
       <div id="admin-project-list">${adminProjectTable()}</div>
     </section>
     <section class="admin-section admin-audit-section">

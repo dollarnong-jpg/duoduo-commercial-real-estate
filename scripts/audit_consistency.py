@@ -95,7 +95,13 @@ def audit_defaults_and_units() -> None:
     assert "<span>删除岗位</span>" not in app
     assert "<span>删除部门</span>" not in app
     require_text(backend, "body.mode === 'local'", "local fallback registration")
-    require_text(app, "本机兼容登录", "local fallback login UI")
+    require_text(app, "离线兼容登录", "local fallback login UI")
+    require_text(backend, "cloudLoginIdentity", "local login cloud upgrade")
+    require_text(backend, "cloudRegisterIdentity", "local login cloud registration fallback")
+    require_text(backend, "cloudLinked: true", "local login cloud link response")
+    require_text(backend, "自动提交云端账号申请", "local account cloud approval queue")
+    require_text(backend, "_duoduoLocalProjectId", "local project migration marker")
+    require_text(app, "重新登录并同步", "local project manual re-login sync action")
     require_text(app, "budget.monthsVersion = 2", "preopening month migration")
     require_text(app, "data-sync-preopening-months", "preopening month sync action")
     require_text(app, "add-office-budget-item", "office budget add action")

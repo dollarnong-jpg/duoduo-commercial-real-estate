@@ -95,7 +95,14 @@ async function ensureLocalAccount(username, password, displayName = '') {
 function localUserResponse(username, user, extra = {}) {
   return {
     token: tokenFor(username),
-    user: { username, displayName: user.displayName || username, role: normalizeUserRole(user.role), status: 'approved', localMode: true },
+    user: {
+      username,
+      displayName: user.displayName || username,
+      role: normalizeUserRole(user.role),
+      status: 'approved',
+      localMode: true,
+      ...extra,
+    },
     ...extra,
   };
 }
@@ -351,12 +358,47 @@ async function migrateLocalProjectsToCloud(user, token, cloudRows) {
   const migrated = readJSON(migrationKey, {});
   let migratedCount = 0;
   let failedCount = 0;
+  const localVersion = project => String(project?.updatedAt || project?.createdAt || '');
   for (const localProject of localRows) {
-    if (!localProject?.id || migrated[localProject.id]) continue;
-    const alreadyImported = cloudRows.some(row => row?.model?._duoduoLocalProjectId === localProject.id);
-    if (alreadyImported) {
-      migrated[localProject.id] = cloudRows.find(row => row?.model?._duoduoLocalProjectId === localProject.id)?.id || 'existing';
-      writeJSON(migrationKey, migrated);
+    if (!localProject?.id) continue;
+    const migrationRecord = migrated[localProject.id];
+    const mappedCloudId = typeof migrationRecord === 'string' ? migrationRecord : migrationRecord?.cloudId;
+    const existingRow = cloudRows.find(row =>
+      row?.id === mappedCloudId || row?.model?._duoduoLocalProjectId === localProject.id
+    );
+    if (existingRow) {
+      const localMs = Date.parse(localVersion(localProject));
+      const cloudMs = Date.parse(String(existingRow.updated_at || ''));
+      const localIsNewer = Number.isFinite(localMs) && (!Number.isFinite(cloudMs) || localMs > cloudMs + 1000);
+      if (!localIsNewer) {
+        migrated[localProject.id] = { cloudId: existingRow.id, localUpdatedAt: localVersion(localProject) };
+        writeJSON(migrationKey, migrated);
+        continue;
+      }
+      try {
+        const model = JSON.parse(JSON.stringify(localProject.model || {}));
+        model._duoduoLocalProjectId = localProject.id;
+        const updated = await cloudJSON(`/rest/v1/projects?id=eq.${encodeURIComponent(existingRow.id)}&select=id,user_id,name,model,created_at,updated_at`, {
+          method: 'PATCH',
+          token,
+          body: {
+            name: String(model.project?.name || existingRow.name || '本机项目').trim() || '本机项目',
+            model,
+            updated_at: new Date().toISOString(),
+          },
+          headers: { Prefer: 'return=representation' },
+        });
+        const row = Array.isArray(updated) ? updated[0] : null;
+        if (!row) throw new Error('云端未返回更新项目');
+        const rowIndex = cloudRows.findIndex(item => item.id === existingRow.id);
+        if (rowIndex >= 0) cloudRows[rowIndex] = row;
+        migrated[localProject.id] = { cloudId: row.id, localUpdatedAt: localVersion(localProject) };
+        writeJSON(migrationKey, migrated);
+        migratedCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        console.warn('本机项目补传失败', localProject.id, error);
+      }
       continue;
     }
     try {
@@ -375,7 +417,7 @@ async function migrateLocalProjectsToCloud(user, token, cloudRows) {
       });
       const row = Array.isArray(created) ? created[0] : null;
       if (!row) throw new Error('云端未返回导入项目');
-      migrated[localProject.id] = row.id;
+      migrated[localProject.id] = { cloudId: row.id, localUpdatedAt: localVersion(localProject) };
       writeJSON(migrationKey, migrated);
       cloudRows.unshift(row);
       migratedCount += 1;
@@ -428,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-admin1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-sync1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3621,6 +3663,64 @@ async function reverseGeocode(lat, lon) {
   }
 }
 
+async function cloudLoginIdentity(username, password, options = {}) {
+  const auth = await cloudJSON('/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    body: { email: await usernameEmail(username), password },
+    token: CLOUD_CONFIG.anonKey,
+    timeoutMs: Number(options.timeoutMs || 12000),
+    retries: Number(options.retries || 1),
+  });
+  if (!auth?.access_token || !auth?.user?.id) throw new Error('登录响应不完整，请稍后重试');
+  const profile = await cloudProfileWithToken(auth.access_token, auth.user.id);
+  if (!profile) throw Object.assign(new Error('账号资料尚未建立，请联系超级管理员'), { status: 403 });
+  return { auth, profile };
+}
+
+async function cloudRegisterIdentity(username, password, displayName) {
+  const health = await cloudRequest('/auth/v1/health', {
+    token: CLOUD_CONFIG.anonKey,
+    timeoutMs: 12000,
+    retries: 1,
+  });
+  if (!health.ok) throw Object.assign(new Error(`云端注册服务暂时不可用（HTTP ${health.status}）`), { status: 503, code: 'CLOUD_UNAVAILABLE' });
+  const auth = await cloudJSON('/auth/v1/signup', {
+    method: 'POST',
+    body: {
+      email: await usernameEmail(username),
+      password,
+      data: { username, display_name: displayName || username },
+    },
+    token: CLOUD_CONFIG.anonKey,
+    timeoutMs: 15000,
+    retries: 1,
+  });
+  if (!auth?.access_token || !auth?.user?.id) return { pending: true, auth: null, profile: null };
+  const profile = await cloudProfileWithToken(auth.access_token, auth.user.id);
+  if (profile?.status === 'approved') return { pending: false, auth, profile };
+  await cloudRequest('/auth/v1/logout', { method: 'POST', token: auth.access_token }).catch(() => {});
+  return { pending: true, auth: null, profile };
+}
+
+async function cloudIdentitySessionPayload(auth, profile, extra = {}) {
+  storeCloudSession(auth, { username: profile.username, displayName: profile.display_name });
+  await cloudJSON('/rest/v1/rpc/record_login', { method: 'POST', body: {}, token: auth.access_token }).catch(() => {});
+  return {
+    token: auth.access_token,
+    user: {
+      id: profile.id,
+      username: profile.username,
+      displayName: profile.display_name || profile.username,
+      role: normalizeUserRole(profile.role),
+      status: profile.status,
+      isCloud: true,
+      localMode: false,
+      ...extra,
+    },
+    ...extra,
+  };
+}
+
 async function handleApi(path, init) {
   const method = String(init?.method || 'GET').toUpperCase();
   const url = new URL(path, location.href);
@@ -3631,12 +3731,89 @@ async function handleApi(path, init) {
     const username = String(body.username || '').trim().toLowerCase();
     const password = String(body.password || '');
     const localMode = body.mode === 'local';
-    if (localMode || username === 'demo') {
+    if (username === 'demo') {
       const users = await ensureUsers();
       const user = users[username];
-      if (!user) return jsonResponse({ error: localMode ? '本机没有该账号，请先切换到“注册”创建本机账号' : '用户名或密码错误' }, 401);
-      if (user.passwordHash !== await sha256(password)) return jsonResponse({ error: '用户名或密码错误' }, 401);
-      return jsonResponse({ token: tokenFor(username), user: { username, displayName: user.displayName || username, role: user.role || 'user', status: 'approved', localMode: true } });
+      if (!user || user.passwordHash !== await sha256(password)) return jsonResponse({ error: '用户名或密码错误' }, 401);
+      return jsonResponse(localUserResponse(username, user));
+    }
+    if (localMode) {
+      const localUser = (await ensureUsers())[username];
+      if (!localUser) return jsonResponse({ error: '本机没有该账号，请先切换到“注册”创建本机账号' }, 401);
+      if (localUser.passwordHash !== await sha256(password)) return jsonResponse({ error: '用户名或密码错误' }, 401);
+      if (!CLOUD_ENABLED) {
+        return jsonResponse(localUserResponse(username, localUser, {
+          cloudSyncState: 'offline',
+          cloudMessage: '本机项目已安全保存。云端服务未配置，暂时不能上传。',
+        }));
+      }
+      try {
+        const { auth, profile } = await cloudLoginIdentity(username, password, { timeoutMs: 12000, retries: 1 });
+        if (profile.status !== 'approved') {
+          if (profile.status === 'rejected' || profile.status === 'disabled') {
+            const message = profile.status === 'disabled' ? '账号已被超级管理员停用' : '账号审核未通过，请联系超级管理员';
+            await cloudRequest('/auth/v1/logout', { method: 'POST', token: auth.access_token }).catch(() => {});
+            return jsonResponse({ error: message, code: 'ACCOUNT_' + profile.status.toUpperCase(), status: profile.status }, 403);
+          }
+          return jsonResponse(localUserResponse(username, localUser, {
+            cloudPending: true,
+            cloudSyncState: 'pending_approval',
+            cloudMessage: '云端账号正在等待超级管理员审核，审核通过后重新登录会自动上传本机项目。',
+          }));
+        }
+        return jsonResponse(await cloudIdentitySessionPayload(auth, profile, {
+          cloudLinked: true,
+          localModeSelected: true,
+        }));
+      } catch (error) {
+        if (isCloudConnectivityError(error)) {
+          return jsonResponse(localUserResponse(username, localUser, {
+            cloudFallback: true,
+            cloudPending: true,
+            cloudSyncState: 'offline',
+            cloudMessage: '当前无法连接云端，本机项目已安全保存；恢复网络后重新登录会自动上传。',
+          }));
+        }
+        if (error.status === 403) {
+          const blocked = error.accountStatus === 'rejected' || error.accountStatus === 'disabled';
+          return jsonResponse(localUserResponse(username, localUser, {
+            cloudPending: true,
+            cloudSyncState: blocked ? 'blocked' : 'pending_approval',
+            cloudMessage: blocked ? error.message : '云端账号正在等待审核，审核通过后重新登录会自动上传本机项目。',
+          }));
+        }
+        if (error.status === 400 || error.status === 401) {
+          try {
+            const registered = await cloudRegisterIdentity(username, password, localUser.displayName || username);
+            if (registered.pending) {
+              return jsonResponse(localUserResponse(username, localUser, {
+                cloudPending: true,
+                cloudSyncState: 'pending_approval',
+                cloudMessage: '已自动提交云端账号申请。超级管理员审核通过后，重新登录会把本机项目自动上传到云端。',
+              }));
+            }
+            return jsonResponse(await cloudIdentitySessionPayload(registered.auth, registered.profile, {
+              cloudLinked: true,
+              localModeSelected: true,
+              cloudRegistered: true,
+            }));
+          } catch (registerError) {
+            const duplicate = registerError.status === 409 || /already|registered|duplicate|unique/i.test(String(registerError.message || ''));
+            return jsonResponse(localUserResponse(username, localUser, {
+              cloudSyncState: duplicate ? 'password_mismatch' : isCloudConnectivityError(registerError) ? 'offline' : 'blocked',
+              cloudMessage: duplicate
+                ? '云端已有同名账号，但本机密码与云端密码不一致。请使用云端密码重新登录，本机项目随后会自动上传。'
+                : isCloudConnectivityError(registerError)
+                  ? '当前无法连接云端，本机项目已安全保存；恢复网络后重新登录会自动上传。'
+                  : `云端账号连接失败：${registerError.message}`,
+            }));
+          }
+        }
+        return jsonResponse(localUserResponse(username, localUser, {
+          cloudSyncState: 'blocked',
+          cloudMessage: `云端账号连接失败：${error.message}`,
+        }));
+      }
     }
     if (!CLOUD_ENABLED) return jsonResponse({ error: '云端账号服务尚未配置' }, 503);
     try {
@@ -3679,7 +3856,12 @@ async function handleApi(path, init) {
         && existingLocal
         && existingLocal.passwordHash === await sha256(password);
       if (canUseExistingLocal) {
-        return jsonResponse(localUserResponse(username, existingLocal, { cloudFallback: true, cloudPending: true }));
+        return jsonResponse(localUserResponse(username, existingLocal, {
+          cloudFallback: true,
+          cloudPending: true,
+          cloudSyncState: 'offline',
+          cloudMessage: '当前无法连接云端，本机项目已安全保存；恢复网络后重新登录会自动上传。',
+        }));
       }
       if (error.status === 403) return jsonResponse({ error: error.message, code: error.code || '', status: error.accountStatus || '' }, 403);
       if (error.code === 'CLOUD_NETWORK' || error.code === 'CLOUD_TIMEOUT') return jsonResponse({ error: error.message, code: error.code }, 503);
@@ -3696,12 +3878,73 @@ async function handleApi(path, init) {
     if (password.length < 6) return jsonResponse({ error: '密码至少6个字符' }, 400);
     if (body.mode === 'local') {
       const existing = (await ensureUsers())[username];
-      if (existing) {
-        if (existing.passwordHash !== await sha256(password)) return jsonResponse({ error: '该用户名已在当前设备注册，请使用原密码登录' }, 409);
-        return jsonResponse(localUserResponse(username, existing));
+      if (existing && existing.passwordHash !== await sha256(password)) {
+        return jsonResponse({ error: '该用户名已在当前设备注册，请使用原密码登录' }, 409);
       }
-      const result = await ensureLocalAccount(username, password, displayName);
-      return jsonResponse(localUserResponse(username, result.user));
+      const result = existing
+        ? { user: existing, created: false }
+        : await ensureLocalAccount(username, password, displayName);
+      if (!CLOUD_ENABLED) {
+        return jsonResponse(localUserResponse(username, result.user, {
+          cloudSyncState: 'offline',
+          cloudMessage: '本机账号已创建。云端服务未配置，项目会先保存在当前设备。',
+        }));
+      }
+      try {
+        const registered = await cloudRegisterIdentity(username, password, displayName || result.user.displayName || username);
+        if (registered.pending) {
+          return jsonResponse(localUserResponse(username, result.user, {
+            cloudPending: true,
+            cloudSyncState: 'pending_approval',
+            cloudMessage: '本机账号已创建，并已自动提交云端账号申请。超级管理员审核通过后，重新登录会自动上传本机项目。',
+          }));
+        }
+        return jsonResponse(await cloudIdentitySessionPayload(registered.auth, registered.profile, {
+          cloudLinked: true,
+          localModeSelected: true,
+          cloudRegistered: true,
+          firstAdmin: normalizeUserRole(registered.profile.role) === 'super_admin',
+        }));
+      } catch (error) {
+        if (isCloudConnectivityError(error)) {
+          return jsonResponse(localUserResponse(username, result.user, {
+            cloudFallback: true,
+            cloudPending: true,
+            cloudSyncState: 'offline',
+            cloudMessage: '本机账号已创建。当前无法连接云端，项目会先保存在当前设备；恢复网络后重新登录会自动上传。',
+          }));
+        }
+        if (error.status === 400 || error.status === 401 || error.status === 409 || /already|registered|duplicate|unique/i.test(String(error.message || ''))) {
+          try {
+            const { auth, profile } = await cloudLoginIdentity(username, password, { timeoutMs: 12000, retries: 1 });
+            if (profile.status === 'approved') {
+              return jsonResponse(await cloudIdentitySessionPayload(auth, profile, {
+                cloudLinked: true,
+                localModeSelected: true,
+              }));
+            }
+            if (profile.status === 'rejected' || profile.status === 'disabled') {
+              const message = profile.status === 'disabled' ? '账号已被超级管理员停用' : '账号审核未通过，请联系超级管理员';
+              await cloudRequest('/auth/v1/logout', { method: 'POST', token: auth.access_token }).catch(() => {});
+              return jsonResponse({ error: message, code: 'ACCOUNT_' + profile.status.toUpperCase(), status: profile.status }, 403);
+            }
+            return jsonResponse(localUserResponse(username, result.user, {
+              cloudPending: true,
+              cloudSyncState: 'pending_approval',
+              cloudMessage: '云端账号正在等待超级管理员审核，审核通过后重新登录会自动上传本机项目。',
+            }));
+          } catch (loginError) {
+            return jsonResponse(localUserResponse(username, result.user, {
+              cloudSyncState: 'password_mismatch',
+              cloudMessage: '云端已有同名账号，但本机密码与云端密码不一致。请使用云端密码重新登录，本机项目随后会自动上传。',
+            }));
+          }
+        }
+        return jsonResponse(localUserResponse(username, result.user, {
+          cloudSyncState: 'blocked',
+          cloudMessage: `云端账号连接失败：${error.message}`,
+        }));
+      }
     }
     if (!CLOUD_ENABLED) return jsonResponse({ error: '云端账号服务尚未配置' }, 503);
     try {
@@ -4161,7 +4404,9 @@ window.fetch = async function duoduoFetch(input, init = {}) {
       '/api/geocode', '/api/reverse-geocode', '/api/market-analysis',
       '/api/admin/users', '/api/admin/audit', '/api/share/users',
     ];
-    const fastRequest = fastEndpoints.some(path => url.pathname.endsWith(path)) || /\/api\/admin\/users\/[0-9a-f-]+\/status$/i.test(url.pathname);
+    const method = String(init?.method || 'GET').toUpperCase();
+    const projectMetaRequest = method === 'GET' && url.pathname.endsWith('/api/projects') && url.searchParams.get('meta') === '1';
+    const fastRequest = projectMetaRequest || fastEndpoints.some(path => url.pathname.endsWith(path)) || /\/api\/admin\/users\/[0-9a-f-]+\/status$/i.test(url.pathname);
     const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|preopening-budget|market-comps)$/.test(url.pathname) || /\/export\/(xlsx|shop-audit|preopening-budget-detail|operating-budget-detail)$/.test(url.pathname);
     const needsPptx = /\/export\/pptx$/.test(url.pathname);
     if (needsXlsx) await ensureXlsxLibrary();
