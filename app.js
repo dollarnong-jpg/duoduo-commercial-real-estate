@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-rentsync1';
+import './backend.js?v=20261119-decimals2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.18';
+const APP_VERSION = '1.28.19';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1177,10 +1177,10 @@ function setPath(obj, path, value) {
   node[parts.at(-1)] = value;
 }
 
-function fmt(value, digits = 0) {
+function fmt(value, digits = 2) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   const precision = Math.min(2, Math.max(0, Number(digits) || 0));
-  return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: precision });
+  return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: precision, maximumFractionDigits: precision });
 }
 
 function fmtArea(value) {
@@ -1190,7 +1190,7 @@ function fmtArea(value) {
 function fmtPct(value, digits = 2) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   const precision = Math.min(2, Math.max(0, Number(digits) || 0));
-  return `${Number((Number(value) * 100).toFixed(precision)).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: precision })}%`;
+  return `${Number((Number(value) * 100).toFixed(precision)).toLocaleString('zh-CN', { minimumFractionDigits: precision, maximumFractionDigits: precision })}%`;
 }
 
 function roundDisplayValue(value, digits = 2) {
@@ -2889,7 +2889,7 @@ async function openAdminProject(projectId) {
     const owner = adminUserForProject(project) || {};
     const investmentRows = (result.investmentBreakdown || []).map(item => `<div><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)} 万元</strong></div>`).join('');
     const costRows = (result.operatingCostBreakdown || []).map(item => `<div><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)} 万元/年</strong></div>`).join('');
-    const organizationRows = (result.organizationBreakdown || []).map(item => `<div><span>${escapeHtml(item.name)} · ${fmt(item.headcount)}人</span><strong>${fmt(item.annualCost)} 万元/年</strong></div>`).join('');
+    const organizationRows = (result.organizationBreakdown || []).map(item => `<div><span>${escapeHtml(item.name)} · ${fmt(item.headcount, 0)}人</span><strong>${fmt(item.annualCost)} 万元/年</strong></div>`).join('');
     modalRegion.innerHTML = `
       <div class="modal-backdrop" id="admin-project-backdrop">
         <div class="modal admin-project-modal">
@@ -2910,7 +2910,7 @@ async function openAdminProject(projectId) {
               <span>总建筑面积：${fmtArea(summary.grossFloorArea)} ㎡</span>
               <span>可租赁面积：${fmtArea(summary.leasableArea)} ㎡</span>
               <span>铺位 / 楼层：${summary.shopsCount || 0} 个 / ${summary.floorCount || 0} 层</span>
-              <span>静态回收期：${summary.staticPayback == null ? '—' : fmt(summary.staticPayback, 1) + ' 年'}</span>
+              <span>静态回收期：${summary.staticPayback == null ? '—' : fmt(summary.staticPayback, 2) + ' 年'}</span>
             </div>
             <div class="admin-analysis-grid">
               <div class="admin-data-panel"><h3>投资构成</h3>${investmentRows || '<p>暂无数据</p>'}</div>
@@ -3408,9 +3408,9 @@ function renderProjectTimelineSection() {
       ${textField('运营结束日期', 'project.operationEndDate', { type: 'date', help: '用于退出、保证金退还和全周期现金流的截止日期' })}
     </div>
     <div class="stats-row project-timeline-stats">
-      <div class="mini-stat"><strong>${constructionMonths ? fmt(constructionMonths) : '按日期计算'}</strong><span>建设期 / 月</span></div>
-      <div class="mini-stat"><strong>${leasingMonths ? fmt(leasingMonths) : '按日期计算'}</strong><span>筹备招商期 / 月</span></div>
-      <div class="mini-stat"><strong>${operationMonths ? fmt(operationMonths) : '按日期计算'}</strong><span>运营期 / 月</span></div>
+      <div class="mini-stat"><strong>${constructionMonths ? fmt(constructionMonths, 0) : '按日期计算'}</strong><span>建设期 / 月</span></div>
+      <div class="mini-stat"><strong>${leasingMonths ? fmt(leasingMonths, 0) : '按日期计算'}</strong><span>筹备招商期 / 月</span></div>
+      <div class="mini-stat"><strong>${operationMonths ? fmt(operationMonths, 0) : '按日期计算'}</strong><span>运营期 / 月</span></div>
       <div class="mini-stat"><strong>${escapeHtml(project.openingDate || '待填写')}</strong><span>计划开业</span></div>
     </div>
   </div>`;
@@ -3461,7 +3461,7 @@ function renderProjectStep() {
       <div class="section-title">当前基础结果</div>
       <div class="section-note">当前测算基准：${preliminary ? '楼层均价' : '一铺一价'}。${preliminary ? '面积和租金取楼层汇总。' : `面积取 ${m.shops?.length || 0} 个铺位明细，项目总建筑面积按商铺建筑面积 ×（1 + 公区系数）推算；如已填写项目总建筑面积，则优先使用手填值。`}</div>
       <div class="stats-row project-result-stats">
-        <div class="mini-stat"><strong>${fmt(preliminary ? floors.filter(floor => Number(floor.buildingArea) > 0).length : (m.shops?.length || 0))}</strong><span>${preliminary ? '已填写楼层' : '已导入铺位'}</span></div>
+        <div class="mini-stat"><strong>${fmt(preliminary ? floors.filter(floor => Number(floor.buildingArea) > 0).length : (m.shops?.length || 0), 0)}</strong><span>${preliminary ? '已填写楼层' : '已导入铺位'}</span></div>
         <div class="mini-stat"><strong>${fmtArea((preliminary ? floorBuilding : shopBuilding) || m.project.gbaOverride || 0)}</strong><span>${preliminary ? '楼层建筑面积合计/㎡' : '商铺建筑面积合计/㎡'}</span></div>
         <div class="mini-stat"><strong>${fmtArea(projectGba)}</strong><span>项目总建筑面积（含公区）/㎡</span></div>
         <div class="mini-stat"><strong>${fmtArea(preliminary ? floorLease : shopLease)}</strong><span>可租赁面积合计/㎡</span></div>
@@ -3554,7 +3554,7 @@ function renderCostStep() {
       <div class="mini-stat"><strong id="cost-estimate">${(state.preview || state.result) ? fmt((state.preview || state.result).summary.totalInvestment) : '保存后计算'}</strong><span>预计项目总投资/万元</span></div>
       <div class="mini-stat"><strong>${fmtArea(projectGrossBuildingArea(state.current.model))}</strong><span>计算用总建筑面积/㎡</span></div>
       <div class="mini-stat"><strong>${fmtPct(state.current.model.project.contingencyRate)}</strong><span>预备费费率</span></div>
-      <div class="mini-stat"><strong>${fmt(state.current.model.shops.length)}</strong><span>铺位数量</span></div>
+      <div class="mini-stat"><strong>${fmt(state.current.model.shops.length, 0)}</strong><span>铺位数量</span></div>
     </div>`;
 }
 
@@ -3747,7 +3747,7 @@ function renderFloorEditor(m, mode, preview) {
             <td class="num"><input class="table-input highlight-input" data-path="floors.${i}.avgRent" data-type="number" type="number" step="any" value="${floor.avgRent ?? 0}"></td>
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
             <td class="num" data-floor-monthly="${escapeHtml(buildingFloorKey(floor))}">${fmt(monthly)}</td>
-            <td class="num" data-floor-actual="${escapeHtml(buildingFloorKey(floor))}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 1) : '待计算'}</td>
+            <td class="num" data-floor-actual="${escapeHtml(buildingFloorKey(floor))}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 2) : '待计算'}</td>
             <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
           </tr>`;
         }).join('') : `<tr><td colspan="${concessionEnabled ? 12 : 10}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
@@ -3765,7 +3765,7 @@ function renderPreliminarySummary(shops, floors, totalBuilding, totalLease, tota
   return `<div class="form-section">
     <div class="section-title">初步测算说明</div>
     <div class="preliminary-grid">
-      <div class="insight-card"><span>楼层数量</span><strong>${fmt(floors.length)}</strong><em>已纳入测算</em></div>
+      <div class="insight-card"><span>楼层数量</span><strong>${fmt(floors.length, 0)}</strong><em>已纳入测算</em></div>
       <div class="insight-card"><span>建筑面积</span><strong>${fmtArea(totalBuilding)}</strong><em>㎡</em></div>
       <div class="insight-card"><span>可租赁面积</span><strong>${fmtArea(totalLease)}</strong><em>㎡</em></div>
       <div class="insight-card"><span>满租月收益</span><strong>${fmt(totalMonthly)}</strong><em>元/月</em></div>
@@ -3800,10 +3800,10 @@ function renderFloorRentSummary(preview) {
             const property = Number(floor.monthlyPropertyFee || 0);
             const commercial = Number(floor.monthlyCommercialManagementFee || 0);
             const central = Number(floor.monthlyCentralAcFee || 0);
-            return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || '—')}</td><td><span class="tag">${basisLabel}</span></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmtArea(floor.rentArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(monthly)}</td><td class="num">${fmt(property)}</td><td class="num">${fmt(commercial)}</td><td class="num">${fmt(central)}</td><td class="num"><strong>${fmt(property + commercial + central)}</strong></td><td class="num">${fmt(monthly * 12 / 10000, 1)}</td><td class="num">${fmtPct(total.monthly ? monthly / total.monthly : 0)}</td></tr>`;
+            return `<tr><td><strong>${escapeHtml(floor.building || '1号楼')}</strong></td><td>${escapeHtml(floor.name || '—')}</td><td><span class="tag">${basisLabel}</span></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmtArea(floor.rentArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 2)}</td><td class="num">${fmt(monthly)}</td><td class="num">${fmt(property)}</td><td class="num">${fmt(commercial)}</td><td class="num">${fmt(central)}</td><td class="num"><strong>${fmt(property + commercial + central)}</strong></td><td class="num">${fmt(monthly * 12 / 10000, 2)}</td><td class="num">${fmtPct(total.monthly ? monthly / total.monthly : 0)}</td></tr>`;
           }).join('')}
         </tbody>
-        <tfoot><tr><td colspan="3"><strong>楼层/铺位明细合计（不含公区）</strong></td><td class="num"><strong>${fmtArea(total.buildingArea)}</strong></td><td class="num"><strong>${fmtArea(total.leasableArea)}</strong></td><td class="num"><strong>${fmtArea(total.rentArea)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 1)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.property)}</strong></td><td class="num"><strong>${fmt(total.commercial)}</strong></td><td class="num"><strong>${fmt(total.central)}</strong></td><td class="num"><strong>${fmt(total.property + total.commercial + total.central)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 1)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
+        <tfoot><tr><td colspan="3"><strong>楼层/铺位明细合计（不含公区）</strong></td><td class="num"><strong>${fmtArea(total.buildingArea)}</strong></td><td class="num"><strong>${fmtArea(total.leasableArea)}</strong></td><td class="num"><strong>${fmtArea(total.rentArea)}</strong></td><td class="num"><strong>${fmt(total.rentArea ? total.monthly / total.rentArea : 0, 2)}</strong></td><td class="num"><strong>${fmt(total.monthly)}</strong></td><td class="num"><strong>${fmt(total.property)}</strong></td><td class="num"><strong>${fmt(total.commercial)}</strong></td><td class="num"><strong>${fmt(total.central)}</strong></td><td class="num"><strong>${fmt(total.property + total.commercial + total.central)}</strong></td><td class="num"><strong>${fmt(total.monthly * 12 / 10000, 2)}</strong></td><td class="num"><strong>100.0%</strong></td></tr></tfoot>
       </table>
     </div>
   </div>`;
@@ -3885,8 +3885,8 @@ function renderDetailedPricing(m, shops, preview) {
       <div><span>项目租金均价</span><strong data-live="avgRent">${fmt(revenueImpliedAverageRent, 2)}</strong><em>月租金总收入 ÷ 计租总面积</em></div>
       <div><span>满租月租金收入</span><strong data-live="monthlyRent">${fmt(monthlyRentPreview)}</strong><em>元/月 · 全部铺位满租口径</em></div>
       <div><span>满租季度租金收入</span><strong data-live="quarterlyRent">${fmt(quarterlyRentPreview)}</strong><em>元/季度 · 月租金 × 3</em></div>
-      <div><span>满租年租金收入</span><strong data-live="annualRent">${fmt(annualFullRentPreview / 10000, 1)}</strong><em>万元/年 · 月租金 × 12</em></div>
-      <div><span>运营周期实收租金</span><strong data-live="operationRent">${fmt(operationPeriodRentRevenue, 1)}</strong><em>万元 · 应收 ${fmt(operationPeriodScheduledRent, 1)}，未收 ${fmt(operationPeriodUncollectedRent, 1)}；收租率 ${fmtPct(rentCollectionRate)}</em></div>
+      <div><span>满租年租金收入</span><strong data-live="annualRent">${fmt(annualFullRentPreview / 10000, 2)}</strong><em>万元/年 · 月租金 × 12</em></div>
+      <div><span>运营周期实收租金</span><strong data-live="operationRent">${fmt(operationPeriodRentRevenue, 2)}</strong><em>万元 · 应收 ${fmt(operationPeriodScheduledRent, 2)}，未收 ${fmt(operationPeriodUncollectedRent, 2)}；收租率 ${fmtPct(rentCollectionRate)}</em></div>
     </div>
     <div class="rent-average-check">
       <div class="rent-average-formula"><strong>项目租金均价核算</strong><span>项目租金均价 = 满租月租金总收入 ÷ 商户计租面积合计</span><code data-live="rentFormula">${fmt(monthlyRentPreview, 2)} 元/月 ÷ ${fmtArea(totalRentArea)}㎡ = ${fmt(revenueImpliedAverageRent, 2)} 元/㎡/月</code></div>
@@ -3894,7 +3894,7 @@ function renderDetailedPricing(m, shops, preview) {
         <div><span>导入单价面积加权值</span><strong>${fmt(weightedOverrideRent, 2)}</strong><em>仅作导入单价核对</em></div>
         <div><span>简单算术均价</span><strong>${fmt(simpleOverrideRent, 2)}</strong><em>铺位单价直接平均，仅作参考</em></div>
         <div><span>商户计租面积合计</span><strong>${fmtArea(totalRentArea)}</strong><em>㎡ · 当前计租口径</em></div>
-        <div><span>稳定年实收租金</span><strong>${fmt(stableAnnualRentRevenue, 1)}</strong><em>万元 · 第${stableYear}年，已考虑招商率、递增和收租率</em></div>
+        <div><span>稳定年实收租金</span><strong>${fmt(stableAnnualRentRevenue, 2)}</strong><em>万元 · 第${stableYear}年，已考虑招商率、递增和收租率</em></div>
       </div>
       <div class="floor-average-check">
         <div class="section-title">分楼层租金均价核算</div>
@@ -3919,7 +3919,7 @@ function renderDetailedPricing(m, shops, preview) {
         ${(m.categories || []).map((cat, i) => {
           const benchmark = benchmarkForCategory(m, cat.name);
           const commissionPerSqm = Number(cat.salesPerSqmMonth || 0) * Number(cat.concessionRate || 0);
-          return `<tr><td><strong>${escapeHtml(cat.name)}</strong><small class="benchmark-row-source">${escapeHtml(benchmark.context.preset.shortLabel)}基准</small></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.rentRange[0], 0)}–${fmt(benchmark.rentRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.salesRange[0], 0)}–${fmt(benchmark.salesRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"><small class="range-hint">常规 ${fmtPct(benchmark.concessionRange[0], 0)}–${fmtPct(benchmark.concessionRange[1], 0)}</small></td><td class="num"><strong>${fmt(commissionPerSqm, 1)}</strong><small class="range-hint">${cat.revenueMode === 'rent' ? '纯租金不参与' : '测算参考'}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td></tr>`;
+          return `<tr><td><strong>${escapeHtml(cat.name)}</strong><small class="benchmark-row-source">${escapeHtml(benchmark.context.preset.shortLabel)}基准</small></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.rentRange[0], 0)}–${fmt(benchmark.rentRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.salesRange[0], 0)}–${fmt(benchmark.salesRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"><small class="range-hint">常规 ${fmtPct(benchmark.concessionRange[0], 0)}–${fmtPct(benchmark.concessionRange[1], 0)}</small></td><td class="num"><strong>${fmt(commissionPerSqm, 2)}</strong><small class="range-hint">${cat.revenueMode === 'rent' ? '纯租金不参与' : '测算参考'}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td></tr>`;
         }).join('')}
       </tbody></table></div>
     </div>
@@ -4156,7 +4156,7 @@ function renderOrganizationSection(model, preview) {
           const deptPayroll = organizationPayrollTotals(positions.length ? positions : [dept], organization);
           return `<tr class="org-department-row">
             <td><span class="org-level-tag">部门</span><input class="table-input text-left" data-path="organization.departments.${i}.name" data-type="text" value="${escapeHtml(dept.name || '')}"></td>
-            <td class="num"><strong>${fmt(deptHeadcount)}</strong></td>
+            <td class="num"><strong>${fmt(deptHeadcount, 0)}</strong></td>
             <td class="num"><strong>${fmt(deptAvgSalary, 2)}</strong></td>
             <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="grossPayroll">${fmt(deptPayroll.grossPayroll, 2)}</strong></td>
             <td class="num"><strong data-payroll-dept="${i}" data-payroll-field="employeeSocialInsurance">${fmt(deptPayroll.employeeSocial, 2)}</strong></td>
@@ -4184,7 +4184,7 @@ function renderOrganizationSection(model, preview) {
       </tbody></table>
     </div>
     <div class="payroll-summary-grid">
-      <div><span>合计编制</span><strong data-payroll-summary="stableHeadcount">${fmt(headcount)}</strong><em>人</em></div>
+      <div><span>合计编制</span><strong data-payroll-summary="stableHeadcount">${fmt(headcount, 0)}</strong><em>人</em></div>
       <div><span>税前年度工资</span><strong data-payroll-summary="annualGrossPayroll">${fmt(payrollTotals.grossPayroll, 2)}</strong><em>万元</em></div>
       <div><span>个人社保公积金</span><strong data-payroll-summary="annualEmployeeSocialInsurance">${fmt(payrollTotals.employeeSocial, 2)}</strong><em>万元</em></div>
       <div><span>个人所得税</span><strong data-payroll-summary="annualIndividualIncomeTax">${fmt(payrollTotals.individualIncomeTax, 2)}</strong><em>万元</em></div>
@@ -4211,7 +4211,7 @@ function renderPropertyServiceSection(model, preview) {
     </div>
     ${staffMode === 'area' ? `<div class="warning-item">当前“人员成本来源”选择了按面积快速估算，物业服务模式仅作为方案参考，不进入本次人员成本核算。切换为按组织架构薪资倒推后生效。</div>` : ''}
     <div class="property-service-items">${analysis.records.map(record => `<div class="property-service-item" data-service-key="${record.key}">
-      <div class="property-service-item-head"><div><strong>${escapeHtml(record.name)}</strong><div class="service-position-tags">${record.positions.length ? record.positions.map(name => `<span class="tag">${escapeHtml(name)}</span>`).join('') : '<span class="service-empty">未匹配到岗位</span>'}</div></div><span class="service-headcount" data-service-headcount>${fmt(record.headcount)}人</span></div>
+      <div class="property-service-item-head"><div><strong>${escapeHtml(record.name)}</strong><div class="service-position-tags">${record.positions.length ? record.positions.map(name => `<span class="tag">${escapeHtml(name)}</span>`).join('') : '<span class="service-empty">未匹配到岗位</span>'}</div></div><span class="service-headcount" data-service-headcount>${fmt(record.headcount, 0)}人</span></div>
       <div class="property-service-form-grid">
         <label class="service-control"><span>服务模式</span><select class="table-select service-mode-select" data-path="propertyService.${record.key}.mode" data-type="text">${PROPERTY_SERVICE_MODE_OPTIONS.map(option => `<option value="${option.value}" ${record.mode === option.value ? 'selected' : ''}>${option.label}</option>`).join('')}</select></label>
         <label class="service-control"><span>非驻场折算比例</span><div class="input-affix compact"><input class="table-input" data-path="propertyService.${record.key}.nonResidentFactor" data-type="number" data-scale="0.01" type="number" step="1" value="${roundDisplayValue(record.nonResidentFactor * 100, 2)}"><span>%</span></div></label>
@@ -4456,7 +4456,7 @@ function renderMarketingBudgetSection(model, preview) {
     <div class="section-note">营销费用全部按年度金额录入。常规年度分为营销推广、商业美陈、媒体宣传、会员营销四大类；开业第1年另加导视导览和开业美陈。自动权重由金额反算，不参与费用分配。</div>
     ${legacyNotice}
     ${formulaPanel('年度营销金额与自动权重公式', '年度常规营销预算 = 营销推广 + 商业美陈 + 媒体宣传 + 会员营销\n开业首年营销预算 = 年度常规营销预算 + 导视导览 + 开业美陈\n自动权重 = 单项金额 ÷ 对应预算合计\n单项金额 = 用户录入金额（系统不按权重反推）', ['SUM','IF'], '只录入金额，不录入权重。系统用自动权重检查预算结构；开业首年专项只计入运营第1年。')}
-    <div class="subsection-heading"><div><strong>常规年度营销预算</strong><span>每年持续发生</span></div><div class="amount-total-chip">合计 <strong data-marketing-annual-total>${fmt(annualTotal, 1)}</strong> 万元/年</div></div>
+    <div class="subsection-heading"><div><strong>常规年度营销预算</strong><span>每年持续发生</span></div><div class="amount-total-chip">合计 <strong data-marketing-annual-total>${fmt(annualTotal, 2)}</strong> 万元/年</div></div>
     <div class="data-table-wrap budget-table-wrap">
       <table class="data-table budget-table" data-marketing-annual-table><thead><tr><th>营销类别</th><th class="num">年度金额（万元）</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>
         ${annualItems.map((item, i) => `<tr>
@@ -4467,7 +4467,7 @@ function renderMarketingBudgetSection(model, preview) {
         </tr>`).join('') || '<tr><td colspan="4" class="empty-table-cell">尚未设置常规营销类别</td></tr>'}
       </tbody></table>
     </div>
-    <div class="subsection-heading opening-marketing-heading"><div><strong>开业首年专项营销</strong><span>仅在运营第1年计入</span></div><div class="amount-total-chip">首年合计 <strong data-marketing-first-total>${fmt(firstYearTotal, 1)}</strong> 万元</div></div>
+    <div class="subsection-heading opening-marketing-heading"><div><strong>开业首年专项营销</strong><span>仅在运营第1年计入</span></div><div class="amount-total-chip">首年合计 <strong data-marketing-first-total>${fmt(firstYearTotal, 2)}</strong> 万元</div></div>
     <div class="data-table-wrap budget-table-wrap">
       <table class="data-table budget-table" data-marketing-opening-table><thead><tr><th>开业专项</th><th class="num">首年金额（万元）</th><th class="num">占首年营销总预算</th><th>费用内容</th></tr></thead><tbody>
         ${openingItems.map((item, i) => `<tr>
@@ -4478,7 +4478,7 @@ function renderMarketingBudgetSection(model, preview) {
         </tr>`).join('') || '<tr><td colspan="4" class="empty-table-cell">尚未设置开业首年专项</td></tr>'}
       </tbody></table>
     </div>
-    <div class="budget-toolbar"><span>稳定年营销预算 <strong data-marketing-annual-total>${fmt(annualTotal, 1)}</strong> 万元/年</span><span>开业首年营销预算 <strong data-marketing-first-total>${fmt(firstYearTotal, 1)}</strong> 万元</span></div>
+    <div class="budget-toolbar"><span>稳定年营销预算 <strong data-marketing-annual-total>${fmt(annualTotal, 2)}</strong> 万元/年</span><span>开业首年营销预算 <strong data-marketing-first-total>${fmt(firstYearTotal, 2)}</strong> 万元</span></div>
   </div>`;
 }
 
@@ -4512,7 +4512,7 @@ function renderMaintenanceBudgetSection(model, preview) {
         }).join('')}
       </tbody></table>
     </div>
-    <div class="budget-toolbar"><span>维保费用合计</span><span><strong data-share-total>${fmt(total, 1)}</strong> 万元/年</span></div>
+    <div class="budget-toolbar"><span>维保费用合计</span><span><strong data-share-total>${fmt(total, 2)}</strong> 万元/年</span></div>
   </div>`;
 }
 
@@ -4554,11 +4554,11 @@ function renderOperatingCostSummary(preview) {
           const overrideValue = override ? Number(getPath(preview?.model || state.current.model, override.path) || 0) : 0;
           const inputValue = override ? (overrideValue > 0 ? overrideValue : value) : null;
           const source = override?.source || sourceLabels[item.name] || '系统自动核算';
-          return `<tr data-op-row="${escapeHtml(item.name)}"><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${override ? `<input class="table-input" data-op-amount data-path="${override.path}" data-type="number" type="number" step="0.1" value="${Number(inputValue || 0)}">` : `<strong data-op-amount>${fmt(value, 1)}</strong>`}</td><td class="num"><span class="auto-weight" data-op-weight>${fmtPct(total > 0 ? value / total : 0)}</span></td><td><span class="amount-source">${escapeHtml(source)}</span></td></tr>`;
+          return `<tr data-op-row="${escapeHtml(item.name)}"><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${override ? `<input class="table-input" data-op-amount data-path="${override.path}" data-type="number" type="number" step="0.1" value="${Number(inputValue || 0)}">` : `<strong data-op-amount>${fmt(value, 2)}</strong>`}</td><td class="num"><span class="auto-weight" data-op-weight>${fmtPct(total > 0 ? value / total : 0)}</span></td><td><span class="amount-source">${escapeHtml(source)}</span></td></tr>`;
         }).join('')}
       </tbody></table>
     </div>
-    <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong data-operating-total>${fmt(total, 1)} 万元/年</strong></div>
+    <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong data-operating-total>${fmt(total, 2)} 万元/年</strong></div>
   </div>`;
 }
 
@@ -4603,8 +4603,8 @@ function refreshMarketingWeights() {
     const weight = row.querySelector('[data-auto-weight]');
     if (weight) weight.textContent = fmtPct(firstYearTotal > 0 ? openingValues[index] / firstYearTotal : 0);
   });
-  document.querySelectorAll('[data-marketing-annual-total]').forEach(el => { el.textContent = fmt(annualTotal, 1); });
-  document.querySelectorAll('[data-marketing-first-total]').forEach(el => { el.textContent = fmt(firstYearTotal, 1); });
+  document.querySelectorAll('[data-marketing-annual-total]').forEach(el => { el.textContent = fmt(annualTotal, 2); });
+  document.querySelectorAll('[data-marketing-first-total]').forEach(el => { el.textContent = fmt(firstYearTotal, 2); });
 }
 
 function updateOperatingPreviewDom(result) {
@@ -4622,13 +4622,13 @@ function updateOperatingPreviewDom(result) {
     const amountEl = row.querySelector('[data-op-amount]');
     if (amountEl && amountEl !== document.activeElement) {
       if (amountEl.tagName === 'INPUT') amountEl.value = roundDisplayValue(value, 2);
-      else amountEl.textContent = fmt(value, 1);
+      else amountEl.textContent = fmt(value, 2);
     }
     const weightEl = row.querySelector('[data-op-weight]');
     if (weightEl) weightEl.textContent = fmtPct(total > 0 ? value / total : 0);
   });
   const totalEl = document.querySelector('[data-operating-total]');
-  if (totalEl) totalEl.textContent = `${fmt(total, 1)} 万元/年`;
+  if (totalEl) totalEl.textContent = `${fmt(total, 2)} 万元/年`;
 }
 
 function updatePreOpeningPreviewDom(result) {
@@ -4656,7 +4656,7 @@ function updatePreOpeningPreviewDom(result) {
   });
   detailed.propertyServices.forEach((item, index) => {
     const headcountEl = document.querySelector(`[data-preop-property-headcount="${index}"]`);
-    if (headcountEl) headcountEl.textContent = fmt(item.headcount);
+    if (headcountEl) headcountEl.textContent = fmt(item.headcount, 0);
     const salaryEl = document.querySelector(`[data-preop-property-salary="${index}"]`);
     if (salaryEl) salaryEl.textContent = fmt(item.salary, 2);
   });
@@ -4759,7 +4759,7 @@ function updatePropertyServicePreviewDom(result) {
       el.textContent = fmt(record[el.dataset.serviceField] ?? 0, 2);
     });
     const headcount = row.querySelector('[data-service-headcount]');
-    if (headcount) headcount.textContent = `${fmt(record.headcount)}人`;
+    if (headcount) headcount.textContent = `${fmt(record.headcount, 0)}人`;
     const note = row.querySelector('[data-service-cost-note]');
     if (note) note.textContent = record.mode === 'self' ? '含自营招聘培训' : record.mode === 'non_resident' ? '已按非驻场折算' : '含第三方管理费';
   });
@@ -5091,15 +5091,15 @@ function operatingReferenceCategoryText(reference, category) {
   const values = reference.values;
   const sum = object => Object.values(object || {}).reduce((total, value) => total + Number(value || 0), 0);
   return {
-    property: `${fmt(values.propertyOpsCost, 1)} 元/㎡/月`,
-    energy: `${fmt(values.energyCost, 1)} 元/㎡/月`,
-    staff: `${fmt(reference.headcount)} 人 · 参考人均月薪 ${fmt(values.salaries.length ? values.salaries.reduce((sum, item) => sum + item.avgMonthlySalary, 0) / values.salaries.length : 0)} 元`,
-    office: `${fmt(sum(values.officeBudget), 1)} 万元/年`,
-    leasing: `${fmt(sum(values.leasingBudget), 1)} 万元/年`,
-    marketing: `金额录入 · 初始参考约营业收入的 ${fmtPct(values.marketingRate, 1)}`,
-    maintenance: `${fmt(sum(values.maintenanceBudget), 1)} 万元/年 + 资产原值 ${fmtPct(values.repairRate, 1)}`,
+    property: `${fmt(values.propertyOpsCost, 2)} 元/㎡/月`,
+    energy: `${fmt(values.energyCost, 2)} 元/㎡/月`,
+    staff: `${fmt(reference.headcount, 0)} 人 · 参考人均月薪 ${fmt(values.salaries.length ? values.salaries.reduce((sum, item) => sum + item.avgMonthlySalary, 0) / values.salaries.length : 0)} 元`,
+    office: `${fmt(sum(values.officeBudget), 2)} 万元/年`,
+    leasing: `${fmt(sum(values.leasingBudget), 2)} 万元/年`,
+    marketing: `金额录入 · 初始参考约营业收入的 ${fmtPct(values.marketingRate, 2)}`,
+    maintenance: `${fmt(sum(values.maintenanceBudget), 2)} 万元/年 + 资产原值 ${fmtPct(values.repairRate, 2)}`,
     insurance: `资产原值的 ${fmtPct(values.insuranceRate, 2)}`,
-    other: `营业收入的 ${fmtPct(values.otherOpexRate, 1)}`,
+    other: `营业收入的 ${fmtPct(values.otherOpexRate, 2)}`,
   }[category] || '—';
 }
 
@@ -5644,7 +5644,7 @@ function updatePreOpeningDerivedDom() {
     const el = document.querySelector(`[data-preop-property-total="${index}"]`);
     if (el) el.textContent = fmt(item.total, 2);
     const headcountEl = document.querySelector(`[data-preop-property-headcount="${index}"]`);
-    if (headcountEl) headcountEl.textContent = fmt(item.headcount);
+    if (headcountEl) headcountEl.textContent = fmt(item.headcount, 0);
     const salaryEl = document.querySelector(`[data-preop-property-salary="${index}"]`);
     if (salaryEl) salaryEl.textContent = fmt(item.salary, 2);
     (item.positions || []).forEach((position, positionIndex) => {
@@ -5754,7 +5754,7 @@ function renderPreOpeningDetailedSections(analysis) {
         ${analysis.propertyServices.map((item, index) => `<tr class="property-service-main-row">
           <td><strong>${escapeHtml(item.name)}</strong></td>
           <td><select class="table-select" data-path="preOpeningBudget.property.services.${index}.mode" data-type="text">${modes.map(mode => `<option value="${mode.value}" ${item.mode === mode.value ? 'selected' : ''}>${mode.label}</option>`).join('')}</select></td>
-          <td class="num"><strong>${item.positions.length}个岗位 / <span data-preop-property-headcount="${index}">${fmt(item.headcount)}</span>人</strong></td>
+          <td class="num"><strong>${item.positions.length}个岗位 / <span data-preop-property-headcount="${index}">${fmt(item.headcount, 0)}</span>人</strong></td>
           <td class="num"><strong data-preop-property-salary="${index}">${fmt(item.salary, 2)}</strong></td>
           <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.months" data-type="number" type="number" step="0.5" value="${Number(item.months || 0)}"></td>
           <td class="num"><input class="table-input" data-path="preOpeningBudget.property.services.${index}.nonResidentFactor" data-type="number" data-scale="0.01" type="number" step="1" value="${(Number(item.nonResidentFactor || 0) * 100).toFixed(1)}"></td>
@@ -6080,8 +6080,8 @@ function renderMarketStep() {
     ${state.marketBusy ? `<div class="market-loading"><div class="spinner"></div><strong>正在汇总周边商业大数据</strong><span>分析购物中心、百货、超市、餐饮、影院、健身和酒店等POI</span></div>` : state.marketError && !analysis ? `<div class="market-error-card"><div class="import-icon">${ICONS.info}</div><div><strong>周边市场数据暂时获取失败</strong><span>${escapeHtml(state.marketError)}</span></div><button class="btn btn-primary" id="retry-market-analysis">${ICONS.spark}<span>重新获取</span></button></div>` : analysis ? `
       ${renderMarketDetection(analysis)}
       <div class="dashboard-grid market-dashboard">
-        <div class="card"><h3>周边商业业态结构</h3><div class="market-bars">${(analysis.categories || []).map(item => { const max = Math.max(...(analysis.categories || []).map(x => x.count), 1); return `<div class="market-bar-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(4, item.count / max * 100)}%"></i></div><strong>${fmt(item.count)}</strong></div>`; }).join('') || '<div class="empty-inline">暂无分类数据</div>'}</div><div class="market-source-note">${escapeHtml(analysis.summary || '')}</div></div>
-        <div class="card"><h3>主要竞品</h3><div class="competitor-list">${(analysis.competitors || []).slice(0, 8).map((item, index) => `<div class="competitor-item"><span class="competitor-index">${index + 1}</span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category)} · ${item.distanceKm == null ? '距离未知' : `${fmt(item.distanceKm, 1)}km`}</small></div></div>`).join('') || '<div class="empty-inline">未识别到具名直接竞品</div>'}</div></div>
+        <div class="card"><h3>周边商业业态结构</h3><div class="market-bars">${(analysis.categories || []).map(item => { const max = Math.max(...(analysis.categories || []).map(x => x.count), 1); return `<div class="market-bar-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(4, item.count / max * 100)}%"></i></div><strong>${fmt(item.count, 0)}</strong></div>`; }).join('') || '<div class="empty-inline">暂无分类数据</div>'}</div><div class="market-source-note">${escapeHtml(analysis.summary || '')}</div></div>
+        <div class="card"><h3>主要竞品</h3><div class="competitor-list">${(analysis.competitors || []).slice(0, 8).map((item, index) => `<div class="competitor-item"><span class="competitor-index">${index + 1}</span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category)} · ${item.distanceKm == null ? '距离未知' : `${fmt(item.distanceKm, 2)}km`}</small></div></div>`).join('') || '<div class="empty-inline">未识别到具名直接竞品</div>'}</div></div>
       </div>` : `<div class="callout">${ICONS.info}<div>已完成项目定位。点击下方按钮，系统将自动分析${market.radiusKm || 3}公里范围内的商业供给和竞品分布。</div></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px"><span class="live-hint">公开地图POI仅用于供给密度初筛</span><button class="btn btn-primary" id="run-market-analysis">${ICONS.spark}<span>开始市场分析</span></button></div>`}
     <div class="panel-subsection">
       <div class="section-title">竞品租金大数据</div>
@@ -6101,21 +6101,21 @@ function renderMarketDetection(analysis) {
   const score = Number(analysis.detectionScore || 0);
   const rings = analysis.ringStats || [];
   return `<div class="market-detection-stats">
-    <div><span>${termLabel('商业POI', '商业类POI')}</span><strong>${fmt(analysis.commercialCount ?? analysis.totalPoi)}</strong></div>
-    <div><span>${termLabel('直接竞品')}</span><strong>${fmt(analysis.competitorCount)}</strong></div>
-    <div><span>${termLabel('商业锚点')}</span><strong>${fmt(analysis.anchorCount || 0)}</strong></div>
-    <div><span>${termLabel('交通配套')}</span><strong>${fmt(analysis.transportCount || 0)}</strong></div>
-    <div><span>${termLabel('居住社区')}</span><strong>${fmt(analysis.residentialCount || 0)}</strong></div>
+    <div><span>${termLabel('商业POI', '商业类POI')}</span><strong>${fmt(analysis.commercialCount ?? analysis.totalPoi, 0)}</strong></div>
+    <div><span>${termLabel('直接竞品')}</span><strong>${fmt(analysis.competitorCount, 0)}</strong></div>
+    <div><span>${termLabel('商业锚点')}</span><strong>${fmt(analysis.anchorCount || 0, 0)}</strong></div>
+    <div><span>${termLabel('交通配套')}</span><strong>${fmt(analysis.transportCount || 0, 0)}</strong></div>
+    <div><span>${termLabel('居住社区')}</span><strong>${fmt(analysis.residentialCount || 0, 0)}</strong></div>
     <div><span>${termLabel('商业侦测评分', '侦测评分')}</span><strong>${fmt(score)}/100</strong></div>
   </div>
   <div class="market-detection-grid">
     <div class="card market-score-card">
       <div class="market-score-ring" style="--score:${score * 3.6}deg"><div><strong>${fmt(score)}</strong><span>/100</span></div></div>
-      <div class="market-score-copy"><span class="market-grade">${termLabel('商圈等级', analysis.marketGrade || '待评估')}</span><h3>${termLabel('商业侦测评分', '商业侦测评分')}</h3><p>${escapeHtml(analysis.competitionLevel || '')}</p><small>${termLabel('商业密度', '商业密度')} ${fmt(analysis.densityPerKm2, 1)} 个/平方公里</small></div>
+      <div class="market-score-copy"><span class="market-grade">${termLabel('商圈等级', analysis.marketGrade || '待评估')}</span><h3>${termLabel('商业侦测评分', '商业侦测评分')}</h3><p>${escapeHtml(analysis.competitionLevel || '')}</p><small>${termLabel('商业密度', '商业密度')} ${fmt(analysis.densityPerKm2, 2)} 个/平方公里</small></div>
     </div>
     <div class="card market-ring-card">
       <h3>分圈层商业侦测</h3>
-      <div class="market-ring-grid">${rings.map(ring => `<div class="market-ring-item"><strong>${escapeHtml(ring.label)}</strong><span>${fmt(ring.commercialCount)} 商业POI</span><span>${fmt(ring.competitorCount)} 直接竞品</span><span>${fmt(ring.transportCount)} 交通配套</span><span>${fmt(ring.residentialCount)} 居住片区</span></div>`).join('')}</div>
+      <div class="market-ring-grid">${rings.map(ring => `<div class="market-ring-item"><strong>${escapeHtml(ring.label)}</strong><span>${fmt(ring.commercialCount, 0)} 商业POI</span><span>${fmt(ring.competitorCount, 0)} 直接竞品</span><span>${fmt(ring.transportCount, 0)} 交通配套</span><span>${fmt(ring.residentialCount, 0)} 居住片区</span></div>`).join('')}</div>
     </div>
     <div class="card market-insight-card">
       <h3>侦测结论</h3>
@@ -6130,14 +6130,14 @@ function renderMarketRentSummary(summary, comps) {
   return `
     <div class="market-rent-head"><h3>竞品租金分析</h3><span class="rent-position">${escapeHtml(summary.position)}</span></div>
     <div class="stats-row market-rent-stats">
-      <div class="mini-stat"><strong>${fmt(summary.count)}</strong><span>有效样本</span></div>
-      <div class="mini-stat"><strong>${fmt(summary.weightedAverageRent, 1)}</strong><span>市场加权均价/元/㎡/月</span></div>
-      <div class="mini-stat"><strong>${fmt(summary.medianRent, 1)}</strong><span>市场中位数/元/㎡/月</span></div>
-      <div class="mini-stat"><strong>${fmt(summary.projectAverageRent, 1)}</strong><span>项目平均租金/元/㎡/月</span></div>
+      <div class="mini-stat"><strong>${fmt(summary.count, 0)}</strong><span>有效样本</span></div>
+      <div class="mini-stat"><strong>${fmt(summary.weightedAverageRent, 2)}</strong><span>市场加权均价/元/㎡/月</span></div>
+      <div class="mini-stat"><strong>${fmt(summary.medianRent, 2)}</strong><span>市场中位数/元/㎡/月</span></div>
+      <div class="mini-stat"><strong>${fmt(summary.projectAverageRent, 2)}</strong><span>项目平均租金/元/㎡/月</span></div>
     </div>
-    <div class="market-rent-band"><span>市场25分位 <strong>${fmt(summary.p25Rent, 1)}</strong></span><i></i><span>中位数 <strong>${fmt(summary.medianRent, 1)}</strong></span><i></i><span>75分位 <strong>${fmt(summary.p75Rent, 1)}</strong></span></div>
+    <div class="market-rent-band"><span>市场25分位 <strong>${fmt(summary.p25Rent, 2)}</strong></span><i></i><span>中位数 <strong>${fmt(summary.medianRent, 2)}</strong></span><i></i><span>75分位 <strong>${fmt(summary.p75Rent, 2)}</strong></span></div>
     <div class="dashboard-grid market-rent-grid">
-      <div class="card"><h3>分业态市场租金</h3><div class="data-table-wrap" style="max-height:280px"><table class="data-table"><thead><tr><th>业态</th><th class="num">样本数</th><th class="num">加权均价</th><th class="num">中位数</th></tr></thead><tbody>${summary.byCategory.map(row => `<tr><td>${escapeHtml(row.name)}</td><td class="num">${row.count}</td><td class="num">${fmt(row.averageRent, 1)}</td><td class="num">${fmt(row.medianRent, 1)}</td></tr>`).join('')}</tbody></table></div></div>
+      <div class="card"><h3>分业态市场租金</h3><div class="data-table-wrap" style="max-height:280px"><table class="data-table"><thead><tr><th>业态</th><th class="num">样本数</th><th class="num">加权均价</th><th class="num">中位数</th></tr></thead><tbody>${summary.byCategory.map(row => `<tr><td>${escapeHtml(row.name)}</td><td class="num">${row.count}</td><td class="num">${fmt(row.averageRent, 2)}</td><td class="num">${fmt(row.medianRent, 2)}</td></tr>`).join('')}</tbody></table></div></div>
       <div class="card"><h3>租金研判</h3><ul class="analysis-list">${summary.conclusions.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul><button class="btn btn-ghost btn-sm" id="clear-market-comps">清空竞品样本</button></div>
     </div>`;
 }
@@ -6260,12 +6260,12 @@ function buildKpiNarratives(result = state.result) {
   const targetRentForYield = upliftPct(Math.max(0, targetNoiForYield - stableNoi)) == null ? null : averageRent * (1 + upliftPct(Math.max(0, targetNoiForYield - stableNoi)));
   const market = result?.marketSummary || {};
   const marketText = Number(market.count || 0) > 0
-    ? `市场样本加权均价 ${fmt(market.weightedAverageRent, 1)} 元/㎡/月，25分位 ${fmt(market.p25Rent, 1)}、75分位 ${fmt(market.p75Rent, 1)}。`
+    ? `市场样本加权均价 ${fmt(market.weightedAverageRent, 2)} 元/㎡/月，25分位 ${fmt(market.p25Rent, 2)}、75分位 ${fmt(market.p75Rent, 2)}。`
     : '尚未导入有效竞品租金样本，暂时无法判断当前租金相对市场高低。';
   const rentTargetAdvice = (target, label) => {
     if (target == null) return '需先补齐计租面积和稳定年租金收入，才能反算目标租金。';
     const tooHigh = Number(market.p75Rent || 0) > 0 && target > Number(market.p75Rent);
-    return `按其他成本不变估算，${label}需把平均租金从 ${fmt(averageRent, 1)} 提高到约 ${fmt(target, 1)} 元/㎡/月${tooHigh ? '；目标已高于市场75分位，不能只靠提租，必须同时压降投资或运营成本' : ''}。`;
+    return `按其他成本不变估算，${label}需把平均租金从 ${fmt(averageRent, 2)} 提高到约 ${fmt(target, 2)} 元/㎡/月${tooHigh ? '；目标已高于市场75分位，不能只靠提租，必须同时压降投资或运营成本' : ''}。`;
   };
   const totalMonthly = Number(s.totalMonthlyRent || 0);
   const cumulativeEnd = Number(annual.at(-1)?.cumulativeProjectCashFlow ?? s.projectNetCashProfit ?? 0);
@@ -6286,7 +6286,7 @@ function buildKpiNarratives(result = state.result) {
       : `当前NOI回报率 ${fmtPct(s.noiYield)}；目标折现率 ${fmtPct(discount)}。${s.noiYield < discount ? rentTargetAdvice(targetRentForYield, '仅靠租金达到目标NOI回报率') : '已达到当前目标回报率。'}`,
     payback: s.staticPayback == null
       ? `未回收原因：${years}年运营期末累计项目现金流仍为 ${fmt(cumulativeEnd, 2)} 万元，尚未由负转正。${rentTargetAdvice(targetRentForNpv, '仅靠提租改善回收')} 同时建议测试总投资下降5%—10%和运营成本下降5%的方案。`
-      : `静态回收期约 ${fmt(s.staticPayback, 1)} 年，按项目口径现金流计算。`,
+      : `静态回收期约 ${fmt(s.staticPayback, 2)} 年，按项目口径现金流计算。`,
     marketText,
     targetRentForNpv,
     targetRentForNoi,
@@ -6306,7 +6306,7 @@ function renderResultsStep() {
   const kpiClass = value => value > 0 ? 'positive' : value < 0 ? 'negative' : '';
   return `
     <div class="result-hero">
-      <div class="result-hero-top"><div><span class="result-status">${escapeHtml(s.status)}</span><h2>${escapeHtml(s.projectName || '商业项目')}</h2><p>${escapeHtml(s.location || '')}｜总建筑面积 ${fmtArea(s.grossFloorArea)}㎡｜可租赁面积 ${fmtArea(s.leasableArea)}㎡｜${s.calculationMode === 'preliminary' ? `${fmt(s.floorCount)}个楼层` : `${fmt(s.shopsCount)}个铺位`}</p></div><div style="color:#c9dad5;font-size:var(--fs-10);text-align:right">${s.calculationMode === 'preliminary' ? '初步楼层均价测算' : '一铺一价精细测算'}<br>${new Date().toLocaleDateString('zh-CN')}</div></div>
+      <div class="result-hero-top"><div><span class="result-status">${escapeHtml(s.status)}</span><h2>${escapeHtml(s.projectName || '商业项目')}</h2><p>${escapeHtml(s.location || '')}｜总建筑面积 ${fmtArea(s.grossFloorArea)}㎡｜可租赁面积 ${fmtArea(s.leasableArea)}㎡｜${s.calculationMode === 'preliminary' ? `${fmt(s.floorCount, 0)}个楼层` : `${fmt(s.shopsCount, 0)}个铺位`}</p></div><div style="color:#c9dad5;font-size:var(--fs-10);text-align:right">${s.calculationMode === 'preliminary' ? '初步楼层均价测算' : '一铺一价精细测算'}<br>${new Date().toLocaleDateString('zh-CN')}</div></div>
     </div>
     <div class="kpi-grid">
       ${kpiCard('项目总投资', fmt(s.totalInvestment), '万元', '', kpiNotes.totalInvestment)}
@@ -6314,7 +6314,7 @@ function renderResultsStep() {
       ${kpiCard('项目NPV', fmt(s.projectNpv), '万元', kpiClass(s.projectNpv), kpiNotes.npv)}
       ${kpiCard('稳定期NOI', fmt(s.stableNoi), '万元/年', kpiClass(s.stableNoi), kpiNotes.noi)}
       ${kpiCard('NOI回报率', fmtPct(s.noiYield), 'NOI / 总投资', kpiClass(s.noiYield), kpiNotes.noiYield)}
-      ${kpiCard('静态回收期', s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 1)}年`, '按项目现金流', '', kpiNotes.payback)}
+      ${kpiCard('静态回收期', s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 2)}年`, '按项目现金流', '', kpiNotes.payback)}
     </div>
     ${renderLeasingStageResultCard()}
     ${renderInvestmentOverviewCard()}
@@ -6322,7 +6322,7 @@ function renderResultsStep() {
     ${renderOperatingLedgerCard()}
     ${renderNaturalYearReportCard()}
     <div class="dashboard-grid">
-      <div class="card"><h3>${fmt(state.result?.annual?.length || state.current?.model?.project?.operationYears || 20)}年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
+      <div class="card"><h3>${fmt(state.result?.annual?.length || state.current?.model?.project?.operationYears || 20, 0)}年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
       <div class="card"><h3>投资构成</h3><div class="donut-wrap"><canvas id="cost-donut"></canvas><div class="donut-legend">${state.result.investmentBreakdown.map((item, i) => `<div class="donut-item"><i style="background:${donutColor(i)}"></i><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)}万</strong></div>`).join('')}</div></div></div>
     </div>
     ${renderInvestmentDetailCard()}
@@ -6586,13 +6586,13 @@ function analyzeInvestmentOutcome(result = state.result) {
     .sort((a, b) => b.value - a.value);
   const reasons = [];
   if (revenue > 0 && noi < 0) {
-    reasons.push(`稳定年第${stableYear}年收入 ${fmt(revenue, 2)} 万元，但运营成本与经营税费合计 ${fmt(costBurden, 2)} 万元，形成经营缺口 ${fmt(Math.abs(noi), 2)} 万元。每 100 元收入对应约 ${fmt(costRatio * 100, 1)} 元成本费用及税费。`);
+    reasons.push(`稳定年第${stableYear}年收入 ${fmt(revenue, 2)} 万元，但运营成本与经营税费合计 ${fmt(costBurden, 2)} 万元，形成经营缺口 ${fmt(Math.abs(noi), 2)} 万元。每 100 元收入对应约 ${fmt(costRatio * 100, 2)} 元成本费用及税费。`);
   } else if (revenue <= 0) {
     reasons.push('稳定年营业收入为 0，无法覆盖运营成本和投资回收。请先核对出租率、计租面积、租金单价及联营扣点收入。');
   }
   if (drivers.length) {
     const top = drivers.slice(0, 3);
-    reasons.push(`稳定年最大成本项为：${top.map(item => `${item.name} ${fmt(item.value, 2)} 万元`).join('、')}。这些项目合计占稳定年收入约 ${fmt(top.reduce((sum, item) => sum + item.share, 0) * 100, 1)}%。`);
+    reasons.push(`稳定年最大成本项为：${top.map(item => `${item.name} ${fmt(item.value, 2)} 万元`).join('、')}。这些项目合计占稳定年收入约 ${fmt(top.reduce((sum, item) => sum + item.share, 0) * 100, 2)}%。`);
   }
   if (feeIncome > 0 || feeServiceCost > 0) {
     reasons.push(`物业管理费、商业管理费和空调费收入合计 ${fmt(feeIncome, 2)} 万元/年；对应物业工程、保安、保洁及公共能耗成本约 ${fmt(feeServiceCost, 2)} 万元/年，${feeBalance >= 0 ? `预计结余 ${fmt(feeBalance, 2)} 万元/年` : `预计缺口 ${fmt(Math.abs(feeBalance), 2)} 万元/年`}。`);
@@ -6746,7 +6746,7 @@ function renderFundingPlanCard() {
     <div class="data-table-wrap" style="max-height:none;margin-bottom:16px"><table class="data-table"><thead><tr><th>资金阶段</th><th class="num">项目口径需准备（万元）</th><th class="num">资本金口径需准备（万元）</th><th class="num">阶段净现金流（万元）</th><th>说明</th></tr></thead><tbody>
       ${phaseFunding.filter(item => ['建设期', '筹备招商期', '开业首年'].includes(item.phase)).map(item => `<tr><td><strong>${escapeHtml(item.phase)}</strong></td><td class="num">${fmt(item.projectFundingNeed, 2)}</td><td class="num">${fmt(item.equityFundingNeed, 2)}</td><td class="num ${item.projectCashFlow < 0 ? 'neg' : 'pos'}">${fmt(item.projectCashFlow, 2)}</td><td>${item.phase === '建设期' ? '土地、工程、装修设备、规费、预备费及建设期利息的阶段性资金需求' : item.phase === '筹备招商期' ? '筹备团队、物业、招商佣金、营销、开办费及业主租金/保证金的阶段性资金需求' : '开业初期运营成本、税费、租金爬坡及安全垫对应的资金需求'}</td></tr>`).join('')}
     </tbody></table></div>
-    <div class="section-note">项目口径是未考虑融资和商户保证金前的资金需求；资本金口径是扣除贷款提款后的股东资金需求。建议启动资金还包含稳定期运营安全垫 ${fmt(state.current?.model?.project?.startupReserveMonths || 0, 1)} 个月。</div>
+    <div class="section-note">项目口径是未考虑融资和商户保证金前的资金需求；资本金口径是扣除贷款提款后的股东资金需求。建议启动资金还包含稳定期运营安全垫 ${fmt(state.current?.model?.project?.startupReserveMonths || 0, 2)} 个月。</div>
     <details class="advanced" open style="margin-bottom:16px"><summary>分阶段资金用途明细</summary><div class="advanced-body">
       <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>资金阶段</th><th>用途项目</th><th>说明</th><th class="num">金额（万元）</th></tr></thead><tbody>
         ${['建设期', '筹备招商期', '开业首年'].map(phase => {
@@ -6797,7 +6797,7 @@ function renderPhaseCostCard() {
     </div>
     <div class="phase-cost-grid">
       <div><div class="subsection-heading"><div><strong>筹备期投入构成</strong><span>土地、工程、装修设备、规费、招商开办及流动资金</span></div></div><table class="data-table"><thead><tr><th>成本项目</th><th class="num">金额</th><th class="num">占比</th></tr></thead><tbody>${tableRows(preparation, prepTotal)}</tbody></table></div>
-      <div><div class="subsection-heading"><div><strong>运营期成本构成</strong><span>${fmt(state.result?.annual?.length || 0)}个运营年度累计</span></div></div><table class="data-table"><thead><tr><th>成本项目</th><th class="num">金额</th><th class="num">占比</th></tr></thead><tbody>${tableRows(operation, operationTotal)}</tbody></table></div>
+      <div><div class="subsection-heading"><div><strong>运营期成本构成</strong><span>${fmt(state.result?.annual?.length || 0, 0)}个运营年度累计</span></div></div><table class="data-table"><thead><tr><th>成本项目</th><th class="num">金额</th><th class="num">占比</th></tr></thead><tbody>${tableRows(operation, operationTotal)}</tbody></table></div>
     </div>
     <span class="table-subnote">筹备期投入包含项目总投资及铺底流动资金；运营期成本为各运营年度经营成本与税费合计，不含融资利息。包含融资的现金成本为 ${fmt(s.fullCycleCashCostIncludingFinancing, 2)} 万元。</span>
   </div>`;
@@ -6819,19 +6819,19 @@ function renderOperatingResultCards() {
     <div class="card operating-cost-card">
       <h3>年度运营成本构成</h3>
       <div class="operating-result-kpis">
-        <div><span>编制人数</span><strong>${fmt(s.stableHeadcount)} 人</strong></div>
+        <div><span>编制人数</span><strong>${fmt(s.stableHeadcount, 0)} 人</strong></div>
         <div><span>企业人员成本</span><strong>${fmt(s.stableStaffCost, 2)} 万/年</strong></div>
-        <div><span>办公行政</span><strong>${fmt(s.stableOfficeCost, 1)} 万/年</strong></div>
-        <div><span>招商费用</span><strong>${fmt(s.stableLeasingCost, 1)} 万/年</strong></div>
-        <div><span>物业管理费收入</span><strong>${fmt(s.stablePropertyManagementIncome, 1)} 万/年</strong>${reasonLine('propertyManagementRevenue', s.stablePropertyManagementIncome)}</div>
-        <div><span>商业管理费收入</span><strong>${fmt(s.stableCommercialManagementIncome, 1)} 万/年</strong>${reasonLine('commercialManagementRevenue', s.stableCommercialManagementIncome)}</div>
-        <div><span>中央空调使用费收入</span><strong>${fmt(s.stableCentralAcIncome, 1)} 万/年</strong>${reasonLine('centralAcRevenue', s.stableCentralAcIncome)}</div>
-        <div><span>三项经营性费用收入合计</span><strong>${fmt(s.stablePropertyFeeIncome, 1)} 万/年</strong>${reasonLine('propertyRevenue', s.stablePropertyFeeIncome)}</div>
-        <div><span>营销费用</span><strong>${fmt(s.stableMarketingCost, 1)} 万/年</strong></div>
-        <div><span>维保费用</span><strong>${fmt(s.stableMaintenanceCost, 1)} 万/年</strong></div>
+        <div><span>办公行政</span><strong>${fmt(s.stableOfficeCost, 2)} 万/年</strong></div>
+        <div><span>招商费用</span><strong>${fmt(s.stableLeasingCost, 2)} 万/年</strong></div>
+        <div><span>物业管理费收入</span><strong>${fmt(s.stablePropertyManagementIncome, 2)} 万/年</strong>${reasonLine('propertyManagementRevenue', s.stablePropertyManagementIncome)}</div>
+        <div><span>商业管理费收入</span><strong>${fmt(s.stableCommercialManagementIncome, 2)} 万/年</strong>${reasonLine('commercialManagementRevenue', s.stableCommercialManagementIncome)}</div>
+        <div><span>中央空调使用费收入</span><strong>${fmt(s.stableCentralAcIncome, 2)} 万/年</strong>${reasonLine('centralAcRevenue', s.stableCentralAcIncome)}</div>
+        <div><span>三项经营性费用收入合计</span><strong>${fmt(s.stablePropertyFeeIncome, 2)} 万/年</strong>${reasonLine('propertyRevenue', s.stablePropertyFeeIncome)}</div>
+        <div><span>营销费用</span><strong>${fmt(s.stableMarketingCost, 2)} 万/年</strong></div>
+        <div><span>维保费用</span><strong>${fmt(s.stableMaintenanceCost, 2)} 万/年</strong></div>
       </div>
-      <div class="operating-cost-bars">${breakdown.map((item, i) => `<div class="operating-cost-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(2, Number(item.value || 0) / Math.max(total, 1) * 100)}%;background:${donutColor(i)}"></i></div><strong>${fmt(item.value, 1)}</strong><em>${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</em></div>`).join('')}</div>
-      <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong>${fmt(total, 1)} 万元/年</strong></div>
+      <div class="operating-cost-bars">${breakdown.map((item, i) => `<div class="operating-cost-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(2, Number(item.value || 0) / Math.max(total, 1) * 100)}%;background:${donutColor(i)}"></i></div><strong>${fmt(item.value, 2)}</strong><em>${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</em></div>`).join('')}</div>
+      <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong>${fmt(total, 2)} 万元/年</strong></div>
     </div>
     <div class="card payroll-result-card">
       <h3>组织架构与人员成本</h3>
@@ -6843,7 +6843,7 @@ function renderOperatingResultCards() {
         <div><span>单位社保公积金</span><strong>${fmt(s.annualEmployerSocialInsurance, 2)}</strong><em>万元</em></div>
         <div><span>实际人员及服务成本</span><strong>${fmt(s.stableStaffCost, 2)}</strong><em>万元</em></div>
       </div>
-      <div class="data-table-wrap" style="max-height:520px"><table class="data-table payroll-result-table"><thead><tr><th>部门</th><th>岗位构成</th><th class="num">人数</th><th class="num">税前工资</th><th class="num">个人社保</th><th class="num">个税</th><th class="num">实发</th><th class="num">单位社保</th><th class="num">企业成本</th></tr></thead><tbody>${organization.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${(item.positions || []).map(position => `<span class="tag">${escapeHtml(position.name)}${Number(position.headcount) > 1 ? ` × ${fmt(position.headcount)}` : ''}</span>`).join(' ')}</td><td class="num">${fmt(item.headcount)}</td><td class="num">${fmt(item.grossPayroll, 2)}万</td><td class="num">${fmt(item.employeeSocialInsurance, 2)}万</td><td class="num">${fmt(item.individualIncomeTax, 2)}万</td><td class="num">${fmt(item.netSalary, 2)}万</td><td class="num">${fmt(item.employerSocialInsurance, 2)}万</td><td class="num"><strong>${fmt(item.annualCost, 2)}万</strong></td></tr>`).join('')}</tbody></table></div>
+      <div class="data-table-wrap" style="max-height:520px"><table class="data-table payroll-result-table"><thead><tr><th>部门</th><th>岗位构成</th><th class="num">人数</th><th class="num">税前工资</th><th class="num">个人社保</th><th class="num">个税</th><th class="num">实发</th><th class="num">单位社保</th><th class="num">企业成本</th></tr></thead><tbody>${organization.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${(item.positions || []).map(position => `<span class="tag">${escapeHtml(position.name)}${Number(position.headcount) > 1 ? ` × ${fmt(position.headcount, 0)}` : ''}</span>`).join(' ')}</td><td class="num">${fmt(item.headcount, 0)}</td><td class="num">${fmt(item.grossPayroll, 2)}万</td><td class="num">${fmt(item.employeeSocialInsurance, 2)}万</td><td class="num">${fmt(item.individualIncomeTax, 2)}万</td><td class="num">${fmt(item.netSalary, 2)}万</td><td class="num">${fmt(item.employerSocialInsurance, 2)}万</td><td class="num"><strong>${fmt(item.annualCost, 2)}万</strong></td></tr>`).join('')}</tbody></table></div>
       <span class="table-subnote">工资均为税前应发口径；社保公积金按税前月薪×12个月×配置比例估算；招聘培训费在企业人员成本之外另计。比例与缴费基数必须按项目属地政策复核。</span>
     </div>
   </div>
@@ -6857,7 +6857,7 @@ function renderOperatingResultCards() {
       <div class="highlight"><span>实际人员及服务成本</span><strong>${fmt(s.stableStaffCost, 2)}</strong><em>万元</em></div>
     </div>
     <div class="property-service-result-list">${propertyServices.map(item => `<div class="property-service-result-row">
-      <div class="service-result-title"><strong>${escapeHtml(item.name)}</strong><span class="tag">${escapeHtml(item.modeLabel)}</span><small>${fmt(item.headcount)}人 · ${(item.positions || []).map(name => escapeHtml(name)).join('、') || '未匹配岗位'}</small></div>
+      <div class="service-result-title"><strong>${escapeHtml(item.name)}</strong><span class="tag">${escapeHtml(item.modeLabel)}</span><small>${fmt(item.headcount, 0)}人 · ${(item.positions || []).map(name => escapeHtml(name)).join('、') || '未匹配岗位'}</small></div>
       <div><span>岗位基础成本</span><strong>${fmt(item.basePositionCost, 2)}万</strong></div>
       <div><span>折算比例</span><strong>${fmtPct(item.positionFactor)}</strong></div>
       <div><span>第三方费率</span><strong>${fmtPct(item.managementFeeRate)}</strong></div>
@@ -6868,9 +6868,9 @@ function renderOperatingResultCards() {
   </div>` : ''}
   <div class="card marketing-allocation-card">
     <h3>年度营销推广费用分解</h3>
-    <div class="section-note">稳定年常规营销预算 ${fmt(s.annualMarketingBudget || s.stableMarketingCost, 1)} 万元/年；开业首年另加专项 ${fmt(s.openingMarketingItemsCost || 0, 1)} 万元，首年合计 ${fmt(s.firstYearMarketingCost || 0, 1)} 万元。权重由金额自动反算。</div>
-    <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>常规营销类别</th><th class="num">年度金额</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>${marketing.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${fmt(item.amount, 1)}万</td><td class="num"><span class="auto-weight">${fmtPct(item.share)}</span></td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>
-    ${openingMarketing.length ? `<div class="subsection-heading opening-marketing-heading"><div><strong>开业首年专项</strong><span>仅运营第1年发生</span></div></div><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>开业专项</th><th class="num">首年金额</th><th class="num">占首年营销预算</th><th>费用内容</th></tr></thead><tbody>${openingMarketing.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${fmt(item.amount, 1)}万</td><td class="num"><span class="auto-weight">${fmtPct(item.share)}</span></td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    <div class="section-note">稳定年常规营销预算 ${fmt(s.annualMarketingBudget || s.stableMarketingCost, 2)} 万元/年；开业首年另加专项 ${fmt(s.openingMarketingItemsCost || 0, 2)} 万元，首年合计 ${fmt(s.firstYearMarketingCost || 0, 2)} 万元。权重由金额自动反算。</div>
+    <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>常规营销类别</th><th class="num">年度金额</th><th class="num">自动权重</th><th>费用内容</th></tr></thead><tbody>${marketing.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${fmt(item.amount, 2)}万</td><td class="num"><span class="auto-weight">${fmtPct(item.share)}</span></td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>
+    ${openingMarketing.length ? `<div class="subsection-heading opening-marketing-heading"><div><strong>开业首年专项</strong><span>仅运营第1年发生</span></div></div><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>开业专项</th><th class="num">首年金额</th><th class="num">占首年营销预算</th><th>费用内容</th></tr></thead><tbody>${openingMarketing.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="num">${fmt(item.amount, 2)}万</td><td class="num"><span class="auto-weight">${fmtPct(item.share)}</span></td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
   </div>`;
 }
 
@@ -6878,7 +6878,7 @@ function renderFloorResultTable() {
   const floors = (state.result?.floors || []).filter(floor => Number(floor.buildingArea || 0) > 0 || Number(floor.leasableArea || 0) > 0);
   if (!floors.length) return '';
   const totalMonthly = floors.reduce((sum, floor) => sum + Number(floor.monthlyRevenue ?? floor.monthlyRent ?? 0), 0);
-  return `<div class="card" style="margin-bottom:16px"><h3>楼层收益拆分</h3><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>楼层</th><th class="num">建筑面积</th><th class="num">可租赁面积</th><th class="num">平均月收益</th><th class="num">满租月收益</th><th class="num">收益占比</th></tr></thead><tbody>${floors.map(floor => `<tr><td><strong>${escapeHtml(floor.name || '未命名')}</strong></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(floor.monthlyRevenue ?? floor.monthlyRent)}</td><td class="num">${fmtPct(totalMonthly ? (floor.monthlyRevenue ?? floor.monthlyRent) / totalMonthly : 0)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  return `<div class="card" style="margin-bottom:16px"><h3>楼层收益拆分</h3><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>楼层</th><th class="num">建筑面积</th><th class="num">可租赁面积</th><th class="num">平均月收益</th><th class="num">满租月收益</th><th class="num">收益占比</th></tr></thead><tbody>${floors.map(floor => `<tr><td><strong>${escapeHtml(floor.name || '未命名')}</strong></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 2)}</td><td class="num">${fmt(floor.monthlyRevenue ?? floor.monthlyRent)}</td><td class="num">${fmtPct(totalMonthly ? (floor.monthlyRevenue ?? floor.monthlyRent) / totalMonthly : 0)}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 function kpiCard(label, value, unit, cls, note = '') {
@@ -7704,7 +7704,7 @@ function updateQuickRentEstimateFromModel() {
   const averageRent = totalArea > 0 ? totalMonthly / totalArea : 0;
   document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(totalMonthly, 2); });
   document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(totalMonthly * 3); });
-  document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(totalMonthly * 12 / 10000, 1); });
+  document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(totalMonthly * 12 / 10000, 2); });
   document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(averageRent, 2); });
   document.querySelectorAll('[data-live="operationRent"]').forEach(el => { el.textContent = '计算中…'; });
   const floorMap = new Map(floors.map(floor => [buildingFloorKey(floor), floor]));
@@ -7748,9 +7748,9 @@ function updateLiveStats() {
   document.querySelectorAll('[data-live="investment"], #cost-estimate').forEach(el => { el.textContent = fmt(summary.totalInvestment); });
   document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent, 2); });
   document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 3); });
-  document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 12 / 10000, 1); });
+  document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 12 / 10000, 2); });
   const operationRentRevenue = Number(state.preview?.summary?.operationPeriodCollectedRentRevenue ?? (state.preview?.annual || []).filter(row => Number(row.opYear) > 0).reduce((sum, row) => sum + Number(row.collectedRentRevenue || 0), 0));
-  document.querySelectorAll('[data-live="operationRent"]').forEach(el => { el.textContent = fmt(operationRentRevenue, 1); });
+  document.querySelectorAll('[data-live="operationRent"]').forEach(el => { el.textContent = fmt(operationRentRevenue, 2); });
   document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(displayedAverageRent, 2); });
   document.querySelectorAll('[data-project-rent-area]').forEach(el => { el.textContent = fmtArea(displayedRentArea); });
   document.querySelectorAll('[data-project-rent-monthly]').forEach(el => { el.textContent = fmt(displayedMonthlyRent, 2); });
@@ -7770,7 +7770,7 @@ function updateLiveStats() {
   const floors = new Map((state.preview.floors || []).map(floor => [buildingFloorKey(floor), floor]));
   document.querySelectorAll('[data-floor-actual]').forEach(el => {
     const floor = floors.get(el.dataset.floorActual);
-    if (floor) el.textContent = fmt(floor.weightedRent || floor.avgRent, 1);
+    if (floor) el.textContent = fmt(floor.weightedRent || floor.avgRent, 2);
   });
   document.querySelectorAll('[data-floor-monthly]').forEach(el => {
     const floor = floors.get(el.dataset.floorMonthly);
@@ -7802,7 +7802,7 @@ function updateLiveStats() {
   });
   document.querySelectorAll('[data-shop-base]').forEach(el => {
     const shop = shops.get(el.dataset.shopBase);
-    if (shop) el.textContent = fmt(shop.baseRent, 1);
+    if (shop) el.textContent = fmt(shop.baseRent, 2);
   });
   document.querySelectorAll('[data-shop-unit-rent]').forEach(el => {
     const shop = shops.get(el.dataset.shopUnitRent);
@@ -8171,7 +8171,7 @@ function openAddShopModal(editIndex = null) {
               <div class="field"><label>状态</label><select class="select" name="status">${['营业','未开业','停业'].map(status => `<option ${editing?.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div>
               <div class="field"><label>租金单价覆盖 <small>可选</small></label><input class="input" name="rentOverride" type="number" step="any" placeholder="留空则自动定价" value="${editing?.rentOverride ?? ''}"></div>
             </div>
-            <div class="field"><label>铺位位置条件 <small>可多选</small></label><div class="condition-picker">${(m.conditionPremiums || []).filter(item => item.enabled).map(item => `<label><input type="checkbox" name="conditions" value="${escapeHtml(item.name)}" ${selectedConditions.has(item.name) ? 'checked' : ''}><span>${escapeHtml(item.name)} <em>+${fmtPct(item.premium, 1)}</em></span></label>`).join('')}</div></div>
+            <div class="field"><label>铺位位置条件 <small>可多选</small></label><div class="condition-picker">${(m.conditionPremiums || []).filter(item => item.enabled).map(item => `<label><input type="checkbox" name="conditions" value="${escapeHtml(item.name)}" ${selectedConditions.has(item.name) ? 'checked' : ''}><span>${escapeHtml(item.name)} <em>+${fmtPct(item.premium, 2)}</em></span></label>`).join('')}</div></div>
           </div>
           <div class="modal-foot"><button type="button" class="btn btn-secondary" id="modal-cancel">取消</button><button type="submit" class="btn btn-primary">${editing ? '保存修改' : '添加铺位'}</button></div>
         </form>

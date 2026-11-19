@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-rentsync1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-decimals2', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3382,7 +3382,7 @@ async function exportPPT(result) {
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '楼栋与楼层面积及租金汇总', `商户计租口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}｜业主支付口径：${result.model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'}｜表内面积为铺位/楼层明细面积，不含公区｜项目总建筑面积 ${Number(s.grossFloorArea || 0).toFixed(2)}㎡`);
-  const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','平均租金','年租金(万元)','占比'], ...(result.floors || []).slice(0, 12).map(x => [x.building || '1号楼', x.name, Number(x.buildingArea || 0).toFixed(0), Number(x.leasableArea || 0).toFixed(0), Number(x.rentArea || 0).toFixed(0), Number(x.weightedRent || x.avgRent || 0).toFixed(2), (Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000).toFixed(2), `${(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1) * 100).toFixed(2)}%`])];
+  const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','平均租金','年租金(万元)','占比'], ...(result.floors || []).slice(0, 12).map(x => [x.building || '1号楼', x.name, Number(x.buildingArea || 0).toFixed(2), Number(x.leasableArea || 0).toFixed(2), Number(x.rentArea || 0).toFixed(2), Number(x.weightedRent || x.avgRent || 0).toFixed(2), (Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000).toFixed(2), `${(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1) * 100).toFixed(2)}%`])];
   slide.addTable(floorSummaryRows, { x: 0.55, y: 1.4, w: 12.3, colW: [1.25, 0.9, 1.35, 1.35, 1.35, 1.55, 1.9, 1.2], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.5, margin: 0.03, rowH: 0.28, autoFit: false });
   if ((result.floors || []).length > 12) slide.addText(`仅展示前12个楼层，完整数据见Excel。`, { x: 0.7, y: 6.65, w: 5, h: 0.25, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F' });
 
@@ -3390,9 +3390,9 @@ async function exportPPT(result) {
   addSlideTitle(slide, '租赁与联营规则', `行业基准：${settlementPresetLabels[result.model.settlementBenchmark?.preset] || '购物中心行业常规'}｜销售修正 ×${Number(result.model.settlementBenchmark?.salesFactor || 1).toFixed(2)}`);
   const catRows = [['业态', '保底租金', '销售基数 / 常规区间', '扣点率 / 常规区间', '扣点收益/㎡', '结算方式'], ...(result.model.categories || []).map(x => {
     const salesRange = x.benchmarkSalesMin == null ? '' : `${x.benchmarkSalesMin}–${x.benchmarkSalesMax}`;
-    const rateRange = x.benchmarkConcessionMin == null ? '' : `${(Number(x.benchmarkConcessionMin) * 100).toFixed(1)}%–${(Number(x.benchmarkConcessionMax) * 100).toFixed(1)}%`;
-    return [x.name, `${Number(x.rent || 0).toFixed(1)}`, `${Number(x.salesPerSqmMonth || 0).toFixed(0)}
-${salesRange}`, `${(Number(x.concessionRate || 0) * 100).toFixed(1)}%
+    const rateRange = x.benchmarkConcessionMin == null ? '' : `${(Number(x.benchmarkConcessionMin) * 100).toFixed(2)}%–${(Number(x.benchmarkConcessionMax) * 100).toFixed(2)}%`;
+    return [x.name, `${Number(x.rent || 0).toFixed(2)}`, `${Number(x.salesPerSqmMonth || 0).toFixed(2)}
+${salesRange}`, `${(Number(x.concessionRate || 0) * 100).toFixed(2)}%
 ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), x.revenueMode];
   })];
   slide.addTable(catRows, { x: 0.55, y: 1.4, w: 12.2, colW: [1.25, 1.35, 2.5, 2.5, 1.5, 1.5], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.6, margin: 0.04, rowH: 0.55, autoFit: false });
@@ -3458,7 +3458,7 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
 
   slide = pptx.addSlide();
   addSlideTitle(slide, 'NPV敏感性分析', '租金与投资同时变动时的项目NPV（万元）');
-  const matrixRows = [['租金↓ / 投资→', ...(result.sensitivity.capexSteps || []).map(v => `${(v * 100).toFixed(0)}%`)], ...(result.sensitivity.rentSteps || []).map((rent, i) => [`${(rent * 100).toFixed(0)}%`, ...(result.sensitivity.npvMatrix[i] || []).map(v => v.toLocaleString('zh-CN', { maximumFractionDigits: 0 }))])];
+  const matrixRows = [['租金↓ / 投资→', ...(result.sensitivity.capexSteps || []).map(v => `${(v * 100).toFixed(0)}%`)], ...(result.sensitivity.rentSteps || []).map((rent, i) => [`${(rent * 100).toFixed(0)}%`, ...(result.sensitivity.npvMatrix[i] || []).map(v => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))])];
   slide.addTable(matrixRows, { x: 1.15, y: 1.55, w: 10.9, colW: [2.0, 1.75, 1.75, 1.75, 1.75, 1.75], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 10, align: 'center', valign: 'mid', margin: 0.06, rowH: 0.46 });
 
   slide = pptx.addSlide();
