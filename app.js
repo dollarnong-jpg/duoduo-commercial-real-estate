@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-exactdisplay1';
+import './backend.js?v=20261119-areasync1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.13';
+const APP_VERSION = '1.28.14';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -5162,21 +5162,42 @@ function normalizeCentralAcBuildingConfigs(model) {
   return configs;
 }
 
+function centralAcAreaRecords(model) {
+  const shops = Array.isArray(model.shops) ? model.shops : [];
+  const floors = Array.isArray(model.floors) ? model.floors : [];
+  return (model.calculationMode || 'preliminary') === 'detailed' && shops.length ? shops : floors;
+}
+
 function centralAcBuildingAreas(model) {
   const areas = new Map();
-  const shops = Array.isArray(model.shops) ? model.shops : [];
-  if (shops.length) {
-    for (const shop of shops) {
-      const building = String(shop.building || '1号楼').trim() || '1号楼';
-      areas.set(building, (areas.get(building) || 0) + rentAreaFor(shop, model));
-    }
-    return areas;
-  }
-  for (const floor of model.floors || []) {
-    const building = String(floor.building || '1号楼').trim() || '1号楼';
-    areas.set(building, (areas.get(building) || 0) + rentAreaFor(floor, model));
+  for (const record of centralAcAreaRecords(model)) {
+    const building = String(record.building || '1号楼').trim() || '1号楼';
+    areas.set(building, (areas.get(building) || 0) + rentAreaFor(record, model));
   }
   return areas;
+}
+
+function centralAcBuildingAreaBreakdown(model) {
+  const breakdown = new Map();
+  for (const record of centralAcAreaRecords(model)) {
+    const building = String(record.building || '1号楼').trim() || '1号楼';
+    const floor = String(record.floor ?? record.name ?? '未分楼层').trim() || '未分楼层';
+    const area = rentAreaFor(record, model);
+    const rows = breakdown.get(building) || [];
+    const existing = rows.find(item => item.floor === floor);
+    if (existing) existing.area += area;
+    else rows.push({ floor, area });
+    breakdown.set(building, rows);
+  }
+  return breakdown;
+}
+
+function centralAcAreaBreakdownText(model, building, totalArea) {
+  const rows = (centralAcBuildingAreaBreakdown(model).get(building) || []).filter(item => Number(item.area) > 0);
+  if (!rows.length) return '暂无计租面积';
+  rows.sort((a, b) => a.floor.localeCompare(b.floor, 'zh-CN', { numeric: true }));
+  const parts = rows.map(item => `${item.floor} ${fmtArea(item.area)}㎡`);
+  return rows.length > 1 ? `${parts.join(' + ')} = ${fmtArea(totalArea)}㎡` : parts[0];
 }
 
 function resetCentralAcBuildingFee(model, index) {
@@ -5193,6 +5214,7 @@ function resetCentralAcBuildingFee(model, index) {
 function refreshCentralAcRevenueDom(model) {
   const configs = normalizeCentralAcBuildingConfigs(model);
   const areas = centralAcBuildingAreas(model);
+  const breakdowns = centralAcBuildingAreaBreakdown(model);
   const occupancy = Math.max(0, Number(model.operations?.stableOccupancy ?? 0.95));
   const defaultFee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
   const defaultFeeEl = document.querySelector('[data-central-ac-default-fee]');
@@ -5223,6 +5245,13 @@ function refreshCentralAcRevenueDom(model) {
     }
     const areaEl = row.querySelector('[data-central-ac-area]');
     if (areaEl) areaEl.textContent = fmtArea(area);
+    const breakdownEl = row.querySelector('[data-central-ac-breakdown]');
+    if (breakdownEl) {
+      const breakdownRows = (breakdowns.get(config.building) || []).filter(item => Number(item.area) > 0)
+        .sort((a, b) => a.floor.localeCompare(b.floor, 'zh-CN', { numeric: true }));
+      const parts = breakdownRows.map(item => `${item.floor} ${fmtArea(item.area)}㎡`);
+      breakdownEl.textContent = !parts.length ? '暂无计租面积' : (parts.length > 1 ? `${parts.join(' + ')} = ${fmtArea(area)}㎡` : parts[0]);
+    }
     const monthlyEl = row.querySelector('[data-central-ac-monthly]');
     if (monthlyEl) monthlyEl.textContent = fmt(monthly);
     const annualEl = row.querySelector('[data-central-ac-annual]');
@@ -5362,7 +5391,7 @@ function renderRevenueAssumptionsSection() {
   <div class="form-section" id="central-ac-section">
     <div class="section-title">物业管理费、商业管理费与中央空调费（独立核算）</div>
     <div class="section-note">三类费用分别计算收入、递增和导出明细。物业费与商业管理费默认适用于全部铺位；中央空调费只在下方开启的楼栋收取，也可在铺位明细中用覆盖单价单独调整。</div>
-    ${formulaPanel('三项费用收入公式', '物业管理费 = Σ铺位计租面积 × 物业费单价 × 12 × 出租率 × 物业费递增因子\n商业管理费 = Σ铺位计租面积 × 商管费单价 × 12 × 出租率 × 商管费递增因子\n中央空调费 = Σ开启楼栋的铺位计租面积 × 楼栋空调单价 × 12 × 出租率 × 空调费递增因子\n三项费用合计 = 物业管理费 + 商业管理费 + 中央空调费', ['SUM', 'POWER', 'INT', 'IF'], '计租面积按铺位或楼层选择的建筑面积/实用面积口径计算；物业费和商管费可按铺位覆盖。中央空调费以楼栋开关为总控：楼栋关闭时所有铺位统一为0，楼栋开启后铺位覆盖价才生效。')}
+    ${formulaPanel('三项费用收入公式', '物业管理费 = Σ铺位计租面积 × 物业费单价 × 12 × 出租率 × 物业费递增因子\n商业管理费 = Σ铺位计租面积 × 商管费单价 × 12 × 出租率 × 商管费递增因子\n中央空调费 = Σ开启楼栋的铺位计租面积 × 楼栋空调单价 × 12 × 出租率 × 空调费递增因子\n三项费用合计 = 物业管理费 + 商业管理费 + 中央空调费', ['SUM', 'POWER', 'INT', 'IF'], '计租面积与租金页同口径：初步测算按楼层、一铺一价按铺位逐条汇总；物业费和商管费可按铺位覆盖。中央空调费以楼栋开关为总控：楼栋关闭时所有铺位统一为0，楼栋开启后铺位覆盖价才生效。')}
     <div class="form-grid">
       ${textField('首年物业管理费单价', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月', help: '物业服务合同或租赁合同约定的物业管理费；默认适用于所有铺位' })}
       ${textField('物业费起收日期', 'revenues.propertyFeeStartDate', { type: 'date', optional: true, help: '可晚于开业日；首年收入按实际可收月份折算' })}
@@ -5386,11 +5415,11 @@ function renderRevenueAssumptionsSection() {
   </div>
   <div class="form-section">
     <div class="section-title">按楼栋设置中央空调收费</div>
-    <div class="section-note">默认单价会作为楼栋收费基准。首次从0填写为正数时，系统会按默认单价启用全部楼栋；没有中央空调的楼栋请再单独取消勾选。稳定期月收费按计租面积 × 楼栋空调单价 × 稳定期出租率估算。</div>
+    <div class="section-note">默认单价会作为楼栋收费基准。计租面积与商户租金页保持同一口径：初步测算按楼层面积汇总，一铺一价按铺位面积汇总，并在下方展示楼层拆分。稳定期月收费按计租面积 × 楼栋空调单价 × 稳定期出租率估算。</div>
     <div class="budget-toolbar central-ac-toolbar"><span>默认单价 <strong data-central-ac-default-fee>${fmt(defaultCentralAcFee, 2)}</strong> 元/㎡/月｜已启用 <strong data-central-ac-enabled-count>${enabledCentralAcBuildings}</strong> / ${configs.length} 栋</span><div><button type="button" class="btn btn-secondary btn-sm" id="enable-all-central-ac">全部按默认单价启用</button><button type="button" class="btn btn-ghost btn-sm" id="disable-all-central-ac">全部停用</button></div></div>
     <div class="data-table-wrap" style="max-height:none">
       <table class="data-table">
-        <thead><tr><th>楼栋</th><th>是否收取中央空调费</th><th class="num">计租面积（㎡）</th><th class="num">空调费单价（元/㎡/月）</th><th class="num">稳定期月收费（元）</th><th class="num">稳定期年收入（万元）</th><th>说明</th></tr></thead>
+        <thead><tr><th>楼栋</th><th>是否收取中央空调费</th><th class="num">计租面积（㎡）<br><small>按当前测算模式汇总</small></th><th class="num">空调费单价（元/㎡/月）</th><th class="num">稳定期月收费（元）</th><th class="num">稳定期年收入（万元）</th><th>说明</th></tr></thead>
         <tbody>
           ${configs.map((config, index) => {
             const area = Number(areas.get(config.building) || 0);
@@ -5399,7 +5428,7 @@ function renderRevenueAssumptionsSection() {
             return `<tr data-central-ac-row="${index}">
               <td><strong>${escapeHtml(config.building)}</strong></td>
               <td><label class="switch-line"><input type="checkbox" data-path="revenues.centralAcBuildings.${index}.enabled" data-type="bool" ${config.enabled ? 'checked' : ''} data-central-ac-toggle="true"><span>${config.enabled ? '收取' : '不收取'}</span></label></td>
-              <td class="num"><span data-central-ac-area>${fmtArea(area)}</span></td>
+              <td class="num"><strong data-central-ac-area>${fmtArea(area)}</strong><small class="rent-source" data-central-ac-breakdown>${centralAcAreaBreakdownText(model, config.building, area)}</small></td>
               <td class="num"><div class="input-affix compact"><input class="table-input" data-path="revenues.centralAcBuildings.${index}.fee" data-type="number" data-central-ac-fee="true" type="number" step="0.01" value="${Number(config.fee || 0).toFixed(2)}" ${config.enabled ? '' : 'disabled'}><span>元/㎡/月</span></div><span data-central-ac-fee-status>${config.feeCustomized ? `<button type="button" class="btn btn-ghost btn-sm central-ac-reset" data-reset-central-ac-fee="${index}">恢复默认价</button>` : '<small class="rent-source">跟随默认价</small>'}</span></td>
               <td class="num"><strong data-central-ac-monthly>${fmt(monthly)}</strong></td>
               <td class="num"><strong data-central-ac-annual>${fmt(monthly * 12 / 10000, 2)}</strong></td>
