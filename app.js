@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-linkshops1';
+import './backend.js?v=20261119-exactsync1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.11';
+const APP_VERSION = '1.28.12';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -7622,13 +7622,18 @@ function updateQuickRentEstimateFromModel() {
 function updateLiveStats() {
   if (!state.preview) return;
   const summary = state.preview.summary;
+  const quickFloors = currentFloorRentSummary(state.current?.model);
+  const quickMonthlyRent = quickFloors.reduce((sum, floor) => sum + Number(floor.monthlyRevenue || 0), 0);
+  const quickRentArea = quickFloors.reduce((sum, floor) => sum + Number(floor.rentArea || 0), 0);
+  const displayedMonthlyRent = quickMonthlyRent > 0 ? quickMonthlyRent : Number(summary.totalMonthlyRent || 0);
+  const displayedAverageRent = quickRentArea > 0 ? displayedMonthlyRent / quickRentArea : Number(summary.averageRent || 0);
   document.querySelectorAll('[data-live="investment"], #cost-estimate').forEach(el => { el.textContent = fmt(summary.totalInvestment); });
-  document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(summary.totalMonthlyRent); });
-  document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(Number(summary.totalMonthlyRent || 0) * 3); });
-  document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(Number(summary.totalMonthlyRent || 0) * 12 / 10000, 1); });
+  document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent); });
+  document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 3); });
+  document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 12 / 10000, 1); });
   const operationRentRevenue = Number(state.preview?.summary?.operationPeriodCollectedRentRevenue ?? (state.preview?.annual || []).filter(row => Number(row.opYear) > 0).reduce((sum, row) => sum + Number(row.collectedRentRevenue || 0), 0));
   document.querySelectorAll('[data-live="operationRent"]').forEach(el => { el.textContent = fmt(operationRentRevenue, 1); });
-  document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(summary.averageRent, 2); });
+  document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(displayedAverageRent, 2); });
   const statusAdvice = buildStatusAdvice(state.preview || state.result);
   document.querySelectorAll('[data-live="status"]').forEach(el => { el.textContent = statusAdvice.title; });
   document.querySelectorAll('[data-live="statusAdvice"]').forEach(el => { el.textContent = statusAdvice.short; });

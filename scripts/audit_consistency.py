@@ -156,6 +156,8 @@ def audit_defaults_and_units() -> None:
     require_text(app, "sidebar-build", "workspace version badge")
     require_text(app, "syncFloorRentToShops", "floor rent to shop rent synchronization")
     require_text(app, "data-floor-avg-allocated", "floor allocated rent post-preview update")
+    require_text(app, "displayedMonthlyRent", "exact current-model rent display")
+    require_text(app, "displayedAverageRent", "exact current-model average rent display")
     require_text(app, "data-floor-avg-monthly", "immediate floor rent DOM update")
     require_text(app, "data-project-rent-monthly", "immediate project rent total update")
     require_text(app, "租金指标已按当前输入即时更新，NOI/NPV正在重算", "instant rent status message")
