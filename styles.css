@@ -1062,6 +1062,12 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .central-ac-toolbar > div { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .central-ac-reset { margin-top:4px; padding:2px 6px; min-height:0; font-size:var(--fs-8); }
 .central-ac-table { min-width:980px; }
+.fee-collection-toggle { display:inline-flex; align-items:center; gap:3px; padding:3px; border:1px solid #dfe6e2; border-radius:9px; background:#f7f9f7; }
+.fee-collection-toggle label { display:inline-flex; align-items:center; gap:4px; padding:4px 7px; border-radius:6px; color:var(--muted); font-size:var(--fs-9); font-weight:600; cursor:pointer; transition:background .15s,color .15s,box-shadow .15s; }
+.fee-collection-toggle label:hover { background:#eef4f0; color:var(--navy); }
+.fee-collection-toggle label.active { background:var(--green); color:#fff; box-shadow:0 1px 4px rgba(16,59,51,.16); }
+.fee-collection-toggle input { width:12px; height:12px; margin:0; accent-color:var(--green); cursor:pointer; }
+.fee-collection-toggle label.active input { accent-color:#fff; }
 .data-table .central-ac-building-row td { background:#fffefa; border-top:1px solid #dfe8e3; vertical-align:middle; }
 .data-table .central-ac-building-row:first-child td { border-top:0; }
 .central-ac-level-note { display:block; margin-top:3px; color:var(--muted); font-size:var(--fs-8); font-weight:500; }

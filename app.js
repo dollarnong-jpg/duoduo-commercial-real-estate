@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-acfloors2';
+import './backend.js?v=20261119-acoptions1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.16';
+const APP_VERSION = '1.28.17';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -5227,10 +5227,11 @@ function refreshCentralAcRevenueDom(model) {
     const area = Number(areas.get(config.building) || 0);
     const fee = config.enabled ? Number(config.fee || 0) : 0;
     const monthly = area * fee * occupancy;
-    const toggle = row.querySelector('[data-central-ac-toggle]');
-    const label = toggle?.closest('label')?.querySelector('span');
-    if (toggle) toggle.checked = Boolean(config.enabled);
-    if (label) label.textContent = config.enabled ? '收取' : '不收取';
+    row.querySelectorAll('[data-central-ac-toggle]').forEach(toggle => {
+      const selected = String(Boolean(config.enabled)) === toggle.value;
+      toggle.checked = selected;
+      toggle.closest('label')?.classList.toggle('active', selected);
+    });
     const feeInput = row.querySelector('[data-central-ac-fee]');
     if (feeInput) {
       feeInput.value = Number(config.fee || 0).toFixed(2);
@@ -5450,7 +5451,10 @@ function renderRevenueAssumptionsSection() {
               .sort((a, b) => a.floor.localeCompare(b.floor, 'zh-CN', { numeric: true }));
             const buildingRow = `<tr class="central-ac-building-row" data-central-ac-row="${index}">
               <td><strong>${escapeHtml(config.building)}</strong><small class="central-ac-level-note">${floorRows.length ? `楼栋汇总 · ${floorRows.length} 个楼层` : '楼栋汇总 · 暂无楼层明细'}</small></td>
-              <td><label class="switch-line"><input type="checkbox" data-path="revenues.centralAcBuildings.${index}.enabled" data-type="bool" ${config.enabled ? 'checked' : ''} data-central-ac-toggle="true"><span>${config.enabled ? '收取' : '不收取'}</span></label></td>
+              <td><div class="fee-collection-toggle" role="radiogroup" aria-label="是否收取中央空调费">
+                <label class="${config.enabled ? '' : 'active'}"><input type="radio" name="central-ac-enabled-${index}" value="false" data-path="revenues.centralAcBuildings.${index}.enabled" data-type="boolean" ${config.enabled ? '' : 'checked'} data-central-ac-toggle="true"><span>不收取</span></label>
+                <label class="${config.enabled ? 'active' : ''}"><input type="radio" name="central-ac-enabled-${index}" value="true" data-path="revenues.centralAcBuildings.${index}.enabled" data-type="boolean" ${config.enabled ? 'checked' : ''} data-central-ac-toggle="true"><span>收取</span></label>
+              </div></td>
               <td class="num"><strong data-central-ac-area>${fmtArea(area)}</strong><small class="rent-source" data-central-ac-breakdown>${floorRows.length ? `${floorRows.length} 个楼层 · 明细见下方` : '暂无计租面积'}</small></td>
               <td class="num"><div class="input-affix compact"><input class="table-input" data-path="revenues.centralAcBuildings.${index}.fee" data-type="number" data-central-ac-fee="true" type="number" step="0.01" value="${Number(config.fee || 0).toFixed(2)}" ${config.enabled ? '' : 'disabled'}><span>元/㎡/月</span></div><span data-central-ac-fee-status>${config.feeCustomized ? `<button type="button" class="btn btn-ghost btn-sm central-ac-reset" data-reset-central-ac-fee="${index}">恢复默认价</button>` : '<small class="rent-source">跟随默认价</small>'}</span></td>
               <td class="num"><strong data-central-ac-monthly>${fmt(monthly)}</strong></td>

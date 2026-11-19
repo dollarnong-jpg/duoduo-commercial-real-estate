@@ -178,6 +178,8 @@ def audit_defaults_and_units() -> None:
     assert "breakdowns.get(" in revenue_assumptions
     require_text(revenue_assumptions, "const breakdowns = centralAcBuildingAreaBreakdown(model);", "central AC floor breakdown initialization")
     require_text(revenue_assumptions, "central-ac-floor-row", "central AC floor breakdown rows")
+    require_text(revenue_assumptions, "fee-collection-toggle", "central AC explicit collection options")
+    require_text(revenue_assumptions, 'value="true"', "central AC collect option")
 
     office = function_segment(app, "renderOfficeBudgetSection")
     leasing = function_segment(app, "renderLeasingBudgetSection")
