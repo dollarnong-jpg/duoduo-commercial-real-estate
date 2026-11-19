@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-rentcalc1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-naturalyear1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2777,8 +2777,8 @@ function buildOperatingLedgerExportRows(result) {
 
 function naturalYearReportSheetRows(result) {
   return [
-    ['自然年', '实际开始日期', '实际结束日期', '有效月数', '是否不足一年', '招商率', '收租率', '应收租金（万元）', '未收租金（万元）', '实收租金（万元）', '物业费收入（万元）', '商管费收入（万元）', '空调费收入（万元）', '总收入（万元）', '运营成本（万元）', '税费（万元）', '项目所得税（万元）', '资本支出（万元）', '总支出（万元）', '调整额（万元）', '调整后净现金流（万元）', '累计运营现金流（万元）', '调整说明'],
-    ...(result.naturalYearReport || []).map(row => [row.calendarYear, row.periodStart || '', row.periodEndExclusive || '', row.activeMonths || 0, row.isPartialYear ? '是' : '否', row.occupancy || 0, row.rentCollectionRate || 0, row.scheduledRentRevenue || 0, row.uncollectedRentRevenue || 0, row.collectedRentRevenue || row.rentRevenue || 0, row.propertyManagementRevenue || 0, row.commercialManagementRevenue || 0, row.centralAcRevenue || 0, row.totalIncome || 0, row.cashOperatingCost || row.operatingCost || 0, row.taxes || 0, row.projectIncomeTax || 0, row.projectCapex || 0, row.totalExpense || 0, (row.revenueAdjustment || 0) + (row.operatingCostAdjustment || 0) + (row.taxAdjustment || 0) + (row.capexAdjustment || 0), row.adjustedProjectCashFlow || 0, row.cumulativeOperationCashFlow || 0, row.adjustmentNote || ''])
+    ['自然年', '实际开始日期', '实际结束日期', '有效月数', '是否不足一年', '招商率', '收租率', '应收租金（万元）', '未收租金（万元）', '实收租金（万元）', '物业费收入（万元）', '商管费收入（万元）', '空调费收入（万元）', '三项费用合计（万元）', '其他收入（万元）', '总收入（万元）', '运营成本（万元）', '税费（万元）', '项目所得税（万元）', '资本支出（万元）', '总支出（万元）', '调整额（万元）', '调整后净现金流（万元）', '累计运营现金流（万元）', '调整说明'],
+    ...(result.naturalYearReport || []).map(row => [row.calendarYear, row.periodStart || '', row.periodEndExclusive || '', row.activeMonths || 0, row.isPartialYear ? '是' : '否', row.occupancy || 0, row.rentCollectionRate || 0, row.scheduledRentRevenue || 0, row.uncollectedRentRevenue || 0, row.collectedRentRevenue || row.rentRevenue || 0, row.propertyManagementRevenue || 0, row.commercialManagementRevenue || 0, row.centralAcRevenue || 0, (row.propertyManagementRevenue || 0) + (row.commercialManagementRevenue || 0) + (row.centralAcRevenue || 0), row.otherRevenue || 0, row.totalIncome || 0, row.cashOperatingCost || row.operatingCost || 0, row.taxes || 0, row.projectIncomeTax || 0, row.projectCapex || 0, row.totalExpense || 0, (row.revenueAdjustment || 0) + (row.operatingCostAdjustment || 0) + (row.taxAdjustment || 0) + (row.capexAdjustment || 0), row.adjustedProjectCashFlow || 0, row.cumulativeOperationCashFlow || 0, row.adjustmentNote || ''])
   ];
 }
 
@@ -3290,7 +3290,7 @@ async function exportExcel(result) {
     ['日期', '目标招商率', '可实现月租金（元）', '年化租金（万元）', '说明'],
     ...(result.leasingMilestoneAnalysis || []).map(x => [x.date, x.occupancy, x.monthlyRentPotential, x.annualRentPotential, x.note]),
   ], [18, 18, 24, 24, 60]);
-  addSheet(wb, '自然年运营报表', naturalYearReportSheetRows(result), [12, 18, 18, 10, 12, 12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 14, 16, 16, 16, 16, 20, 22, 40]);
+  addSheet(wb, '自然年运营报表', naturalYearReportSheetRows(result), [12, 18, 18, 10, 12, 12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 14, 16, 16, 16, 16, 20, 22, 40]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
   const annualExportRows = (result.annual || []).map(x => {
     const feeServiceCost = Number(x.propertyTeamCost || 0) + Number(x.securityCost || 0) + Number(x.cleaningCost || 0) + Number(x.energyCost || 0);
@@ -4276,7 +4276,7 @@ async function handleApi(path, init) {
     const model = await normalizeModel(body.model || body);
     const result = await calculate(model, false);
     const wb = XLSX.utils.book_new();
-    addSheet(wb, '自然年运营报表', naturalYearReportSheetRows(result), [12, 18, 18, 10, 12, 12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 14, 16, 16, 16, 16, 20, 22, 40]);
+    addSheet(wb, '自然年运营报表', naturalYearReportSheetRows(result), [12, 18, 18, 10, 12, 12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 14, 16, 16, 16, 16, 20, 22, 40]);
     return fileResponse(await workbookBlob(wb), `${result.summary?.projectName || '项目'}_自然年运营报表.xlsx`, XLSX_MIME);
   }
 
