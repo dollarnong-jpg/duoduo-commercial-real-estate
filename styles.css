@@ -1220,3 +1220,7 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 @media (max-width:760px) { .rent-average-metrics { grid-template-columns:1fr; } .rent-average-formula code { margin-left:0; } }
 .floor-average-check { margin-top:13px; padding-top:12px; border-top:1px dashed #d7e2dd; }
 .floor-average-check .section-title { margin-bottom:8px; }
+.owner-rent-derivation { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:8px; padding:10px 12px; border:1px solid #dbe7e1; border-radius:9px; background:#f7faf8; color:var(--muted); font-size:var(--fs-8); line-height:1.5; }
+.owner-rent-derivation strong { color:var(--green); font-size:var(--fs-9); }
+.owner-rent-derivation span { padding-right:12px; border-right:1px solid #dbe5df; }
+.owner-rent-derivation span:last-child { border-right:0; padding-right:0; }

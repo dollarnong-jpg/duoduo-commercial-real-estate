@@ -154,6 +154,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "propertyArea": 0.0,
             "propertyUnitRent": 0.0,
             "propertyMonthlyRent": 0.0,
+            "propertyAnnualRent": 0.0,
             "propertyPaymentMonths": 12,
             "monthlyRent": 0.0,
             "growthMode": "compound",
@@ -1488,14 +1489,21 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     ) if include_land_rent else 0.0
     land_payment_months = max(0.0, as_float(owner_rent_config.get("landPaymentMonths"), 12.0)) if include_land_rent else 0.0
     property_pricing_mode = str(owner_rent_config.get("propertyPricingMode") or "total")
+    if property_pricing_mode not in {"total", "unit", "annual_total"}:
+        property_pricing_mode = "total"
     property_area = max(0.0, as_float(owner_rent_config.get("propertyArea")))
-    if property_pricing_mode == "unit" and property_area <= 0:
-        owner_rent_area_basis = str(project.get("ownerRentAreaBasis") or "building")
+    owner_rent_area_basis = str(project.get("ownerRentAreaBasis") or "building")
+    if property_pricing_mode in {"unit", "annual_total"} and property_area <= 0:
         property_area = gba if owner_rent_area_basis == "building" else gla
     property_unit_rent = max(0.0, as_float(owner_rent_config.get("propertyUnitRent")))
-    property_monthly_rent = (
-        property_area * property_unit_rent / 10000 if property_pricing_mode == "unit" else max(0.0, as_float(owner_rent_config.get("propertyMonthlyRent")))
-    ) if include_property_rent else 0.0
+    property_annual_rent = max(0.0, as_float(owner_rent_config.get("propertyAnnualRent")))
+    if property_pricing_mode == "annual_total":
+        property_monthly_rent = property_annual_rent / 12 if include_property_rent else 0.0
+        property_unit_rent = safe_div(property_annual_rent * 10000, property_area * 12) if property_area > 0 else 0.0
+    elif property_pricing_mode == "unit":
+        property_monthly_rent = property_area * property_unit_rent / 10000 if include_property_rent else 0.0
+    else:
+        property_monthly_rent = max(0.0, as_float(owner_rent_config.get("propertyMonthlyRent"))) if include_property_rent else 0.0
     property_payment_months = max(0.0, as_float(owner_rent_config.get("propertyPaymentMonths"), 12.0)) if include_property_rent else 0.0
     owner_land_rent_base_annual = land_monthly_rent * land_payment_months
     owner_property_rent_base_annual = property_monthly_rent * property_payment_months
@@ -2518,6 +2526,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "ownerPropertyRentBaseAnnual": owner_property_rent_base_annual,
             "ownerLandMonthlyRentComputed": land_monthly_rent,
             "ownerPropertyMonthlyRentComputed": property_monthly_rent,
+            "ownerPropertyAnnualRentInput": property_annual_rent,
+            "ownerPropertyUnitRentComputed": property_unit_rent,
+            "ownerRentAreaBasis": owner_rent_area_basis,
+            "ownerPropertyAreaUsed": property_area,
             "ownerRentPaymentTiming": str(owner_rent_config.get("paymentTiming") or "arrears"),
             "ownerRentPaymentFrequency": str(owner_rent_config.get("paymentFrequency") or "monthly"),
             "ownerRentPaymentStartDate": owner_rent_config.get("paymentStartDate") or "",

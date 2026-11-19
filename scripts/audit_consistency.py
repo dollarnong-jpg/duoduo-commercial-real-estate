@@ -71,6 +71,7 @@ def audit_defaults_and_units() -> None:
 
     backend = read("backend.js")
     app = read("app.js")
+    engine_text = read("engine.py")
     require_text(backend, "['默认筹备月数', 12,", "preopening template default months")
     for department, position, salary in (
         ("项目筹备组", "筹备负责人", 18000),
@@ -141,6 +142,11 @@ def audit_defaults_and_units() -> None:
     require_text(app, "运营周期租金收入", "operating-period rent income")
     require_text(app, "满租季度租金（万元）", "floor quarterly rent")
     require_text(app, "运营期分摊租金（万元）", "floor operating-period allocation")
+    require_text(app, "propertyAnnualRent", "owner annual rent input")
+    require_text(app, "按年租金总额", "annual owner rent mode")
+    require_text(app, "物业年租金总价", "annual owner rent field")
+    require_text(app, "物业租金反算结果", "owner rent derivation summary")
+    require_text(engine_text, 'property_pricing_mode == "annual_total"', 'engine annual owner rent mode')
     require_text(app, "budget.monthsVersion = 2", "preopening month migration")
     require_text(app, "data-sync-preopening-months", "preopening month sync action")
     require_text(app, "add-office-budget-item", "office budget add action")

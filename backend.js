@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-renttime1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-ownerrent1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -601,6 +601,7 @@ function demoModel() {
       propertyArea: 0,
       propertyUnitRent: 0,
       propertyMonthlyRent: 0,
+      propertyAnnualRent: 0,
       propertyPaymentMonths: 12,
       growthMode: 'compound',
       growthRate: 0.03,
@@ -2805,10 +2806,10 @@ async function exportExcel(result) {
     ['业主租金', '土地计价方式', model.ownerRent?.landPricingMode === 'unit' ? '按面积单价' : '按月度总额'],
     ['业主租金', '土地面积（㎡）', model.ownerRent?.landArea || 0], ['业主租金', '土地单价（元/㎡/月）', model.ownerRent?.landUnitRent || 0],
     ['业主租金', '土地月租金（万元/月）', model.ownerRent?.landMonthlyRent || 0], ['业主租金', '土地支付月数', model.ownerRent?.landPaymentMonths || 0],
-    ['业主租金', '物业计价方式', model.ownerRent?.propertyPricingMode === 'unit' ? '按面积单价' : '按月度总额'],
+    ['业主租金', '物业计价方式', model.ownerRent?.propertyPricingMode === 'unit' ? '按面积单价' : model.ownerRent?.propertyPricingMode === 'annual_total' ? '按年租金总额' : '按月度总额'],
     ['业主租金', '业主租金支付面积口径', model.project?.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'],
-    ['业主租金', '物业面积（㎡）', model.ownerRent?.propertyArea || 0], ['业主租金', '物业单价（元/㎡/月）', model.ownerRent?.propertyUnitRent || 0],
-    ['业主租金', '物业月租金（万元/月）', model.ownerRent?.propertyMonthlyRent || 0], ['业主租金', '物业支付月数', model.ownerRent?.propertyPaymentMonths || 0],
+    ['业主租金', '物业面积覆盖（㎡）', model.ownerRent?.propertyArea || 0], ['业主租金', '物业单价（元/㎡/月）', s.ownerPropertyUnitRentComputed || model.ownerRent?.propertyUnitRent || 0],
+    ['业主租金', '物业月租金（万元/月）', s.ownerPropertyMonthlyRentComputed || model.ownerRent?.propertyMonthlyRent || 0], ['业主租金', '物业年租金总价（万元/年）', model.ownerRent?.propertyAnnualRent || 0], ['业主租金', '实际用于反算的面积（㎡）', s.ownerPropertyAreaUsed || 0], ['业主租金', '物业支付月数', model.ownerRent?.propertyPaymentMonths || 0],
     ['业主租金', '递增方式', ownerRentGrowthLabels[model.ownerRent?.growthMode] || '不复递增'],
     ['业主租金', '递增率', model.ownerRent?.growthRate || 0], ['业主租金', '每年增加额（万元/年）', model.ownerRent?.annualIncrease || 0],
     ['业主租金', '付款时点', model.ownerRent?.paymentTiming === 'prepay' ? '先付后用' : '先用后付'], ['业主租金', '付款频率', model.ownerRent?.paymentFrequency || 'monthly'], ['业主租金', '起付日期', model.ownerRent?.paymentStartDate || ''], ['业主租金', '免租开始日期', model.ownerRent?.rentFreeStartDate || ''], ['业主租金', '免租结束日期', model.ownerRent?.rentFreeEndDate || ''], ['业主租金', '保证金（万元）', model.ownerRent?.depositAmount || 0],

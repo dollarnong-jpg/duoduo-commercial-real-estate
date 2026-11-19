@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-renttime1';
+import './backend.js?v=20261119-ownerrent1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.4';
+const APP_VERSION = '1.28.5';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -182,10 +182,11 @@ const FIELD_FORMULAS = {
   'ownerRent.landUnitRent': { title: '土地租赁单价', formula: '土地月租金 = 土地面积 × 土地单价 ÷ 10000', functions: ['SUM'], role: '单位为元/㎡/月，系统自动换算为万元/月。' },
   'ownerRent.landMonthlyRent': { title: '土地月租金', formula: '首年土地租金 = 土地月租金 × 土地支付月数', functions: ['SUM'], role: '支付给土地权利人的租赁成本，直接影响NOI和现金流。' },
   'ownerRent.landPaymentMonths': { title: '土地租金支付月数', formula: '首年土地租金 = 土地月租金 × 支付月数', functions: ['SUM'], role: '按土地租赁合同填写，免租期可按实际支付月份调整。' },
-  'ownerRent.propertyPricingMode': { title: '物业计价方式', formula: '按面积：物业面积 × 单价 ÷ 10000；按总额：直接采用月租金总额', functions: ['IF'], role: '物业合同可按元/㎡/月或月度总额录入。' },
+  'ownerRent.propertyPricingMode': { title: '物业租金录入方式', formula: '按面积、按月租金总额或按年租金总额三种方式任选其一', functions: ['IF'], role: '按合同选择录入口径，系统自动统一形成月租金和每㎡租金。' },
   'ownerRent.propertyArea': { title: '物业租赁面积', formula: '物业月租金 = 物业面积 × 物业单价 ÷ 10000', functions: ['SUM'], role: '仅在按面积计价时启用。' },
   'ownerRent.propertyUnitRent': { title: '物业租赁单价', formula: '物业月租金 = 物业面积 × 物业单价 ÷ 10000', functions: ['SUM'], role: '单位为元/㎡/月，系统自动换算为万元/月。' },
   'ownerRent.propertyMonthlyRent': { title: '物业月租金', formula: '首年物业租金 = 物业月租金 × 物业支付月数', functions: ['SUM'], role: '支付给物业业主的租赁成本，直接影响NOI和现金流。' },
+  'ownerRent.propertyAnnualRent': { title: '物业年租金总价', formula: '物业月租金 = 年租金总价 ÷ 12；每㎡月租 = 年租金总价 × 10000 ÷ 计租面积 ÷ 12', functions: ['SUM'], role: '适合合同直接约定年租金总价的情况，系统按建筑面积或实用面积自动反算。' },
   'ownerRent.propertyPaymentMonths': { title: '物业租金支付月数', formula: '首年物业租金 = 物业月租金 × 支付月数', functions: ['SUM'], role: '按物业租赁合同填写，免租期可按实际支付月份调整。' },
   'ownerRent.growthMode': { title: '业主租金递增方式', formula: '不复递增 / 复利递增 / 单利递增 / 每年固定金额递增 / 每N年阶梯递增', functions: ['IF', 'POWER'], role: '按业主租赁合同选择递增方式。' },
   'ownerRent.growthRate': { title: '业主租金递增率', formula: '复利 = 首年租金×(1+r)^(n-1)；阶梯 = 每N年上调一次', functions: ['POWER', 'IF'], role: '用于复利、单利和阶梯递增。' },
@@ -3285,6 +3286,7 @@ function renderOwnerRentSection() {
     propertyArea: 0,
     propertyUnitRent: 0,
     propertyMonthlyRent: 0,
+    propertyAnnualRent: 0,
     propertyPaymentMonths: 12,
     growthMode: 'compound',
     growthRate: 0.03,
@@ -3312,8 +3314,18 @@ function renderOwnerRentSection() {
   const ownerRentAreaBasis = model.project?.ownerRentAreaBasis === 'leasable' ? 'leasable' : 'building';
   const autoPropertyArea = projectAreaForBasis(model, ownerRentAreaBasis);
   const effectivePropertyArea = Number(ownerRent.propertyArea || 0) > 0 ? Number(ownerRent.propertyArea || 0) : autoPropertyArea;
+  const propertyAnnualComputed = includesProperty ? Number(ownerRent.propertyAnnualRent || 0) : 0;
   const propertyMonthlyComputed = includesProperty
-    ? propertyPricingMode === 'unit' ? effectivePropertyArea * Number(ownerRent.propertyUnitRent || 0) / 10000 : Number(ownerRent.propertyMonthlyRent || 0)
+    ? propertyPricingMode === 'annual_total'
+      ? propertyAnnualComputed / 12
+      : propertyPricingMode === 'unit'
+        ? effectivePropertyArea * Number(ownerRent.propertyUnitRent || 0) / 10000
+        : Number(ownerRent.propertyMonthlyRent || 0)
+    : 0;
+  const propertyUnitComputed = effectivePropertyArea > 0
+    ? (propertyPricingMode === 'annual_total'
+      ? propertyAnnualComputed * 10000 / (effectivePropertyArea * 12)
+      : propertyMonthlyComputed * 10000 / effectivePropertyArea)
     : 0;
   const landBase = landMonthlyComputed * Number(ownerRent.landPaymentMonths || 0);
   const propertyBase = propertyMonthlyComputed * Number(ownerRent.propertyPaymentMonths || 0);
@@ -3328,7 +3340,7 @@ function renderOwnerRentSection() {
   return `<div class="form-section owner-rent-section">
     <div class="section-title">土地及物业租赁支出</div>
     <div class="section-note">适用于土地租赁、物业租赁、租赁经营、轻资产和运营中项目。土地与物业租金会分别作为年度运营支出计入NOI和现金流。</div>
-    ${formulaPanel('土地及物业租赁支付公式', '按面积：月租金 = 面积 × 单价 ÷ 10000\n按总额：月租金 = 合同月度总额\n土地首年租金 = 土地月租金 × 土地支付月数\n物业首年租金 = 物业月租金 × 物业支付月数\n首年合计 = 土地首年租金 + 物业首年租金\n复利：第n年 = 首年 ×（1+递增率）^(n-1)\n单利：第n年 = 首年 ×［1+递增率×(n-1)］\n固定金额：第n年 = 首年 + 每年增加额×(n-1)\n阶梯：每N年按递增率上调一次', ['SUM', 'IF', 'POWER', 'INT'], '业主租金支付面积口径与商户计租面积口径相互独立。物业按面积计价时，合同面积填0会自动取项目总建筑面积或可租赁面积。')}
+    ${formulaPanel('土地及物业租赁支付公式', '按面积：月租金 = 面积 × 单价 ÷ 10000\n按月租总额：月租金 = 合同月度总额\n按年租总额：月租金 = 年租金总价 ÷ 12；每㎡月租 = 年总价 × 10000 ÷ 面积 ÷ 12\n土地首年租金 = 土地月租金 × 土地支付月数\n物业首年租金 = 物业月租金 × 物业支付月数\n首年合计 = 土地首年租金 + 物业首年租金\n复利：第n年 = 首年 ×（1+递增率）^(n-1)\n单利：第n年 = 首年 ×［1+递增率×(n-1)］\n固定金额：第n年 = 首年 + 每年增加额×(n-1)\n阶梯：每N年按递增率上调一次', ['SUM', 'IF', 'POWER', 'INT'], '业主租金支付面积口径与商户计租面积口径相互独立。按面积或年总价模式时，物业面积填0会自动取项目总建筑面积或可租赁面积。')}
     <div class="form-grid">
       ${selectField('是否支付土地或物业租金', 'ownerRent.enabled', [{ value: true, label: '是，需要支付' }, { value: false, label: '否，自有物业' }], { type: 'boolean', help: '选择“是”后，租赁支出作为运营成本扣减NOI' })}
       ${enabled ? selectField('租赁标的类型', 'ownerRent.leaseType', [{ value: 'land', label: '仅土地租赁' }, { value: 'property', label: '仅物业租赁' }, { value: 'land_and_property', label: '土地 + 物业租赁' }], { help: '按实际租赁合同选择，系统将分别计算土地和物业租金' }) : ''}
@@ -3337,10 +3349,12 @@ function renderOwnerRentSection() {
       ${enabled && includesLand && landPricingMode === 'unit' ? textField('土地单价', 'ownerRent.landUnitRent', { type: 'number', unit: '元/㎡/月', help: `折合土地月租金约 ${fmt(landMonthlyComputed, 2)} 万元/月` }) : ''}
       ${enabled && includesLand && landPricingMode === 'total' ? textField('土地月租金总额', 'ownerRent.landMonthlyRent', { type: 'number', unit: '万元/月', help: `首年土地租金约 ${fmt(landBase, 2)} 万元/年` }) : ''}
       ${enabled && includesLand ? textField('土地年度支付月数', 'ownerRent.landPaymentMonths', { type: 'number', unit: '月/年', help: '土地租赁免租期或分次支付时按实际月数调整' }) : ''}
-      ${enabled && includesProperty ? selectField('物业计价方式', 'ownerRent.propertyPricingMode', [{ value: 'total', label: '按月度总额' }, { value: 'unit', label: '按面积单价' }], { help: '按合同选择月度总额或元/㎡/月计价' }) : ''}
-      ${enabled && includesProperty && propertyPricingMode === 'unit' ? textField('物业租赁面积', 'ownerRent.propertyArea', { type: 'number', unit: '㎡', help: '按合同填写；填0时自动按下方业主租金面积口径取项目面积' }) : ''}
-      ${enabled && includesProperty && propertyPricingMode === 'unit' ? textField('物业单价', 'ownerRent.propertyUnitRent', { type: 'number', unit: '元/㎡/月', help: `折合物业月租金约 ${fmt(propertyMonthlyComputed, 2)} 万元/月` }) : ''}
+      ${enabled && includesProperty ? selectField('物业租金录入方式', 'ownerRent.propertyPricingMode', [{ value: 'unit', label: '按面积单价' }, { value: 'total', label: '按月租金总额' }, { value: 'annual_total', label: '按年租金总额' }], { help: '三种方式任选其一；年租金总额会按业主租金面积口径自动反算月租金和每㎡单价' }) : ''}
+      ${enabled && includesProperty && propertyPricingMode !== 'total' ? textField('物业面积覆盖', 'ownerRent.propertyArea', { type: 'number', unit: '㎡', optional: true, help: '可填合同面积；填0时自动按项目选择的业主租金面积口径取建筑面积或实用面积' }) : ''}
+      ${enabled && includesProperty && propertyPricingMode === 'unit' ? textField('物业每㎡月租金', 'ownerRent.propertyUnitRent', { type: 'number', unit: '元/㎡/月', help: `折合物业月租金约 ${fmt(propertyMonthlyComputed, 2)} 万元/月` }) : ''}
       ${enabled && includesProperty && propertyPricingMode === 'total' ? textField('物业月租金总额', 'ownerRent.propertyMonthlyRent', { type: 'number', unit: '万元/月', help: `首年物业租金约 ${fmt(propertyBase, 2)} 万元/年` }) : ''}
+      ${enabled && includesProperty && propertyPricingMode === 'annual_total' ? textField('物业年租金总价', 'ownerRent.propertyAnnualRent', { type: 'number', unit: '万元/年', help: `折合月租金约 ${fmt(propertyMonthlyComputed, 2)} 万元/月，折合每㎡月租约 ${fmt(propertyUnitComputed, 2)} 元/㎡/月` }) : ''}
+      ${enabled && includesProperty && propertyPricingMode !== 'total' ? selectField('业主租金面积口径', 'project.ownerRentAreaBasis', [{ value: 'building', label: '按建筑面积' }, { value: 'leasable', label: '按实用/可租赁面积' }], { help: `当前用于反算的面积为 ${fmtArea(effectivePropertyArea)}㎡；与商户计租面积口径相互独立` }) : ''}
       ${enabled && includesProperty ? textField('物业年度支付月数', 'ownerRent.propertyPaymentMonths', { type: 'number', unit: '月/年', help: '物业租赁免租期或分次支付时按实际月数调整' }) : ''}
       ${enabled ? selectField('递增方式', 'ownerRent.growthMode', growthOptions, { help: '按业主租赁合同的递增条款选择' }) : ''}
       ${enabled && ['compound', 'simple', 'step'].includes(growthMode) ? textField('递增率', 'ownerRent.growthRate', { type: 'number', unit: '%', scale: 0.01 }) : ''}
@@ -3356,6 +3370,7 @@ function renderOwnerRentSection() {
       ${enabled ? textField('保证金退还日期', 'ownerRent.depositRefundDate', { type: 'date', optional: true }) : ''}
     </div>
     ${enabled ? `<div class="owner-rent-summary">首年土地租赁 <strong>${fmt(landBase, 2)} 万元/年</strong> · 首年物业租赁 <strong>${fmt(propertyBase, 2)} 万元/年</strong> · 合计 <strong>${fmt(annualBase, 2)} 万元/年</strong></div>` : '<div class="owner-rent-summary muted">当前按自有物业测算：土地及物业租赁支出为0。</div>'}
+    ${enabled && includesProperty && propertyPricingMode !== 'total' ? `<div class="owner-rent-derivation"><strong>物业租金反算结果</strong><span>计租面积 ${fmtArea(effectivePropertyArea)}㎡（${ownerRentAreaBasis === 'building' ? '建筑面积' : '实用面积'}）</span><span>物业月租金 ${fmt(propertyMonthlyComputed, 2)} 万元/月</span><span>物业每㎡月租 ${fmt(propertyUnitComputed, 2)} 元/㎡/月</span><span>物业年租金 ${fmt(propertyMonthlyComputed * 12, 2)} 万元/年</span></div>` : ''}
   </div>`;
 }
 
