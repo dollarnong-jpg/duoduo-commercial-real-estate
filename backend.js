@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-ownerrent2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-periodprofit1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1806,9 +1806,9 @@ function exportShopAuditWorkbook(result) {
   ], [30, 30, 72]);
 
   addSheet(wb, '业态参考规则', [
-    ['业态', '参考租金（元/㎡/月）', '销售基数（元/㎡/月）', '扣点率', '结算方式', '说明'],
-    ...(model.categories || []).map(item => [item.name || '', Number(item.rent || 0), Number(item.salesPerSqmMonth || 0), Number(item.concessionRate || 0), settlementLabel(item.revenueMode === 'inherit' ? model.project?.revenueModel : item.revenueMode), '用于一铺一价核算表中的销售基数、扣点率和结算方式参考']),
-  ], [18, 24, 26, 14, 24, 62]);
+    ['业态', '参考租金（元/㎡/月）', '销售基数（元/㎡/月）', '扣点率', '结算方式', '支付方式', '保证金月数', '预付租金月数', '说明'],
+    ...(model.categories || []).map(item => [item.name || '', Number(item.rent || 0), Number(item.salesPerSqmMonth || 0), Number(item.concessionRate || 0), settlementLabel(item.revenueMode === 'inherit' ? model.project?.revenueModel : item.revenueMode), item.paymentMode || 'inherit', item.depositMonths ?? '', item.prepaidRentMonths ?? '', '用于一铺一价核算表中的销售基数、扣点率、结算方式和现金收款参考']),
+  ], [18, 24, 26, 14, 24, 22, 16, 18, 62]);
   return formatWorkbook(wb, {
     profile: 'report',
     title: '一铺一价核算与人工复核表',
@@ -2884,7 +2884,7 @@ async function exportExcel(result) {
     ['总建筑面积（㎡）', s.grossFloorArea], ['可租赁面积（㎡）', s.leasableArea], ['商铺/楼层数量', s.calculationMode === 'preliminary' ? s.floorCount : s.shopsCount],
     ['项目立项 / 进场日期', s.investmentDate || ''], ['建设开工日期', s.constructionStartDate || ''], ['计划竣工日期', s.constructionEndDate || ''], ['项目接管 / 进场日期', s.handoverDate || ''], ['招商启动日期', s.leasingStartDate || ''], ['计划开业日期', s.openingDate || ''], ['运营结束日期', s.operationEndDate || ''],
     ['项目总投资（万元）', s.totalInvestment], ['稳定期营业收入（万元/年）', s.stableRevenue], ['稳定期物业管理费收入（万元/年）', s.stablePropertyManagementIncome || 0], ['稳定期商业管理费收入（万元/年）', s.stableCommercialManagementIncome || 0], ['稳定期中央空调费收入（万元/年）', s.stableCentralAcIncome || 0], ['稳定期三项费用收入合计（万元/年）', s.stablePropertyFeeIncome || 0], ['业主租金支出（万元/年）', s.stableOwnerRentCost || 0], ['稳定期NOI（万元/年）', s.stableNoi],
-    ['NOI回报率', s.noiYield], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback],
+    ['NOI回报率', s.noiYield], ['周期净利润（万元）', s.periodNetProfit || 0], ['周期净利率', s.periodProfitMargin || 0], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback],
     [''], ['说明', '本表由浏览器版多多·商业地产自动生成，用于投资初筛与方案比较，不替代可研、审计、评估或税务鉴证。'],
   ], [26, 32, 22, 22]);
   addSheet(wb, '核心参数', [
@@ -3174,6 +3174,8 @@ async function exportExcel(result) {
     ['杠杆倍数', s.leverageMultiple || 0],
     ['项目净现金收益（万元）', s.projectNetCashProfit || 0],
     ['资本金净收益（万元）', s.equityNetCashProfit || 0],
+    ['周期净利润（万元）', s.periodNetProfit || 0],
+    ['周期净利率', s.periodProfitMargin || 0],
     ['资本金回报倍数', s.equityReturnMultiple || 0],
     ['资本金净收益率', s.equityProfitRate || 0],
     ['股权IRR', s.equityIrr == null ? '不适用' : s.equityIrr],
@@ -3351,6 +3353,10 @@ async function exportExcel(result) {
     ['日期', '目标招商率', '可实现月租金（元）', '年化租金（万元）', '说明'],
     ...(result.leasingMilestoneAnalysis || []).map(x => [x.date, x.occupancy, x.monthlyRentPotential, x.annualRentPotential, x.note]),
   ], [18, 18, 24, 24, 60]);
+  addSheet(wb, '业态收款分析', [
+    ['业态', '满租月租金（万元/月）', '已租月租金（万元/月）', '收款方式', '保证金月数', '预付租金月数', '保证金流入（万元）', '预付租金流入（万元）'],
+    ...(result.categoryPaymentAnalysis || []).map(x => [x.category, Number(x.monthlyRevenue || 0) / 10000, Number(x.occupiedMonthlyRevenue || 0) / 10000, x.paymentModeLabel || '', x.depositMonths || 0, x.prepaidRentMonths || 0, x.depositCashInflow || 0, x.prepaidRentCashInflow || 0]),
+  ], [20, 24, 24, 22, 16, 18, 22, 24]);
   addSheet(wb, '自然年运营报表', naturalYearReportSheetRows(result), [12, 18, 18, 10, 12, 12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 24, 16, 14, 16, 16, 16, 20, 22, 22, 40]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
   const annualExportRows = (result.annual || []).map(x => {
@@ -3449,14 +3455,14 @@ async function exportPPT(result) {
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '租赁与联营规则', `行业基准：${settlementPresetLabels[result.model.settlementBenchmark?.preset] || '购物中心行业常规'}｜销售修正 ×${Number(result.model.settlementBenchmark?.salesFactor || 1).toFixed(2)}`);
-  const catRows = [['业态', '保底租金', '销售基数 / 常规区间', '扣点率 / 常规区间', '扣点收益/㎡', '结算方式'], ...(result.model.categories || []).map(x => {
+  const catRows = [['业态', '保底租金', '销售基数 / 常规区间', '扣点率 / 常规区间', '扣点收益/㎡', '结算方式', '支付方式', '保证金月数', '预付租金月数'], ...(result.model.categories || []).map(x => {
     const salesRange = x.benchmarkSalesMin == null ? '' : `${x.benchmarkSalesMin}–${x.benchmarkSalesMax}`;
     const rateRange = x.benchmarkConcessionMin == null ? '' : `${(Number(x.benchmarkConcessionMin) * 100).toFixed(2)}%–${(Number(x.benchmarkConcessionMax) * 100).toFixed(2)}%`;
     return [x.name, `${Number(x.rent || 0).toFixed(2)}`, `${Number(x.salesPerSqmMonth || 0).toFixed(2)}
 ${salesRange}`, `${(Number(x.concessionRate || 0) * 100).toFixed(2)}%
-${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), x.revenueMode];
+${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), x.revenueMode, x.paymentMode || 'inherit', x.depositMonths ?? '继承', x.prepaidRentMonths ?? '继承'];
   })];
-  slide.addTable(catRows, { x: 0.55, y: 1.4, w: 12.2, colW: [1.25, 1.35, 2.5, 2.5, 1.5, 1.5], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.6, margin: 0.04, rowH: 0.55, autoFit: false });
+  slide.addTable(catRows, { x: 0.55, y: 1.4, w: 12.2, colW: [1.05, 1.1, 1.75, 1.75, 1.1, 1.1, 1.25, 0.9, 1.0], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 6.8, margin: 0.03, rowH: 0.55, autoFit: false });
   slide.addText(`数据来源：${result.model.settlementBenchmark?.source || '公开行业常规区间与项目测算经验'}。已按项目地区能级和3–5公里商业侦测评分做初步销售修正；不代表当地租户实测流水，正式招商前应以竞品流水、品牌报价和合同扣点校准。`, { x: 0.55, y: 6.45, w: 12.2, h: 0.5, fontFace: 'Microsoft YaHei', fontSize: 7.2, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.08 });
 
   slide = pptx.addSlide();
@@ -3473,7 +3479,7 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
   slide.addText(`金额单位：万元/年。月薪按税前应发口径；社保公积金按税前月薪×12个月×配置比例估算。第三方综合管理费合计 ${(result.summary.annualOutsourcedManagementFee || 0).toFixed(2)} 万元；比例、基数及物业服务合同须按属地政策和实际条款复核。`, { x: 0.55, y: 6.55, w: 12.2, h: 0.32, fontFace: 'Microsoft YaHei', fontSize: 7.2, color: '66736F' });
 
   slide = pptx.addSlide();
-  addSlideTitle(slide, '项目启动资金与资本金杠杆', `建议启动资金 ${(result.summary.recommendedStartupCapital || 0).toFixed(2)} 万元｜资本金 ${(result.summary.equityCapital || 0).toFixed(2)} 万元×${(result.summary.leverageMultiple || 0).toFixed(2)}倍｜资本金净收益 ${(result.summary.equityNetCashProfit || 0).toFixed(2)} 万元`);
+  addSlideTitle(slide, '项目启动资金与资本金杠杆', `建议启动资金 ${(result.summary.recommendedStartupCapital || 0).toFixed(2)} 万元｜周期净利润 ${(result.summary.periodNetProfit || 0).toFixed(2)} 万元｜资本金 ${(result.summary.equityCapital || 0).toFixed(2)} 万元×${(result.summary.leverageMultiple || 0).toFixed(2)}倍｜资本金净收益 ${(result.summary.equityNetCashProfit || 0).toFixed(2)} 万元`);
   const fundingCards = [
     ['建议启动资金', result.summary.recommendedStartupCapital || 0, '含资金缺口峰值及安全垫'],
     ['项目资金缺口峰值', result.summary.peakProjectFundingRequirement || 0, '项目口径'],

@@ -528,6 +528,7 @@ a { color: inherit; }
 .benchmark-row-source { display: block; margin-top: 3px; color: var(--muted); font-size: var(--fs-8); font-weight: 400; }
 .category-rules-table .table-select { border: 1px solid #e1dcd3; border-radius: 6px; background: #fffdf8; color: var(--input); padding: 6px 7px; font-size: var(--fs-9); }
 .category-rules-table .table-input { min-width: 84px; }
+.category-rules-table { min-width: 1240px; }
 .condition-picker { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 4px; }
 .condition-picker label { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: #fff; color: var(--muted); font-size: var(--fs-9); cursor: pointer; }
 .condition-picker label:has(input:checked) { border-color: var(--green); background: var(--green-soft); color: var(--green); }

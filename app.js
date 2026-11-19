@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-ownerrent2';
+import './backend.js?v=20261119-periodprofit1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.27';
+const APP_VERSION = '1.28.29';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3941,16 +3941,18 @@ function renderDetailedPricing(m, shops, preview) {
     </div>
     <div class="form-section compact-top">
       <div class="section-title">业态租金 / 联营扣点规则</div>
-      <div class="section-note">每个业态可单独选择计租方式。基准面板会给出销售基数、扣点率和保底租金的行业常见区间；当前结算方式为纯租金时，联营条件仅作参考，不进入收入。</div>
+      <div class="section-note">每个业态可单独选择计租方式和支付方式。基准面板会给出销售基数、扣点率和保底租金的行业常见区间；支付方式、保证金月数和预付租金月数会直接进入招商期现金流。当前结算方式为纯租金时，联营条件仅作参考，不进入收入。</div>
       ${renderSettlementBenchmarkPanel(m)}
       ${formulaPanel('一铺一价与联营扣点公式', '保底月收入 = 租赁面积 × 楼层均价 × 业态系数 ×（1 + 位置条件溢价）\n联营扣点月收入 = 租赁面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '条件溢价合计最高40%；铺位填写租金覆盖值时，以覆盖值优先。')}
-      <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金<br><small>元/㎡/月</small></th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}<br><small>当前 / 常规区间</small></th><th class="num">${termLabel('扣点率')}<br><small>当前 / 常规区间</small></th><th class="num">扣点收益<br><small>元/㎡/月</small></th><th class="num">业态系数</th></tr></thead><tbody>
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金<br><small>元/㎡/月</small></th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}<br><small>当前 / 常规区间</small></th><th class="num">${termLabel('扣点率')}<br><small>当前 / 常规区间</small></th><th class="num">扣点收益<br><small>元/㎡/月</small></th><th class="num">业态系数</th><th>支付方式</th><th class="num">保证金<br><small>月</small></th><th class="num">预付租金<br><small>月</small></th></tr></thead><tbody>
         ${(m.categories || []).map((cat, i) => {
           const benchmark = benchmarkForCategory(m, cat.name);
           const commissionPerSqm = Number(cat.salesPerSqmMonth || 0) * Number(cat.concessionRate || 0);
-          return `<tr><td><strong>${escapeHtml(cat.name)}</strong><small class="benchmark-row-source">${escapeHtml(benchmark.context.preset.shortLabel)}基准</small></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.rentRange[0], 0)}–${fmt(benchmark.rentRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.salesRange[0], 0)}–${fmt(benchmark.salesRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"><small class="range-hint">常规 ${fmtPct(benchmark.concessionRange[0], 0)}–${fmtPct(benchmark.concessionRange[1], 0)}</small></td><td class="num"><strong>${fmt(commissionPerSqm, 2)}</strong><small class="range-hint">${cat.revenueMode === 'rent' ? '纯租金不参与' : '测算参考'}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td></tr>`;
+          const paymentMode = cat.paymentMode || 'inherit';
+          return `<tr><td><strong>${escapeHtml(cat.name)}</strong><small class="benchmark-row-source">${escapeHtml(benchmark.context.preset.shortLabel)}基准</small></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.rentRange[0], 0)}–${fmt(benchmark.rentRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.salesRange[0], 0)}–${fmt(benchmark.salesRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"><small class="range-hint">常规 ${fmtPct(benchmark.concessionRange[0], 0)}–${fmtPct(benchmark.concessionRange[1], 0)}</small></td><td class="num"><strong>${fmt(commissionPerSqm, 2)}</strong><small class="range-hint">${cat.revenueMode === 'rent' ? '纯租金不参与' : '测算参考'}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td><td><select class="table-select" data-path="categories.${i}.paymentMode" data-type="text"><option value="inherit" ${paymentMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="deposit_and_prepaid" ${paymentMode === 'deposit_and_prepaid' ? 'selected' : ''}>押金+预付租金</option><option value="deposit_only" ${paymentMode === 'deposit_only' ? 'selected' : ''}>仅收押金</option><option value="prepaid_only" ${paymentMode === 'prepaid_only' ? 'selected' : ''}>仅收预付租金</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.depositMonths" data-type="number" type="number" step="0.5" placeholder="继承" value="${cat.depositMonths ?? ''}"></td><td class="num"><input class="table-input" data-path="categories.${i}.prepaidRentMonths" data-type="number" type="number" step="0.5" placeholder="继承" value="${cat.prepaidRentMonths ?? ''}"></td></tr>`;
         }).join('')}
       </tbody></table></div>
+      ${(preview?.categoryPaymentAnalysis || []).length ? `<div class="subsection-heading" style="margin-top:18px"><div><strong>业态支付方式与招商期现金流入</strong><span>单位：万元；按首年出租率 × 各业态月租金 × 押金/预付月数测算</span></div></div><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>业态</th><th class="num">已租月租金（万元/月）</th><th>收款方式</th><th class="num">保证金月数</th><th class="num">预付租金月数</th><th class="num">保证金流入（万元）</th><th class="num">预付租金流入（万元）</th></tr></thead><tbody>${(preview.categoryPaymentAnalysis || []).map(item => `<tr><td>${escapeHtml(item.category || '')}</td><td class="num">${fmt(Number(item.occupiedMonthlyRevenue || 0) / 10000, 2)}</td><td>${escapeHtml(item.paymentModeLabel || '')}</td><td class="num">${fmt(item.depositMonths, 2)}</td><td class="num">${fmt(item.prepaidRentMonths, 2)}</td><td class="num pos">${fmt(item.depositCashInflow, 2)}</td><td class="num pos">${fmt(item.prepaidRentCashInflow, 2)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     </div>
     <div class="form-section">
       <div class="section-title">铺位位置条件溢价</div>
@@ -6733,7 +6735,7 @@ function renderInvestmentOverviewCard() {
       <div><span>02 土地与建设投入</span><strong>${fmt(landBuildInvestment, 2)} 万元</strong><small>土地、前期、建安、装修、设备和预备费</small></div>
       <div><span>03 建设启动资金</span><strong>${fmt(s.constructionEquityFundingRequirement, 2)} 万元</strong><small>资本金口径；项目口径 ${fmt(s.constructionProjectFundingRequirement, 2)} 万元<br>含土地、建安、装修设备、规费及建设期利息</small></div>
       <div><span>04 招商运营资金</span><strong>${fmt(s.leasingEquityFundingRequirement, 2)} 万元</strong><small>资本金口径；筹备非工程费用 ${fmt(preparationCost, 2)} 万元<br>建议总启动资金 ${fmt(s.recommendedStartupCapital, 2)} 万元</small></div>
-      <div><span>05 项目整体收益</span><strong>${s.projectIrr == null ? '不适用' : fmtPct(s.projectIrr)}</strong><small>NPV ${fmt(s.projectNpv, 2)} 万元；回收期 ${s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 2)}年`}<br>稳定NOI ${fmt(s.stableNoi, 2)} 万元/年</small></div>
+      <div><span>05 项目整体收益</span><strong>${s.projectIrr == null ? '不适用' : fmtPct(s.projectIrr)}</strong><small>周期净利润 ${fmt(s.periodNetProfit, 2)} 万元；NPV ${fmt(s.projectNpv, 2)} 万元<br>回收期 ${s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 2)}年`}；稳定NOI ${fmt(s.stableNoi, 2)} 万元/年</small></div>
     </div>
     <div class="confidence-check-grid">${checks.map(item => `<div class="${item.complete ? 'complete' : 'pending'}"><span>${item.complete ? '✓' : '!'}</span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail)}</small></div></div>`).join('')}</div>
     <div class="overview-disclaimer">完备度表示当前测算数据是否充分，不代表项目必然盈利。正式决策仍需补充合同、市场调研、税务意见、工程概算和融资条件。</div>
@@ -6744,11 +6746,13 @@ function renderLeverageProfitCard() {
   const s = state.result?.summary || {};
   const profitClass = Number(s.equityNetCashProfit || 0) >= 0 ? 'positive' : 'negative';
   return `<div class="card leverage-profit-card">
-    <div class="leverage-head"><div><span class="eyebrow">Capital leverage & profit</span><h3>资本金杠杆与整体盈利</h3><p>用自有资本金撬动项目总投资，并区分项目净现金收益与股东资本金净收益。</p></div><div class="leverage-formula-pill">${fmt(s.equityCapital, 2)} 万元资本金 × ${fmt(s.leverageMultiple, 2)} 倍杠杆 → 总投 ${fmt(s.totalInvestment, 2)} 万元</div></div>
+    <div class="leverage-head"><div><span class="eyebrow">Capital leverage & profit</span><h3>资本金杠杆与整体盈利</h3><p>用自有资本金撬动项目总投资，并同时展示全周期会计净利润、项目净现金收益与股东资本金净收益。</p></div><div class="leverage-formula-pill">周期净利润 ${fmt(s.periodNetProfit, 2)} 万元 · ${fmt(s.equityCapital, 2)} 万元资本金 × ${fmt(s.leverageMultiple, 2)} 倍杠杆 → 总投 ${fmt(s.totalInvestment, 2)} 万元</div></div>
     <div class="leverage-kpis">
       <div><span>自有资本金</span><strong>${fmt(s.equityCapital, 2)}</strong><em>万元</em></div>
       <div><span>债务融资</span><strong>${fmt(s.loanAmount, 2)}</strong><em>万元</em></div>
       <div><span>杠杆倍数</span><strong>${fmt(s.leverageMultiple, 2)}</strong><em>倍</em></div>
+      <div><span>周期净利润</span><strong class="${Number(s.periodNetProfit || 0) >= 0 ? 'pos' : 'neg'}">${fmt(s.periodNetProfit, 2)}</strong><em>万元 · 运营期累计，扣除折旧、利息和所得税</em></div>
+      <div><span>周期净利率</span><strong class="${Number(s.periodProfitMargin || 0) >= 0 ? 'pos' : 'neg'}">${fmtPct(s.periodProfitMargin)}</strong><em>周期净利润 ÷ 周期营业收入</em></div>
       <div><span>项目净现金收益</span><strong class="${profitClass}">${fmt(s.projectNetCashProfit, 2)}</strong><em>万元</em></div>
       <div><span>资本金净收益</span><strong class="${profitClass}">${fmt(s.equityNetCashProfit, 2)}</strong><em>万元</em></div>
       <div><span>资本金回报倍数</span><strong>${fmt(s.equityReturnMultiple, 2)}</strong><em>倍</em></div>
@@ -6950,7 +6954,8 @@ function bindStepInputs() {
       let value = input.value;
       if (input.type === 'checkbox') value = input.checked;
       else if (type === 'number') {
-        value = value === '' ? 0 : Number(value) * scale;
+        const inheritCategoryPayment = /^categories\.\d+\.(depositMonths|prepaidRentMonths)$/.test(path);
+        value = value === '' ? (inheritCategoryPayment ? null : 0) : Number(value) * scale;
         if (input.dataset.annualize === 'true') {
           const period = getPath(state.current.model, input.dataset.periodPath || '');
           if (period === 'monthly') value *= 12;

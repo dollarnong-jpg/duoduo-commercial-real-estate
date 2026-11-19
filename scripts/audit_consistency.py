@@ -57,6 +57,7 @@ def audit_defaults_and_units() -> None:
     model = engine.default_model("一致性审计")
     assert model["project"]["rentAreaBasis"] == "leasable"
     assert model["project"]["ownerRentAreaBasis"] == "building"
+    assert all("paymentMode" in item and "depositMonths" in item and "prepaidRentMonths" in item for item in model["categories"])
     total_months = float(model["project"]["leasingPeriodMonths"])
     assert total_months == 12.0
     team_months = [float(item["months"]) for item in model["preOpeningBudget"]["team"]["positions"]]
@@ -309,6 +310,7 @@ def audit_engine_invariants() -> None:
     assert close(sum(item["value"] for item in result["investmentBreakdown"]), summary["totalInvestment"])
 
     rows = {row["opYear"]: row for row in result["annual"] if row.get("opYear", 0) > 0}
+    assert close(summary["periodNetProfit"], sum(row["netProfit"] for row in rows.values()))
     for year, row in rows.items():
         assert close(row["revenue"] - row["operatingCost"] - row["taxes"], row["noi"]), f"NOI mismatch {year}"
         assert close(row["noi"] - row["projectCapex"] - row["projectIncomeTax"] + row["exitValue"], row["projectCashFlow"]), f"project CF mismatch {year}"
@@ -491,6 +493,10 @@ def audit_monthly_cash_flow() -> None:
     assert any(row["prepaidRentInflow"] > 0 for row in plan), "prepaid rent cash inflow missing"
     assert any(row["preopeningManagementOutflow"] > 0 for row in plan), "management entry cost missing"
     assert result["summary"]["normalOperationWorkingCapital"] >= result["summary"]["normalOperationCapital"]
+    category_cash = result["categoryPaymentAnalysis"]
+    assert category_cash
+    assert close(sum(item["depositCashInflow"] for item in category_cash), result["summary"]["merchantDepositCashInflow"])
+    assert close(sum(item["prepaidRentCashInflow"] for item in category_cash), result["summary"]["merchantPrepaidRentCashInflow"])
     assert result["summary"]["peakProjectFundingDate"] in {row["date"] for row in plan}
 
 

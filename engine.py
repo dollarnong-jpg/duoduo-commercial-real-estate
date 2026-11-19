@@ -9,13 +9,13 @@ from typing import Any
 
 
 CATEGORY_PRESETS = [
-    {"name": "零售", "rent": 120.0, "factor": 1.00, "revenueMode": "inherit", "salesPerSqmMonth": 1200.0, "concessionRate": 0.18},
-    {"name": "餐饮", "rent": 110.0, "factor": 1.08, "revenueMode": "inherit", "salesPerSqmMonth": 900.0, "concessionRate": 0.12},
-    {"name": "娱乐", "rent": 70.0, "factor": 0.78, "revenueMode": "inherit", "salesPerSqmMonth": 550.0, "concessionRate": 0.08},
-    {"name": "教培", "rent": 80.0, "factor": 0.85, "revenueMode": "inherit", "salesPerSqmMonth": 750.0, "concessionRate": 0.10},
-    {"name": "服务", "rent": 90.0, "factor": 0.92, "revenueMode": "inherit", "salesPerSqmMonth": 700.0, "concessionRate": 0.10},
-    {"name": "超市/主力店", "rent": 50.0, "factor": 0.65, "revenueMode": "inherit", "salesPerSqmMonth": 450.0, "concessionRate": 0.05},
-    {"name": "其他", "rent": 80.0, "factor": 0.90, "revenueMode": "inherit", "salesPerSqmMonth": 700.0, "concessionRate": 0.10},
+    {"name": "零售", "rent": 120.0, "factor": 1.00, "revenueMode": "inherit", "salesPerSqmMonth": 1200.0, "concessionRate": 0.18, "paymentMode": "inherit", "depositMonths": None, "prepaidRentMonths": None},
+    {"name": "餐饮", "rent": 110.0, "factor": 1.08, "revenueMode": "inherit", "salesPerSqmMonth": 900.0, "concessionRate": 0.12, "paymentMode": "inherit", "depositMonths": None, "prepaidRentMonths": None},
+    {"name": "娱乐", "rent": 70.0, "factor": 0.78, "revenueMode": "inherit", "salesPerSqmMonth": 550.0, "concessionRate": 0.08, "paymentMode": "inherit", "depositMonths": None, "prepaidRentMonths": None},
+    {"name": "教培", "rent": 80.0, "factor": 0.85, "revenueMode": "inherit", "salesPerSqmMonth": 750.0, "concessionRate": 0.10, "paymentMode": "inherit", "depositMonths": None, "prepaidRentMonths": None},
+    {"name": "服务", "rent": 90.0, "factor": 0.92, "revenueMode": "inherit", "salesPerSqmMonth": 700.0, "concessionRate": 0.10, "paymentMode": "inherit", "depositMonths": None, "prepaidRentMonths": None},
+    {"name": "超市/主力店", "rent": 50.0, "factor": 0.65, "revenueMode": "inherit", "salesPerSqmMonth": 450.0, "concessionRate": 0.05, "paymentMode": "inherit", "depositMonths": None, "prepaidRentMonths": None},
+    {"name": "其他", "rent": 80.0, "factor": 0.90, "revenueMode": "inherit", "salesPerSqmMonth": 700.0, "concessionRate": 0.10, "paymentMode": "inherit", "depositMonths": None, "prepaidRentMonths": None},
 ]
 
 CONDITION_PRESETS = [
@@ -2272,6 +2272,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     operation_period_equity_income_tax = sum(as_float(row.get("equityIncomeTax", row.get("incomeTax"))) for row in operation_rows)
     operation_period_total_tax_and_income_tax = sum(as_float(row.get("totalTaxAndIncomeTax")) for row in operation_rows)
     operation_period_interest = sum(as_float(row.get("interest")) for row in operation_rows)
+    period_net_profit = sum(as_float(row.get("netProfit")) for row in operation_rows)
+    period_operating_noi = sum(as_float(row.get("noi")) for row in operation_rows)
+    period_revenue_total = sum(as_float(row.get("revenue")) for row in operation_rows)
+    period_profit_margin = safe_div(period_net_profit, period_revenue_total)
     preopening_investment = total_investment
     full_cycle_cost_excluding_financing = preopening_investment + operation_period_operating_cost + operation_period_taxes
     full_cycle_cash_cost_including_financing = full_cycle_cost_excluding_financing + operation_period_interest
@@ -2337,13 +2341,44 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     add_cash_event(project.get("openingDate"), "筹备招商投入开业前支出", -preopening_non_management * 0.50, "筹备支出")
     initial_occupancy = max(0.0, min(1.0, as_float(operations.get("occupancyY1"))))
     rent_collection_mode = str(operations.get("rentCollectionMode") or "deposit_and_prepaid")
-    include_tenant_deposit = rent_collection_mode in {"deposit_and_prepaid", "deposit_only"}
-    include_prepaid_rent = rent_collection_mode in {"deposit_and_prepaid", "prepaid_only"}
-    tenant_deposit_total = total_monthly_revenue * initial_occupancy * (max(0.0, as_float(operations.get("depositMonths"))) if include_tenant_deposit else 0.0) / 10000
-    prepaid_rent_total = total_monthly_revenue * initial_occupancy * (max(0.0, as_float(operations.get("prepaidRentMonths"))) if include_prepaid_rent else 0.0) / 10000
-    add_cash_event(project.get("leasingStartDate"), "商户租赁保证金收取", tenant_deposit_total, "保证金")
-    add_cash_event(project.get("operationEndDate"), "商户租赁保证金退还", -tenant_deposit_total, "保证金")
-    add_cash_event(project.get("leasingStartDate"), "商户预付租金收取", prepaid_rent_total, "预收租金")
+    project_deposit_months = max(0.0, as_float(operations.get("depositMonths")))
+    project_prepaid_months = max(0.0, as_float(operations.get("prepaidRentMonths")))
+    category_monthly_revenue: dict[str, float] = {}
+    for shop in shop_calc:
+        category_name = str(shop.get("category") or "其他").strip() or "其他"
+        category_monthly_revenue[category_name] = category_monthly_revenue.get(category_name, 0.0) + as_float(shop.get("monthlyRevenue"))
+    category_payment_analysis: list[dict[str, Any]] = []
+    category_source = category_monthly_revenue if category_monthly_revenue else {"项目整体": total_monthly_revenue}
+    for category_name, monthly_revenue in category_source.items():
+        category_config = category_data.get(category_name, {})
+        category_mode = str(category_config.get("paymentMode") or "inherit")
+        effective_mode = rent_collection_mode if category_mode == "inherit" else category_mode
+        include_category_deposit = effective_mode in {"deposit_and_prepaid", "deposit_only"}
+        include_category_prepaid = effective_mode in {"deposit_and_prepaid", "prepaid_only"}
+        category_deposit_months = as_float(category_config.get("depositMonths"), project_deposit_months) if category_config.get("depositMonths") is not None else project_deposit_months
+        category_prepaid_months = as_float(category_config.get("prepaidRentMonths"), project_prepaid_months) if category_config.get("prepaidRentMonths") is not None else project_prepaid_months
+        occupied_monthly_revenue = monthly_revenue * initial_occupancy
+        category_deposit = occupied_monthly_revenue * (max(0.0, category_deposit_months) if include_category_deposit else 0.0) / 10000
+        category_prepaid = occupied_monthly_revenue * (max(0.0, category_prepaid_months) if include_category_prepaid else 0.0) / 10000
+        mode_label = "押金+预付租金" if effective_mode == "deposit_and_prepaid" else "仅收押金" if effective_mode == "deposit_only" else "仅收预付租金"
+        category_payment_analysis.append({
+            "category": category_name,
+            "monthlyRevenue": monthly_revenue,
+            "occupiedMonthlyRevenue": occupied_monthly_revenue,
+            "paymentMode": effective_mode,
+            "paymentModeLabel": mode_label,
+            "depositMonths": category_deposit_months if include_category_deposit else 0.0,
+            "prepaidRentMonths": category_prepaid_months if include_category_prepaid else 0.0,
+            "depositCashInflow": category_deposit,
+            "prepaidRentCashInflow": category_prepaid,
+        })
+        if category_deposit > 0:
+            add_cash_event(project.get("leasingStartDate"), f"{category_name}租赁保证金收取", category_deposit, "保证金")
+            add_cash_event(project.get("operationEndDate"), f"{category_name}租赁保证金退还", -category_deposit, "保证金")
+        if category_prepaid > 0:
+            add_cash_event(project.get("leasingStartDate"), f"{category_name}预付租金收取", category_prepaid, "预收租金")
+    tenant_deposit_total = sum(as_float(item.get("depositCashInflow")) for item in category_payment_analysis)
+    prepaid_rent_total = sum(as_float(item.get("prepaidRentCashInflow")) for item in category_payment_analysis)
     owner_deposit = max(0.0, as_float(owner_rent_config.get("depositAmount")))
     add_cash_event(owner_rent_config.get("depositPaymentDate") or project.get("leasingStartDate"), "向业主支付租赁保证金", -owner_deposit, "保证金")
     add_cash_event(owner_rent_config.get("depositRefundDate") or project.get("operationEndDate"), "收回业主租赁保证金", owner_deposit, "保证金")
@@ -2993,6 +3028,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "leverageMultiple": leverage_multiple,
             "projectNetCashProfit": project_net_cash_profit,
             "equityNetCashProfit": equity_net_cash_profit,
+            "periodNetProfit": period_net_profit,
+            "periodOperatingNoi": period_operating_noi,
+            "periodRevenueTotal": period_revenue_total,
+            "periodProfitMargin": period_profit_margin,
             "projectReturnMultiple": project_return_multiple,
             "equityReturnMultiple": equity_return_multiple,
             "equityProfitRate": equity_profit_rate,
@@ -3135,6 +3174,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         "fundingUseBreakdown": funding_use_breakdown,
         "fundingSourceBreakdown": funding_source_breakdown,
         "monthlyFundingPlan": monthly_funding_plan,
+        "categoryPaymentAnalysis": category_payment_analysis,
         "keyCashEvents": key_cash_events,
         "leasingMilestoneAnalysis": leasing_milestone_analysis,
         "organizationBreakdown": organization_breakdown,
