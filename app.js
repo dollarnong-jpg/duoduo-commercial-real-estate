@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-feebalance1';
+import './backend.js?v=20261120-managementcost1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.34';
+const APP_VERSION = '1.28.35';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6577,12 +6577,16 @@ function renderOperatingLedgerCard() {
       <div class="${Number(summary.stableNetProfit || 0) < 0 ? 'danger' : 'positive'}"><span>稳定年净利润（会计口径）</span><strong>${fmt(summary.stableNetProfit, 2)}</strong><em>万元/年 · 扣折旧、利息和所得税</em></div>
       <div><span>物业费+商管费+空调费收入 · 运营期累计</span><strong>${fmt(ledger.feeIncomeCumulative, 2)}</strong><em>万元</em></div>
       <div class="${ledger.feeBalanceCumulative < 0 ? 'danger' : 'positive'}"><span>收费结余（不是净利润） · 运营期累计</span><strong>${fmt(ledger.feeBalanceCumulative, 2)}</strong><em>万元</em></div>
+      <div><span>商业及运营管理成本（不含业主租金） · 稳定年</span><strong>${fmt(summary.stableCommercialManagementCost, 2)}</strong><em>万元/年 · 含人员、营销、招商、办公、维保等</em></div>
+      <div class="${Number(summary.stableCommercialOperatingBalance || 0) < 0 ? 'danger' : 'positive'}"><span>扣除商业管理成本后的经营结余 · 稳定年</span><strong>${fmt(summary.stableCommercialOperatingBalance, 2)}</strong><em>万元/年 · 未扣业主租金</em></div>
+      <div><span>商业及运营管理成本（不含业主租金） · 运营期累计</span><strong>${fmt(summary.periodCommercialManagementCost, 2)}</strong><em>万元</em></div>
+      <div class="${Number(summary.periodCommercialOperatingBalance || 0) < 0 ? 'danger' : 'positive'}"><span>扣除商业管理成本后的经营结余 · 运营期累计</span><strong>${fmt(summary.periodCommercialOperatingBalance, 2)}</strong><em>万元 · 未扣业主租金</em></div>
     </div>
     <div class="data-table-wrap" style="max-height:none"><table class="data-table operating-ledger-table"><thead><tr><th>归类 / 项目</th><th>计算口径与出处</th><th class="num">稳定月均（万元）</th><th class="num">稳定年（万元）</th><th class="num">运营期累计（万元）</th><th>为 0 / 异常原因</th></tr></thead><tbody>
       ${ledger.rows.map(row => `<tr class="${rowClass(row)}"><td><span class="ledger-section">${escapeHtml(row.section)}</span><strong>${escapeHtml(row.name)}</strong></td><td class="ledger-formula">${escapeHtml(row.formula)}</td><td class="num">${fmt(row.monthly, 2)}</td><td class="num">${fmt(row.annual, 2)}</td><td class="num">${fmt(row.cumulative, 2)}</td><td class="ledger-reason ${row.note ? 'has-reason' : ''}">${escapeHtml(row.note || '已形成有效数据')}</td></tr>`).join('')}
     </tbody></table></div>
     <details class="advanced ledger-year-details"><summary>逐年收入、收费结余与现金流明细（${ledger.annual.length}年）</summary><div class="advanced-body"><div class="data-table-wrap" style="max-height:560px"><table class="data-table"><thead><tr><th>运营年</th><th>阶段</th><th class="num">招商率</th><th class="num">收租率</th><th class="num">递增因子</th><th class="num">应收租金</th><th class="num">未收租金</th><th class="num">实收租金</th><th class="num">物业费</th><th class="num">商管费</th><th class="num">空调费</th><th class="num">物业+商管+空调收费合计</th><th class="num">对应物业/能耗成本</th><th class="num">收费结余<br>（非净利润）</th><th class="num">营业收入</th><th class="num">运营成本</th><th class="num">税费</th><th class="num">NOI</th><th class="num">累计项目现金流</th></tr></thead><tbody>${ledger.yearly.map(row => `<tr><td>第${row.opYear}年</td><td>${escapeHtml(row.phase || '运营期')}</td><td class="num">${fmtPct(row.occupancy)}</td><td class="num">${fmtPct(row.rentCollectionRate)}</td><td class="num">×${fmt(row.rentGrowthFactor, 3)}</td><td class="num">${fmt(row.scheduledRent, 2)}</td><td class="num neg">${fmt(row.uncollectedRent, 2)}</td><td class="num"><strong>${fmt(row.rent, 2)}</strong></td><td class="num">${fmt(row.propertyFee, 2)}</td><td class="num">${fmt(row.commercialFee, 2)}</td><td class="num">${fmt(row.centralAcFee, 2)}</td><td class="num"><strong>${fmt(row.feeIncome, 2)}</strong></td><td class="num">${fmt(row.serviceCost, 2)}</td><td class="num ${row.feeBalance < 0 ? 'neg' : 'pos'}">${fmt(row.feeBalance, 2)}</td><td class="num">${fmt(row.revenue, 2)}</td><td class="num">${fmt(row.operatingCost, 2)}</td><td class="num">${fmt(row.taxes, 2)}</td><td class="num ${row.noi < 0 ? 'neg' : 'pos'}">${fmt(row.noi, 2)}</td><td class="num ${row.cumulativeCash < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeCash, 2)}</td></tr>`).join('')}</tbody></table></div></div></details>
-    <div class="field-help">口径说明：“人员及物业服务成本”已包含第三方物业服务管理费、保安、保洁、物业工程及自营招聘培训；“第三方物业服务管理费”仅作明细展示，不重复加总。收费结余 = 物业管理费收入 + 商业管理费收入 + 中央空调费收入 − 对应物业工程、保安、保洁及公共能耗成本。它只反映这三类收费自身是否覆盖对应服务成本，不是项目利润；项目利润还要继续扣除人员办公、招商营销、业主租金、折旧、利息、所得税等其他项目。</div>
+    <div class="field-help">口径说明：“人员及物业服务成本”已包含第三方物业服务管理费、保安、保洁、物业工程及自营招聘培训；“第三方物业服务管理费”仅作明细展示，不重复加总。收费结余 = 物业管理费收入 + 商业管理费收入 + 中央空调费收入 − 对应物业工程、保安、保洁及公共能耗成本。运营人员、营销推广、招商、办公、维保、保险、坏账等其他商业管理成本已完整进入“商业及运营管理成本”和NOI，不会遗漏，也不会在收费结余中重复扣减。收费结余不是项目利润；项目利润还要看稳定年净利润、周期净利润和项目盈利合计。</div>
   </div>`;
 }
 
