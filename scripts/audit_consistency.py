@@ -488,6 +488,9 @@ def audit_monthly_cash_flow() -> None:
         "leaseType": "property",
         "propertyMonthlyRent": 100,
         "propertyPaymentMonths": 12,
+        "depositAmount": 300,
+        "depositPaymentDate": "",
+        "depositRefundDate": "",
         "paymentTiming": "arrears",
         "paymentFrequency": "monthly",
         "paymentStartDate": "2027-10-01",
@@ -524,6 +527,9 @@ def audit_monthly_cash_flow() -> None:
     for row in result["naturalYearReport"]:
         assert close(row["totalExpense"], row["cashOperatingCost"] + row["taxes"] + row["projectIncomeTax"] + row["projectCapex"])
     assert result["summary"]["peakProjectFundingDate"] in {row["date"] for row in plan}
+    owner_deposit_events = [event for event in result["keyCashEvents"] if "业主" in event["name"] and "保证金" in event["name"]]
+    assert any(event["date"] == "2027-07-01" and event["amount"] == -300 for event in owner_deposit_events)
+    assert any(event["date"] == "2029-09-30" and event["amount"] == 300 for event in owner_deposit_events)
 
 
 def main() -> None:

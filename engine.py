@@ -1626,6 +1626,15 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     opening_date = parse_iso_date(project.get("openingDate")) or date(int(project.get("startYear") or datetime.now().year) + construction_years + leasing_years, 1, 1)
     operation_end_date = parse_iso_date(project.get("operationEndDate")) or add_months(opening_date, operation_years * 12)
+    owner_deposit = max(0.0, as_float(owner_rent_config.get("depositAmount")))
+    owner_deposit_payment_date = (
+        parse_iso_date(owner_rent_config.get("depositPaymentDate"))
+        or parse_iso_date(project.get("handoverDate"))
+        or parse_iso_date(project.get("investmentDate"))
+        or parse_iso_date(project.get("leasingStartDate"))
+        or opening_date
+    )
+    owner_deposit_refund_date = parse_iso_date(owner_rent_config.get("depositRefundDate")) or operation_end_date
     milestone_dates = []
     for item in operations.get("leasingMilestones", []) if isinstance(operations.get("leasingMilestones"), list) else []:
         if not isinstance(item, dict):
@@ -2399,9 +2408,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             add_cash_event(project.get("leasingStartDate"), f"{category_name}预付租金收取", category_prepaid, "预收租金")
     tenant_deposit_total = sum(as_float(item.get("depositCashInflow")) for item in category_payment_analysis)
     prepaid_rent_total = sum(as_float(item.get("prepaidRentCashInflow")) for item in category_payment_analysis)
-    owner_deposit = max(0.0, as_float(owner_rent_config.get("depositAmount")))
-    add_cash_event(owner_rent_config.get("depositPaymentDate") or project.get("leasingStartDate"), "向业主支付租赁保证金", -owner_deposit, "保证金")
-    add_cash_event(owner_rent_config.get("depositRefundDate") or project.get("operationEndDate"), "收回业主租赁保证金", owner_deposit, "保证金")
+    add_cash_event(owner_deposit_payment_date, "项目进场向业主支付租赁保证金", -owner_deposit, "保证金")
+    add_cash_event(owner_deposit_refund_date, "项目结束收回业主租赁保证金", owner_deposit, "保证金")
 
     frequency_months = {"monthly": 1, "quarterly": 3, "semiannual": 6, "annual": 12}
     payment_interval = frequency_months.get(str(owner_rent_config.get("paymentFrequency") or "monthly"), 1)
@@ -2752,7 +2760,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"phase": "筹备招商期", "item": "筹备团队成本", "amount": preopening_team, "note": "筹备岗位工资、社保及招聘培训"},
         {"phase": "筹备招商期", "item": "筹备物业成本", "amount": preopening_property, "note": "工程介入、保安、保洁、开荒及物业顾问"},
         {"phase": "筹备招商期", "item": "其他前期及开办费用", "amount": preopening_other_direct, "note": "办公、行政、证照、咨询及其他开办支出"},
-        {"phase": "筹备招商期", "item": "业主租赁保证金", "amount": owner_deposit if parse_iso_date(owner_rent_config.get("depositPaymentDate")) and parse_iso_date(owner_rent_config.get("depositPaymentDate")) < opening_date else 0.0, "note": "按合同在开业前支付的保证金"},
+        {"phase": "筹备招商期" if owner_deposit_payment_date < opening_date else "开业首年", "item": "业主租赁保证金", "amount": owner_deposit, "note": f"默认项目接管/进场日 {iso_date(owner_deposit_payment_date)} 支付，{iso_date(owner_deposit_refund_date)} 收回；合同日期优先"},
         {"phase": "筹备招商期", "item": "开业前业主租金", "amount": owner_rent_before_opening, "note": "按业主租金付款日期识别的开业前租金"},
         {"phase": "开业首年", "item": "铺底流动资金", "amount": working_capital, "note": "稳定运营成本估算 × 铺底流动资金率"},
         {"phase": "开业首年", "item": "开业首年专项营销", "amount": opening_marketing_total, "note": "导视导览、开业美陈及其他开业专项"},
@@ -3126,8 +3134,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "ownerRentFreeStartDate": owner_rent_config.get("rentFreeStartDate") or "",
             "ownerRentFreeEndDate": owner_rent_config.get("rentFreeEndDate") or "",
             "ownerDepositAmount": max(0.0, as_float(owner_rent_config.get("depositAmount"))),
-            "ownerDepositPaymentDate": owner_rent_config.get("depositPaymentDate") or "",
-            "ownerDepositRefundDate": owner_rent_config.get("depositRefundDate") or "",
+            "ownerDepositPaymentDate": iso_date(owner_deposit_payment_date),
+            "ownerDepositRefundDate": iso_date(owner_deposit_refund_date),
             "stableExtraOperatingCost": stable_extra_operating_cost,
             "stableOperatingCost": stable_operating_cost,
             "stableOperatingCostExOwnerRent": stable_operating_cost_ex_owner_rent,
@@ -3187,8 +3195,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "ownerRentFreeStartDate": owner_rent_config.get("rentFreeStartDate") or "",
             "ownerRentFreeEndDate": owner_rent_config.get("rentFreeEndDate") or "",
             "ownerDepositAmount": max(0.0, as_float(owner_rent_config.get("depositAmount"))),
-            "ownerDepositPaymentDate": owner_rent_config.get("depositPaymentDate") or "",
-            "ownerDepositRefundDate": owner_rent_config.get("depositRefundDate") or "",
+            "ownerDepositPaymentDate": iso_date(owner_deposit_payment_date),
+            "ownerDepositRefundDate": iso_date(owner_deposit_refund_date),
         },
         "leasingMilestones": operations.get("leasingMilestones", []),
         "invoiceChain": {
