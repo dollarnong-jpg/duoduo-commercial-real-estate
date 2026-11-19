@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-direct1';
+import './backend.js?v=20261119-direct2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.6';
+const APP_VERSION = '1.27.7';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -2345,12 +2345,15 @@ async function openShareProjectModal(projectId) {
           <div class="modal-head"><div><span class="eyebrow">Project transfer</span><h2>发送项目</h2><p>${escapeHtml(projectName)} · 完整发送测算参数和铺位数据</p></div><button class="modal-close" id="share-project-close">×</button></div>
           <div class="modal-body share-project-body">
             <div class="share-option-card">
-              <div class="share-option-head"><strong>直接发送到对方项目工作台</strong><span>对方收到的是独立副本，不会修改您的原项目。</span></div>
-              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}" data-name="${escapeHtml(user.displayName || user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>直接发送</span></button></div><div class="field-help">发送后直接进入对方项目工作台，并标注来源用户。</div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前无法显示完整用户目录。可直接在下方输入对方的云端用户名发送。')}</div>`}
-              <div class="share-manual-send">
-                <div class="share-option-head"><strong>手动输入对方用户名发送</strong><span>无需依赖用户下拉目录。请输入对方登录用的云端用户名；对方下次登录后会自动接收。</span></div>
-                <div class="share-direct-row"><input class="input" id="share-recipient-username" placeholder="对方用户名，例如 partner01"><input class="input" id="share-note-manual" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-username">${ICONS.share}<span>按用户名发送</span></button></div>
+              <div class="share-option-head"><strong>直接发送到伙伴项目工作台</strong><span>对方会直接看到独立项目副本，并在项目卡片上标注“由你发送”。</span></div>
+              <div class="share-simple-form">
+                <label for="share-recipient-account"><strong>对方登录用户名</strong><small>不是姓名，是伙伴注册和登录时使用的账号，例如 partner01</small></label>
+                <input class="input" id="share-recipient-account" list="share-recipient-options" autocomplete="off" placeholder="输入对方登录用户名，可带或不带 @">
+                <datalist id="share-recipient-options">${users.map(user => `<option value="${escapeHtml(user.username)}">${escapeHtml(user.displayName || user.username)} · @${escapeHtml(user.username)}</option>`).join('')}</datalist>
+                <input class="input" id="share-note" placeholder="给对方的说明，可选">
+                <button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>直接发送</span></button>
               </div>
+              <div class="field-help">你的登录账号是 <strong>@${escapeHtml(state.user?.username || '')}</strong>。如不确定对方账号，请让对方在登录页或项目工作台顶部确认。${users.length ? '' : ' 当前用户目录未开放，但仍可直接输入准确用户名发送。'}</div>
               <div id="share-direct-status" class="share-direct-status"></div>
             </div>
             <div class="share-divider"><span>或使用跨账号项目分享码</span></div>
@@ -2380,86 +2383,63 @@ async function openShareProjectModal(projectId) {
       await copyTextValue(wechatSegments[Number(button.dataset.copyShareSegment)]);
       document.getElementById('copy-share-status').textContent = `已复制第 ${Number(button.dataset.copyShareSegment) + 1} 段`;
     }));
+    const shareRecipientInput = document.getElementById('share-recipient-account');
+    shareRecipientInput.value = localStorage.getItem('duoduo_last_share_recipient') || (users[0]?.username || '');
     document.getElementById('send-project-direct')?.addEventListener('click', async event => {
       const button = event.currentTarget;
-      const select = document.getElementById('share-recipient');
-      const option = select.selectedOptions[0];
       const status = document.getElementById('share-direct-status');
-      button.disabled = true;
-      status.className = 'share-direct-status';
-      status.textContent = '正在发送项目副本…';
-      try {
-        await api(`/api/projects/${projectId}/share`, {
-          method: 'POST',
-          body: {
-            recipientId: select.value,
-            recipientUsername: option?.dataset.username || '',
-            note: document.getElementById('share-note').value.trim(),
-          },
-        });
-        status.classList.add('success');
-        status.textContent = `已直接发送给 ${option?.dataset.name || '接收用户'}，对方登录后可在项目工作台查看副本。`;
-      } catch (error) {
-        if (error.code === 'SHARE_REQUIRES_CODE' || /云端项目权限未开放/.test(error.message)) {
-          try {
-            status.textContent = `正在发送到 ${option?.dataset.name || '接收用户'} 的项目工作台…`;
-            const delivery = await sendProjectToInbox({
-              recipientId: select.value,
-              recipientUsername: option?.dataset.username || '',
-              recipientName: option?.dataset.name || option?.textContent || '接收用户',
-              shareCode,
-              note: document.getElementById('share-note').value.trim(),
-            });
-            status.classList.add('success');
-            const retentionHours = delivery.expiresAt ? Math.max(1, Math.round((delivery.expiresAt - Date.now() / 1000) / 3600)) : 12;
-            status.textContent = delivery.persisted
-              ? `已发送给 ${option?.dataset.name || '接收用户'}。对方登录后项目会自动出现在其工作台，并标注由你发送。`
-              : `已发出直接发送；若对方未及时看到，请让其重新登录，或改用下方分享文件。`;
-          } catch (broadcastError) {
-            status.classList.add('warning');
-            status.textContent = `${broadcastError.message} 可复制分享码或下载分享文件发送。`;
-          }
-        } else {
-          status.classList.add('warning');
-          status.textContent = `${error.message} 可复制分享码或下载分享文件发送。`;
-        }
-      } finally {
-        button.disabled = false;
-      }
-    });
-    document.getElementById('send-project-username')?.addEventListener('click', async event => {
-      const button = event.currentTarget;
-      const status = document.getElementById('share-direct-status');
-      const recipientUsername = document.getElementById('share-recipient-username').value.trim().toLowerCase();
+      const note = document.getElementById('share-note').value.trim();
+      const rawRecipient = shareRecipientInput.value.trim().replace(/^@/, '').toLowerCase();
+      const knownUser = users.find(user =>
+        String(user.username || '').toLowerCase() === rawRecipient
+        || String(user.displayName || '').trim().toLowerCase() === rawRecipient
+      );
+      const recipientUsername = knownUser?.username || rawRecipient;
+      const recipientName = knownUser?.displayName || recipientUsername;
       if (!recipientUsername) {
         status.className = 'share-direct-status warning';
-        status.textContent = '请输入接收方的云端用户名。';
+        status.textContent = '请输入对方的登录用户名，例如 partner01。';
+        shareRecipientInput.focus();
         return;
       }
       if (recipientUsername === String(state.user?.username || '').toLowerCase()) {
         status.className = 'share-direct-status warning';
-        status.textContent = '不能发送给当前登录账号。';
+        status.textContent = '这里填写的是对方登录用户名，不能发送给自己。';
         return;
       }
+      localStorage.setItem('duoduo_last_share_recipient', recipientUsername);
       button.disabled = true;
       status.className = 'share-direct-status';
-      status.textContent = `正在向 @${recipientUsername} 的项目工作台发送…`;
+      status.textContent = `正在发送给 @${recipientUsername} 的项目工作台…`;
+      let directError = null;
+      if (knownUser?.id) {
+        try {
+          await api(`/api/projects/${projectId}/share`, {
+            method: 'POST',
+            body: { recipientId: knownUser.id, recipientUsername, note },
+          });
+          status.classList.add('success');
+          status.textContent = `已直接发送给 @${recipientUsername}，对方打开项目工作台即可看到，并会标注由你发送。`;
+          return;
+        } catch (error) {
+          directError = error;
+        }
+      }
       try {
         const delivery = await sendProjectToInbox({
-          recipientId: '',
+          recipientId: knownUser?.id || '',
           recipientUsername,
-          recipientName: recipientUsername,
+          recipientName,
           shareCode,
-          note: document.getElementById('share-note-manual').value.trim(),
+          note,
         });
-        const retentionHours = delivery.expiresAt ? Math.max(1, Math.round((delivery.expiresAt - Date.now() / 1000) / 3600)) : 12;
         status.classList.add('success');
         status.textContent = delivery.persisted
-          ? `已发送给 @${recipientUsername}。对方登录后项目会自动出现在其工作台，并标注由你发送。`
-          : `已向 @${recipientUsername} 发出直接发送；若未及时看到，请让其重新登录，或改用下方分享文件。`;
+          ? `已发送给 @${recipientUsername}。对方登录后会直接看到“${projectName}”，并标注由你发送。`
+          : `已发出给 @${recipientUsername}。若对方未及时看到，请让其重新登录，或改用下方分享文件。`;
       } catch (error) {
         status.classList.add('warning');
-        status.textContent = error.message;
+        status.textContent = `${error.message}${directError ? `（直接投递：${directError.message}）` : ''} 也可改用下方分享文件。`;
       } finally {
         button.disabled = false;
       }
