@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-natural1';
+import './backend.js?v=20261119-previewSync1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.7';
+const APP_VERSION = '1.28.8';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1355,6 +1355,7 @@ function clearSession() {
   state.current = null;
   state.result = null;
   state.preview = null;
+  state.previewRefreshPending = false;
   state.marketAnalysis = null;
   state.marketError = null;
   state.adminUsers = [];
@@ -6920,6 +6921,13 @@ function bindStepInputs() {
         renderWorkspace();
       }
     });
+    if (input.type === 'number' && /^floors\.\d+\.(avgRent|buildingArea|leasableArea|salesPerSqmMonth|concessionRate)$/.test(input.dataset.path || '')) {
+      input.addEventListener('change', () => {
+        updateQuickRentEstimateFromModel();
+        state.previewRefreshPending = true;
+        scheduleLivePreview();
+      });
+    }
     if (/^floors\.\d+\.(building|name)$/.test(input.dataset.path || '')) {
       input.addEventListener('blur', () => {
         const normalized = input.dataset.path.endsWith('.building') ? normalizeBuildingInput(input.value) : normalizeFloorInput(input.value);
@@ -7499,7 +7507,13 @@ async function runLivePreview() {
     updateLiveStats();
     updateOperatingPreviewDom(result);
     updateTaxStatisticsDom(result);
-    if (shopBaselineChanged) renderWorkspace();
+    const activePathInput = document.activeElement?.matches?.('[data-path]');
+    if (state.previewRefreshPending && !activePathInput) {
+      state.previewRefreshPending = false;
+      renderWorkspace();
+    } else if (shopBaselineChanged) {
+      renderWorkspace();
+    }
     return result;
   } catch (error) {
     console.warn('实时测算失败', error);
@@ -7556,6 +7570,10 @@ function updateLiveStats() {
   document.querySelectorAll('[data-floor-actual]').forEach(el => {
     const floor = floors.get(el.dataset.floorActual);
     if (floor) el.textContent = fmt(floor.weightedRent || floor.avgRent, 1);
+  });
+  document.querySelectorAll('[data-floor-monthly]').forEach(el => {
+    const floor = floors.get(el.dataset.floorMonthly);
+    if (floor) el.textContent = fmt(floor.monthlyRevenue);
   });
   const shops = new Map((state.preview.shops || []).map(shop => [shopRecordKey(shop), shop]));
   document.querySelectorAll('[data-shop-revenue]').forEach(el => {

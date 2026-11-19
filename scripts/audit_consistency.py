@@ -151,6 +151,8 @@ def audit_defaults_and_units() -> None:
     require_text(app, "租金指标已按当前输入即时更新，NOI/NPV正在重算", "live recalculation status")
     require_text(app, 'data-live="quarterlyRent"', 'live quarterly rent updates')
     require_text(app, 'data-live="operationRent"', 'live operating-period rent updates')
+    require_text(app, "previewRefreshPending", "post-preview DOM refresh")
+    require_text(app, "租金指标已按当前输入即时更新，NOI/NPV正在重算", "instant rent status message")
     require_text(app, "自然年运营收入与支出报表", "natural-year report UI")
     require_text(app, "下载调整模板", "natural-year adjustment template")
     require_text(app, "导入调整", "natural-year adjustment import")
