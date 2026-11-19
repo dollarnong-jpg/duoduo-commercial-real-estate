@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-rentcheck2';
+import './backend.js?v=20261119-kpireason1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.2';
+const APP_VERSION = '1.28.3';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6082,24 +6082,84 @@ async function importMarketComparables(file) {
   }
 }
 
+function buildKpiNarratives(result = state.result) {
+  const s = result?.summary || {};
+  const model = result?.model || state.current?.model || {};
+  const annual = (result?.annual || []).filter(row => Number(row.opYear) > 0);
+  const stableYear = Math.max(1, Number(model.operations?.stableYear || 3));
+  const stable = annual.find(row => Number(row.opYear) === stableYear) || annual.at(-1) || {};
+  const rentRevenue = Number(stable.rentRevenue || 0);
+  const averageRent = Number(s.averageRent || 0);
+  const totalInvestment = Number(s.totalInvestment || 0);
+  const stableNoi = Number(s.stableNoi || 0);
+  const npv = Number(s.projectNpv || 0);
+  const discount = Math.max(0.0001, Number(model.valuation?.discountRate || 0.08));
+  const years = Math.max(1, Number(model.project?.operationYears || 20));
+  const annuity = (1 - Math.pow(1 + discount, -years)) / discount;
+  const requiredNoiForNpv = npv < 0 ? Math.abs(npv) / Math.max(annuity, 1) : 0;
+  const targetNoiForYield = totalInvestment * discount;
+  const targetNoiForBreakEven = Math.max(0, -stableNoi);
+  const upliftPct = value => rentRevenue > 0 && averageRent > 0 ? Math.max(0, value) / rentRevenue : null;
+  const targetRentForNpv = upliftPct(requiredNoiForNpv) == null ? null : averageRent * (1 + upliftPct(requiredNoiForNpv));
+  const targetRentForNoi = upliftPct(targetNoiForBreakEven) == null ? null : averageRent * (1 + upliftPct(targetNoiForBreakEven));
+  const targetRentForYield = upliftPct(Math.max(0, targetNoiForYield - stableNoi)) == null ? null : averageRent * (1 + upliftPct(Math.max(0, targetNoiForYield - stableNoi)));
+  const market = result?.marketSummary || {};
+  const marketText = Number(market.count || 0) > 0
+    ? `市场样本加权均价 ${fmt(market.weightedAverageRent, 1)} 元/㎡/月，25分位 ${fmt(market.p25Rent, 1)}、75分位 ${fmt(market.p75Rent, 1)}。`
+    : '尚未导入有效竞品租金样本，暂时无法判断当前租金相对市场高低。';
+  const rentTargetAdvice = (target, label) => {
+    if (target == null) return '需先补齐计租面积和稳定年租金收入，才能反算目标租金。';
+    const tooHigh = Number(market.p75Rent || 0) > 0 && target > Number(market.p75Rent);
+    return `按其他成本不变估算，${label}需把平均租金从 ${fmt(averageRent, 1)} 提高到约 ${fmt(target, 1)} 元/㎡/月${tooHigh ? '；目标已高于市场75分位，不能只靠提租，必须同时压降投资或运营成本' : ''}。`;
+  };
+  const totalMonthly = Number(s.totalMonthlyRent || 0);
+  const cumulativeEnd = Number(annual.at(-1)?.cumulativeProjectCashFlow ?? s.projectNetCashProfit ?? 0);
+  const positiveCashYears = annual.filter(row => Number(row.projectCashFlow || 0) > 0).length;
+  return {
+    totalInvestment: '包含土地及契税、工程建设、装修设备、专项投资、规费、预备费、招商开办和铺底流动资金。若该值偏高，优先核对总建筑面积、建安单价和装修设备标准。',
+    irr: s.projectIrr == null
+      ? `不适用原因：${positiveCashYears === 0 ? '全周期没有形成正的年度项目现金流，无法产生有效正负现金流组合' : '有正现金流年度，但累计回收仍不足以覆盖前期投入'}。${rentTargetAdvice(targetRentForNpv, '使回收达到NPV=0')}`
+      : `当前融资前IRR为 ${fmtPct(s.projectIrr)}，折现率为 ${fmtPct(discount)}。${marketText}`,
+    npv: npv < 0
+      ? `负值原因：按 ${fmtPct(discount)} 折现后，全周期现金流入比投入少 ${fmt(Math.abs(npv), 2)} 万元。${rentTargetAdvice(targetRentForNpv, '使NPV接近0')}`
+      : `NPV为正，当前假设下可覆盖 ${fmtPct(discount)} 的折现要求。${marketText}`,
+    noi: stableNoi < 0
+      ? `负值原因：稳定年营业收入 ${fmt(Number(stable.revenue || 0), 2)} 万元，低于运营成本及税费合计 ${fmt(Number(stable.operatingCost || 0) + Number(stable.taxes || 0), 2)} 万元。${rentTargetAdvice(targetRentForNoi, '仅靠租金让NOI转正')}`
+      : `稳定年NOI为 ${fmt(stableNoi, 2)} 万元，收入已覆盖运营成本和经营税费。下一步重点核对成本假设是否可持续。`,
+    noiYield: stableNoi < 0
+      ? `负值原因：稳定NOI为负，因此NOI/总投资为 ${fmtPct(s.noiYield)}。若目标NOI回报率达到折现率 ${fmtPct(discount)}，稳定NOI需达到约 ${fmt(targetNoiForYield, 2)} 万元。${rentTargetAdvice(targetRentForYield, '仅靠租金达到目标NOI回报率')}`
+      : `当前NOI回报率 ${fmtPct(s.noiYield)}；目标折现率 ${fmtPct(discount)}。${s.noiYield < discount ? rentTargetAdvice(targetRentForYield, '仅靠租金达到目标NOI回报率') : '已达到当前目标回报率。'}`,
+    payback: s.staticPayback == null
+      ? `未回收原因：${years}年运营期末累计项目现金流仍为 ${fmt(cumulativeEnd, 2)} 万元，尚未由负转正。${rentTargetAdvice(targetRentForNpv, '仅靠提租改善回收')} 同时建议测试总投资下降5%—10%和运营成本下降5%的方案。`
+      : `静态回收期约 ${fmt(s.staticPayback, 1)} 年，按项目口径现金流计算。`,
+    marketText,
+    targetRentForNpv,
+    targetRentForNoi,
+    targetRentForYield,
+    requiredNoiForNpv,
+    totalMonthly,
+  };
+}
+
 function renderResultsStep() {
   if (!state.result) {
     return `<div class="empty-state"><div class="new-project-icon">${ICONS.spark}</div><h3>结果尚未生成</h3><p>请先保存并计算项目。</p><button class="btn btn-primary" id="inline-calculate">${ICONS.spark}<span>保存并计算</span></button></div>`;
   }
   const s = state.result.summary;
   const analysis = state.result.analysis;
+  const kpiNotes = buildKpiNarratives(state.result);
   const kpiClass = value => value > 0 ? 'positive' : value < 0 ? 'negative' : '';
   return `
     <div class="result-hero">
       <div class="result-hero-top"><div><span class="result-status">${escapeHtml(s.status)}</span><h2>${escapeHtml(s.projectName || '商业项目')}</h2><p>${escapeHtml(s.location || '')}｜总建筑面积 ${fmtArea(s.grossFloorArea)}㎡｜可租赁面积 ${fmtArea(s.leasableArea)}㎡｜${s.calculationMode === 'preliminary' ? `${fmt(s.floorCount)}个楼层` : `${fmt(s.shopsCount)}个铺位`}</p></div><div style="color:#c9dad5;font-size:var(--fs-10);text-align:right">${s.calculationMode === 'preliminary' ? '初步楼层均价测算' : '一铺一价精细测算'}<br>${new Date().toLocaleDateString('zh-CN')}</div></div>
     </div>
     <div class="kpi-grid">
-      ${kpiCard('项目总投资', fmt(s.totalInvestment), '万元', '')}
-      ${kpiCard('项目IRR', s.projectIrr == null ? '不适用' : fmtPct(s.projectIrr), '税后融资前', kpiClass(s.projectIrr))}
-      ${kpiCard('项目NPV', fmt(s.projectNpv), '万元', kpiClass(s.projectNpv))}
-      ${kpiCard('稳定期NOI', fmt(s.stableNoi), '万元/年', kpiClass(s.stableNoi))}
-      ${kpiCard('NOI回报率', fmtPct(s.noiYield), 'NOI / 总投资', kpiClass(s.noiYield))}
-      ${kpiCard('静态回收期', s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 1)}年`, '按项目现金流', '')}
+      ${kpiCard('项目总投资', fmt(s.totalInvestment), '万元', '', kpiNotes.totalInvestment)}
+      ${kpiCard('项目IRR', s.projectIrr == null ? '不适用' : fmtPct(s.projectIrr), '税后融资前', kpiClass(s.projectIrr), kpiNotes.irr)}
+      ${kpiCard('项目NPV', fmt(s.projectNpv), '万元', kpiClass(s.projectNpv), kpiNotes.npv)}
+      ${kpiCard('稳定期NOI', fmt(s.stableNoi), '万元/年', kpiClass(s.stableNoi), kpiNotes.noi)}
+      ${kpiCard('NOI回报率', fmtPct(s.noiYield), 'NOI / 总投资', kpiClass(s.noiYield), kpiNotes.noiYield)}
+      ${kpiCard('静态回收期', s.staticPayback == null ? '未回收' : `${fmt(s.staticPayback, 1)}年`, '按项目现金流', '', kpiNotes.payback)}
     </div>
     ${renderLeasingStageResultCard()}
     ${renderInvestmentOverviewCard()}
@@ -6633,8 +6693,8 @@ function renderFloorResultTable() {
   return `<div class="card" style="margin-bottom:16px"><h3>楼层收益拆分</h3><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>楼层</th><th class="num">建筑面积</th><th class="num">可租赁面积</th><th class="num">平均月收益</th><th class="num">满租月收益</th><th class="num">收益占比</th></tr></thead><tbody>${floors.map(floor => `<tr><td><strong>${escapeHtml(floor.name || '未命名')}</strong></td><td class="num">${fmtArea(floor.buildingArea)}</td><td class="num">${fmtArea(floor.leasableArea)}</td><td class="num">${fmt(floor.weightedRent || floor.avgRent, 1)}</td><td class="num">${fmt(floor.monthlyRevenue ?? floor.monthlyRent)}</td><td class="num">${fmtPct(totalMonthly ? (floor.monthlyRevenue ?? floor.monthlyRent) / totalMonthly : 0)}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
-function kpiCard(label, value, unit, cls) {
-  return `<div class="kpi-card ${cls}"><div class="label">${termLabel(label)}</div><div class="value">${value}</div><div class="unit">${unit}</div></div>`;
+function kpiCard(label, value, unit, cls, note = '') {
+  return `<div class="kpi-card ${cls}"><div class="label">${termLabel(label)}</div><div class="value">${value}</div><div class="unit">${unit}</div>${note ? `<div class="kpi-note">${escapeHtml(note)}</div>` : ''}</div>`;
 }
 
 function donutColor(i) {
