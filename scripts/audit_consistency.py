@@ -123,6 +123,13 @@ def audit_defaults_and_units() -> None:
     require_text(app, "发现 ${localOnlyCount} 个仅本机项目", "local-only project warning")
     require_text(backend, "storage: 'cloud'", "cloud project storage marker")
     assert "userOK && (!keyword || haystack.includes(keyword))" not in app
+    require_text(app, "buildStatusAdvice", "actionable live status advice")
+    require_text(app, "单靠压缩投资无法解决", "investment diagnosis action")
+    require_text(app, "稳定年NOI需增加约", "quantified NOI improvement target")
+    require_text(app, "租金单价面积加权均价", "weighted average rent label")
+    require_text(app, "简单算术均价", "simple average comparison")
+    require_text(app, "收入反算均价", "revenue-implied average comparison")
+    require_text(app, "面积加权均价 = Σ（铺位租金单价 × 计租面积）÷ Σ计租面积", "weighted rent formula")
     require_text(app, "budget.monthsVersion = 2", "preopening month migration")
     require_text(app, "data-sync-preopening-months", "preopening month sync action")
     require_text(app, "add-office-budget-item", "office budget add action")

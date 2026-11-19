@@ -1191,3 +1191,28 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .project-storage { font-style:normal; font-weight:600; }
 .project-storage.cloud { color:var(--green); }
 .project-storage.local { color:#a44d3f; }
+
+.mini-stat.status-advice-stat { background:#fffaf1; border-color:#e8d7ad; }
+.mini-stat.status-advice-stat strong { color:#7b5718; font-size:var(--fs-15); }
+.mini-stat.status-advice-stat small { display:block; margin-top:5px; color:#76591c; font-size:var(--fs-8); line-height:1.45; }
+.live-advice-strip { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:12px; margin:-8px 0 18px; padding:11px 13px; border:1px solid #e8d7ad; border-radius:10px; background:#fffaf1; color:#62502b; font-size:var(--fs-9); line-height:1.55; }
+.live-advice-strip strong { color:#7b5718; white-space:nowrap; }
+.live-advice-strip em { color:#8b7a55; font-size:var(--fs-8); font-style:normal; white-space:nowrap; }
+.live-advice-strip.critical { border-color:#e5bdb6; background:#fff6f4; color:#6f4039; }
+.live-advice-strip.critical strong { color:#9f3e32; }
+.live-advice-strip.normal { border-color:#cfe0d8; background:#f6faf8; color:#405b51; }
+.live-advice-strip.normal strong { color:var(--green); }
+@media (max-width:760px) { .live-advice-strip { grid-template-columns:1fr; gap:4px; } .live-advice-strip strong, .live-advice-strip em { white-space:normal; } }
+
+.rent-average-check { margin:12px 0 18px; padding:13px 14px; border:1px solid #dbe7e1; border-radius:11px; background:#f8fbf9; }
+.rent-average-formula { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.rent-average-formula strong { color:var(--navy); font-size:var(--fs-10); }
+.rent-average-formula span { color:var(--muted); font-size:var(--fs-9); }
+.rent-average-formula code { margin-left:auto; padding:5px 8px; border-radius:7px; background:#eaf2ee; color:var(--green); font-size:var(--fs-9); }
+.rent-average-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:11px; }
+.rent-average-metrics > div { padding:9px 10px; border:1px solid #e0e9e5; border-radius:8px; background:#fff; }
+.rent-average-metrics span { display:block; color:var(--muted); font-size:var(--fs-8); }
+.rent-average-metrics strong { display:block; margin-top:4px; color:var(--navy); font-size:var(--fs-13); }
+.rent-average-metrics em { display:block; margin-top:2px; color:#88938e; font-size:var(--fs-8); font-style:normal; }
+.rent-average-check p { margin:10px 0 0; color:#697570; font-size:var(--fs-8); line-height:1.55; }
+@media (max-width:760px) { .rent-average-metrics { grid-template-columns:1fr; } .rent-average-formula code { margin-left:0; } }

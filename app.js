@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-nickname1';
+import './backend.js?v=20261119-rentcheck1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.9';
+const APP_VERSION = '1.28.1';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3532,6 +3532,53 @@ function renderCostStep() {
     </div>`;
 }
 
+function buildStatusAdvice(result = state.preview || state.result) {
+  const s = result?.summary || {};
+  const model = result?.model || state.current?.model || {};
+  const status = s.status || '自动计算中';
+  const npv = Number(s.projectNpv || 0);
+  const totalInvestment = Number(s.totalInvestment || 0);
+  const stableNoi = Number(s.stableNoi || 0);
+  const discount = Math.max(0, Number(model.valuation?.discountRate || 0.08));
+  const years = Math.max(1, Number(model.project?.operationYears || 20));
+  const annuity = discount > 0 ? (1 - Math.pow(1 + discount, -years)) / discount : years;
+  const requiredNoiUplift = npv < 0 ? Math.abs(npv) / Math.max(annuity, 1) : 0;
+  const investmentGapRatio = totalInvestment > 0 ? Math.max(0, -npv) / totalInvestment : 0;
+  let title = '可继续深化';
+  let short = '当前指标可进入下一阶段复核';
+  let detail = '继续核实市场租金、招商落地、工程概算和税务口径。';
+  let tone = 'normal';
+  if (status === '待完善') {
+    title = '先补齐关键数据';
+    short = '面积、租金、投资或运营成本尚未形成完整测算';
+    detail = '优先补齐计租面积、租金单价、工程投资、运营成本和三项收费单价，再判断收益。';
+    tone = 'warning';
+  } else if (stableNoi < 0) {
+    title = '先让NOI转正';
+    short = `稳定年经营缺口 ${fmt(Math.abs(stableNoi), 2)} 万元`;
+    detail = npv < 0 && investmentGapRatio > 0.8
+      ? `NPV缺口 ${fmt(Math.abs(npv), 2)} 万元，已超过项目总投资，单靠压缩投资无法解决。先核查业主租金、人员及物业服务成本、营销招商费用和公共能耗，同时确认物业费、商管费和空调费是否漏计。`
+      : `稳定年收入目前不足以覆盖运营成本和税费。建议先压降可控成本，并核对三项收费单价；在其他假设不变时，稳定年NOI需增加约 ${fmt(requiredNoiUplift, 2)} 万元，NPV才可能接近0。`;
+    tone = 'critical';
+  } else if (status === '需优化' || npv < 0 || s.staticPayback == null) {
+    title = '提高回收能力';
+    short = npv < 0 ? `NPV缺口 ${fmt(Math.abs(npv), 2)} 万元` : '当前周期内尚未形成回收';
+    detail = `建议并行测试三项方案：总投资下降5%—10%、稳定期租金提高5%、出租率提高5个百分点。当前假设下，稳定年NOI约需增加 ${fmt(requiredNoiUplift, 2)} 万元，才可能让NPV接近0。`;
+    tone = 'warning';
+  } else if (status === '收益接近门槛') {
+    title = '接近投资门槛';
+    short = '再做小幅优化即可进入初筛';
+    detail = '优先测试总投资下降3%、首年出租率提高3个百分点和首层租金提高3%，比较NPV与回收期改善幅度。';
+    tone = 'warning';
+  } else if (status === '通过初筛') {
+    title = '通过初筛';
+    short = '可进入产品定位与招商落位深化';
+    detail = '继续核实市场租金样本、品牌落位、工程概算、税费政策和融资条件，避免测算假设高于实际执行。';
+    tone = 'normal';
+  }
+  return { status, title, short, detail, tone, requiredNoiUplift, investmentGapRatio };
+}
+
 function renderShopsStep() {
   const m = state.current.model;
   const mode = m.calculationMode || 'preliminary';
@@ -3543,6 +3590,7 @@ function renderShopsStep() {
   const rentAreaRecords = mode === 'detailed' && shops.length ? shops : floors;
   const totalRentArea = rentAreaRecords.reduce((sum, record) => sum + rentAreaFor(record, m), 0);
   const revenueMode = m.project?.revenueModel || 'rent';
+  const statusAdvice = buildStatusAdvice(preview);
   const totalMonthly = floors.reduce((sum, floor) => {
     const area = rentAreaFor(floor, m);
     const guarantee = area * Number(floor.avgRent || 0);
@@ -3563,8 +3611,9 @@ function renderShopsStep() {
       <div class="mini-stat"><strong data-live="investment">${preview ? fmt(preview.summary.totalInvestment) : '待计算'}</strong><span>项目总投资/万元</span></div>
       <div class="mini-stat"><strong data-live="monthlyRent">${preview ? fmt(preview.summary.totalMonthlyRent) : fmt(totalMonthly)}</strong><span>满租月收益/元</span></div>
       <div class="mini-stat"><strong data-live="avgRent">${preview ? fmt(preview.summary.averageRent, 1) : fmt(totalRentArea ? totalMonthly / totalRentArea : 0, 1)}</strong><span>平均月收益/计租㎡</span></div>
-      <div class="mini-stat"><strong data-live="status">${preview ? escapeHtml(preview.summary.status) : '自动计算中'}</strong><span>实时测算状态</span></div>
+      <div class="mini-stat status-advice-stat"><strong data-live="status">${escapeHtml(statusAdvice.title)}</strong><span>实时测算判断</span><small data-live="statusAdvice">${escapeHtml(statusAdvice.short)}</small></div>
     </div>
+    <div class="live-advice-strip ${statusAdvice.tone}"><strong>建议：${escapeHtml(statusAdvice.title)}</strong><span>${escapeHtml(statusAdvice.detail)}</span><em>当前系统状态：${escapeHtml(statusAdvice.status)}</em></div>
     ${mode === 'preliminary'
       ? renderPreliminarySummary(shops, floors, totalBuilding, totalLease, totalMonthly)
       : renderDetailedPricing(m, shops, preview)}
@@ -3733,10 +3782,13 @@ function renderDetailedPricing(m, shops, preview) {
   const totalBuilding = shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0);
   const totalLease = shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
   const rentOverrideShops = shops.filter(shop => shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0);
+  const totalRentArea = shops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
   const overrideRentArea = rentOverrideShops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
-  const weightedOverrideRent = overrideRentArea > 0
-    ? rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0) * rentAreaFor(shop, m), 0) / overrideRentArea
-    : 0;
+  const overrideRentNumerator = rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0) * rentAreaFor(shop, m), 0);
+  const weightedOverrideRent = overrideRentArea > 0 ? overrideRentNumerator / overrideRentArea : 0;
+  const simpleOverrideRent = rentOverrideShops.length ? rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0), 0) / rentOverrideShops.length : 0;
+  const monthlyRentPreview = Number(preview?.summary?.totalMonthlyRent || 0);
+  const revenueImpliedAverageRent = totalRentArea > 0 ? monthlyRentPreview / totalRentArea : 0;
   const importedStats = state.rentImportStats;
   return `
     <div class="import-zone" id="import-zone">
@@ -3747,9 +3799,18 @@ function renderDetailedPricing(m, shops, preview) {
     ${state.importWarnings.length ? `<div class="warning-list">${state.importWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
     <div class="shop-rent-recognition">
       <div><span>已识别租金单价</span><strong>${rentOverrideShops.length} / ${shops.length}</strong><em>个铺位${importedStats?.rentColumn ? `｜列：${escapeHtml(importedStats.rentColumn)}` : ''}</em></div>
-      <div><span>导入租金加权均价</span><strong>${fmt(weightedOverrideRent, 1)}</strong><em>元/㎡/月</em></div>
-      <div><span>满租月租金收入</span><strong>${preview ? fmt(preview.summary.totalMonthlyRent) : fmt(0)}</strong><em>元/月</em></div>
-      <div><span>满租年租金收入</span><strong>${preview ? fmt(Number(preview.summary.totalMonthlyRent || 0) * 12 / 10000, 1) : '0.0'}</strong><em>万元/年</em></div>
+      <div><span>租金单价面积加权均价</span><strong>${fmt(weightedOverrideRent, 1)}</strong><em>元/㎡/月</em></div>
+      <div><span>满租月租金收入</span><strong>${fmt(monthlyRentPreview)}</strong><em>元/月</em></div>
+      <div><span>满租年租金收入</span><strong>${fmt(monthlyRentPreview * 12 / 10000, 1)}</strong><em>万元/年</em></div>
+    </div>
+    <div class="rent-average-check">
+      <div class="rent-average-formula"><strong>均价核对</strong><span>面积加权均价 = Σ（铺位租金单价 × 计租面积）÷ Σ计租面积</span><code>${fmt(overrideRentNumerator, 2)} ÷ ${fmtArea(overrideRentArea)} = ${fmt(weightedOverrideRent, 2)} 元/㎡/月</code></div>
+      <div class="rent-average-metrics">
+        <div><span>简单算术均价</span><strong>${fmt(simpleOverrideRent, 2)}</strong><em>两份租金单价直接平均</em></div>
+        <div><span>收入反算均价</span><strong>${fmt(revenueImpliedAverageRent, 2)}</strong><em>${fmt(monthlyRentPreview)} ÷ ${fmtArea(totalRentArea)}</em></div>
+        <div><span>商户计租面积合计</span><strong>${fmtArea(totalRentArea)}</strong><em>㎡ · 当前项目口径</em></div>
+      </div>
+      <p>如果大铺位面积远大于小铺位，面积加权均价会被大铺位低租金拉低；这不是简单平均算错。面积加权均价用于收入测算，算术均价只用于快速观察铺位单价水平。</p>
     </div>
     <div class="form-section compact-top">
       <div class="section-title">业态租金 / 联营扣点规则</div>
@@ -7311,7 +7372,14 @@ function updateLiveStats() {
   document.querySelectorAll('[data-live="investment"], #cost-estimate').forEach(el => { el.textContent = fmt(summary.totalInvestment); });
   document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(summary.totalMonthlyRent); });
   document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(summary.averageRent, 1); });
-  document.querySelectorAll('[data-live="status"]').forEach(el => { el.textContent = summary.status; });
+  const statusAdvice = buildStatusAdvice(state.preview || state.result);
+  document.querySelectorAll('[data-live="status"]').forEach(el => { el.textContent = statusAdvice.title; });
+  document.querySelectorAll('[data-live="statusAdvice"]').forEach(el => { el.textContent = statusAdvice.short; });
+  const adviceStrip = document.querySelector('.live-advice-strip');
+  if (adviceStrip) {
+    adviceStrip.className = `live-advice-strip ${statusAdvice.tone}`;
+    adviceStrip.innerHTML = `<strong>建议：${escapeHtml(statusAdvice.title)}</strong><span>${escapeHtml(statusAdvice.detail)}</span><em>当前系统状态：${escapeHtml(statusAdvice.status)}</em>`;
+  }
   const floors = new Map((state.preview.floors || []).map(floor => [buildingFloorKey(floor), floor]));
   document.querySelectorAll('[data-floor-actual]').forEach(el => {
     const floor = floors.get(el.dataset.floorActual);
