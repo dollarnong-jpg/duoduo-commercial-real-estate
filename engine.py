@@ -2048,6 +2048,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
 
     natural_year_report: list[dict[str, Any]] = []
     natural_year_buckets: dict[int, dict[str, Any]] = {}
+    owner_rent_natural: dict[int, float] = {}
     operation_rows_for_natural = [row for row in annual_rows if row.get("opYear", 0) > 0]
     for row in operation_rows_for_natural:
         op_year_number = int(row.get("opYear") or 0)
@@ -2056,7 +2057,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         op_start = add_months(opening_date, (op_year_number - 1) * 12)
         op_end = add_months(op_start, 12)
         active_start = max(op_start, opening_date)
-        active_end = min(op_end, operation_end_date)
+        active_end = min(op_end, operation_end_date + timedelta(days=1))
         if active_end <= active_start:
             continue
         op_days = max(1, (op_end - op_start).days)
@@ -2110,7 +2111,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             bucket["activeMonths"] += 1
             for field in (
                 "revenue", "scheduledRentRevenue", "collectedRentRevenue", "uncollectedRentRevenue",
-                "propertyRevenue", "propertyManagementRevenue", "commercialManagementRevenue", "centralAcRevenue", "otherRevenue", "operatingCost", "operatingCostExOwnerRent", "ownerRent", "badDebtCost", "taxes",
+                "propertyRevenue", "propertyManagementRevenue", "commercialManagementRevenue", "centralAcRevenue", "otherRevenue", "operatingCost", "operatingCostExOwnerRent", "badDebtCost", "taxes",
                 "projectIncomeTax", "projectCapex", "noi", "projectCashFlow",
                 "equityCashFlow", "interest", "principal", "exitValue",
             ):
@@ -2118,6 +2119,36 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             bucket["occupancyWeighted"] += as_float(row.get("occupancy")) * overlap_days
             bucket["collectionWeighted"] += as_float(row.get("rentCollectionRate"), 1.0) * overlap_days
             bucket["growthFactorWeighted"] += as_float(row.get("rentGrowthFactor"), 1.0) * overlap_days
+
+    # Owner rent is a contractual monthly amount. Allocate it by month fractions
+    # instead of by each operation year's 365/366-day denominator; otherwise a
+    # no-growth annual rent can appear as 1,248.28 / 1,251.72 in adjacent
+    # calendar years solely because of leap-year day allocation.
+    for row in operation_rows_for_natural:
+        op_year_number = int(row.get("opYear") or 0)
+        owner_rent_total = as_float(row.get("ownerRent"))
+        if op_year_number <= 0 or owner_rent_total <= 0:
+            continue
+        op_start = add_months(opening_date, (op_year_number - 1) * 12)
+        op_end = add_months(op_start, 12)
+        active_start = max(op_start, opening_date)
+        active_end = min(op_end, operation_end_date + timedelta(days=1))
+        monthly_weights: list[tuple[int, float]] = []
+        for month_offset in range(12):
+            month_start = add_months(op_start, month_offset)
+            month_end = add_months(month_start, 1)
+            overlap_start = max(month_start, active_start)
+            overlap_end = min(month_end, active_end)
+            overlap_days = max(0, (overlap_end - overlap_start).days)
+            month_days = max(1, (month_end - month_start).days)
+            if overlap_days <= 0 or not owner_rent_month_billable(month_start):
+                continue
+            monthly_weights.append((overlap_start.year, overlap_days / month_days))
+        weight_total = sum(weight for _, weight in monthly_weights)
+        if weight_total <= 0:
+            continue
+        for calendar_year, weight in monthly_weights:
+            owner_rent_natural[calendar_year] = owner_rent_natural.get(calendar_year, 0.0) + owner_rent_total * weight / weight_total
     override_rows = operations.get("naturalYearOverrides") if isinstance(operations.get("naturalYearOverrides"), list) else []
     overrides: dict[int, dict[str, Any]] = {}
     for item in override_rows:
@@ -2140,6 +2171,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         bucket["asOfDate"] = bucket["periodEndExclusive"]
         bucket["uncollectedRentRevenue"] = max(0.0, as_float(bucket.get("uncollectedRentRevenue")))
         bucket["rentRevenue"] = as_float(bucket.get("collectedRentRevenue"))
+        clean_owner_rent = as_float(owner_rent_natural.get(year, 0.0))
+        bucket["ownerRent"] = clean_owner_rent
+        bucket["operatingCostExOwnerRent"] = as_float(bucket.get("operatingCostExOwnerRent"))
+        bucket["operatingCost"] = bucket["operatingCostExOwnerRent"] + clean_owner_rent
         bucket["cashOperatingCost"] = max(0.0, as_float(bucket.get("operatingCost")) - as_float(bucket.get("badDebtCost")))
         bucket["cashOperatingCostExOwnerRent"] = max(0.0, as_float(bucket.get("operatingCostExOwnerRent")) - as_float(bucket.get("badDebtCost")))
         override = overrides.get(year, {})
@@ -2154,9 +2189,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         bucket["rawOperatingCost"] = as_float(bucket.get("operatingCost"))
         bucket["rawCashOperatingCost"] = as_float(bucket.get("cashOperatingCost"))
         bucket["rawOperatingCostExOwnerRent"] = as_float(bucket.get("operatingCostExOwnerRent"))
-        bucket["rawOwnerRent"] = as_float(bucket.get("ownerRent"))
+        bucket["rawOwnerRent"] = clean_owner_rent
         bucket["rawTaxes"] = as_float(bucket.get("taxes"))
         bucket["rawProjectCapex"] = as_float(bucket.get("projectCapex"))
+        bucket["rawNoi"] = bucket["rawRevenue"] - bucket["rawOperatingCost"] - bucket["rawTaxes"]
+        bucket["rawProjectCashFlow"] = bucket["rawNoi"] - bucket["rawProjectCapex"] - as_float(bucket.get("projectIncomeTax")) + as_float(bucket.get("exitValue"))
         bucket["revenue"] = bucket["rawRevenue"] + adjustments["revenueAdjustment"]
         bucket["operatingCost"] = bucket["rawOperatingCost"] + adjustments["operatingCostAdjustment"]
         bucket["cashOperatingCost"] = bucket["rawCashOperatingCost"] + adjustments["operatingCostAdjustment"]
@@ -2166,8 +2203,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         bucket["projectCapex"] = bucket["rawProjectCapex"] + adjustments["capexAdjustment"]
         bucket["totalIncome"] = max(0.0, as_float(bucket.get("revenue")) - as_float(bucket.get("uncollectedRentRevenue")))
         bucket["totalExpense"] = as_float(bucket.get("cashOperatingCost")) + as_float(bucket.get("taxes")) + as_float(bucket.get("projectIncomeTax")) + as_float(bucket.get("projectCapex"))
-        bucket["adjustedProjectCashFlow"] = as_float(bucket.get("projectCashFlow")) + sum(adjustments.values())
-        bucket["noi"] = as_float(bucket.get("noi")) + adjustments["revenueAdjustment"] - adjustments["operatingCostAdjustment"] - adjustments["taxAdjustment"]
+        bucket["noi"] = bucket["revenue"] - bucket["operatingCost"] - bucket["taxes"]
+        bucket["projectCashFlow"] = bucket["noi"] - bucket["projectCapex"] - as_float(bucket.get("projectIncomeTax")) + as_float(bucket.get("exitValue"))
+        bucket["adjustedProjectCashFlow"] = bucket["projectCashFlow"]
         cumulative_operation_cash += bucket["adjustedProjectCashFlow"]
         bucket["cumulativeOperationCashFlow"] = cumulative_operation_cash
         bucket["adjustmentNote"] = str(override.get("note") or "")

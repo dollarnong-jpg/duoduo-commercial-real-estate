@@ -374,6 +374,8 @@ def audit_engine_invariants() -> None:
         "propertyPricingMode": "unit",
         "propertyArea": 0,
         "propertyUnitRent": 100,
+        "growthMode": "none",
+        "growthRate": 0,
     })
     owner_basis_model["project"]["ownerRentAreaBasis"] = "building"
     owner_building = engine.calculate_model(owner_basis_model, False)
@@ -386,6 +388,8 @@ def audit_engine_invariants() -> None:
     assert close(owner_row["operatingCost"], owner_row["operatingCostExOwnerRent"] + owner_row["ownerRent"])
     owner_natural = next(row for row in owner_building["naturalYearReport"] if row.get("ownerRent", 0) > 0)
     assert close(owner_natural["cashOperatingCost"], owner_natural["cashOperatingCostExOwnerRent"] + owner_natural["ownerRent"])
+    full_owner_years = [row["ownerRent"] for row in owner_building["naturalYearReport"] if row.get("activeDays", 0) >= 365]
+    assert full_owner_years and all(close(value, 120) for value in full_owner_years), full_owner_years
 
     month_conflict = engine.default_model("筹备月数冲突")
     month_conflict["preOpeningBudget"]["mode"] = "detailed"
