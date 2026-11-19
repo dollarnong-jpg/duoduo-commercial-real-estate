@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-sync1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-share1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -4169,7 +4169,7 @@ async function handleApi(path, init) {
       }
     }
     const users = await ensureUsers();
-    return jsonResponse({ users: Object.entries(users).filter(([username, item]) => username !== user.username && (!item.status || item.status === 'approved')).map(([username, item]) => ({ id: username, username, displayName: item.displayName || username })) });
+    return jsonResponse({ users: Object.entries(users).filter(([username, item]) => username !== user.username && username !== 'demo' && (!item.status || item.status === 'approved')).map(([username, item]) => ({ id: username, username, displayName: item.displayName || username })) });
   }
 
   const shareMatch = pathname.match(/\/api\/projects\/([0-9a-f-]{8,64})\/share$/i);

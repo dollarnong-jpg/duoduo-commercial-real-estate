@@ -674,6 +674,28 @@ a { color: inherit; }
 .confidence-check-grid strong { display:block; color:var(--navy); font-size:var(--fs-9); }
 .confidence-check-grid small { display:block; margin-top:2px; color:var(--muted); font-size:var(--fs-8); line-height:1.4; }
 .overview-disclaimer { margin-top:10px; padding:9px 10px; border-radius:8px; background:#fbf5e8; color:#76591c; font-size:var(--fs-8); line-height:1.55; }
+.investment-diagnostic-card { margin-bottom:16px; border-left:4px solid #b45345; background:linear-gradient(180deg,#fff9f7 0%,#fff 170px); }
+.investment-diagnostic-card.warning { border-left-color:#b48a3c; background:linear-gradient(180deg,#fffdf7 0%,#fff 170px); }
+.loss-diagnosis-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+.loss-diagnosis-head h3 { margin:4px 0 5px; }
+.loss-diagnosis-head p { margin:0; color:var(--muted); font-size:var(--fs-9); line-height:1.55; }
+.loss-diagnosis-badge { flex:0 0 auto; padding:5px 9px; border-radius:999px; background:#f8e2de; color:#9f3e32; font-size:var(--fs-8); font-weight:800; }
+.investment-diagnostic-card.warning .loss-diagnosis-badge { background:#f7edd7; color:#7c5b1d; }
+.loss-diagnostic-kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin:14px 0; }
+.loss-diagnostic-kpis > div { padding:11px 12px; border:1px solid #ecdcd8; border-radius:10px; background:#fff; }
+.loss-diagnostic-kpis span { display:block; color:var(--muted); font-size:var(--fs-8); }
+.loss-diagnostic-kpis strong { display:block; margin-top:5px; color:var(--navy); font-size:var(--fs-14); }
+.loss-diagnostic-kpis em { display:block; margin-top:2px; color:var(--muted); font-size:var(--fs-8); font-style:normal; }
+.loss-diagnostic-kpis .danger { border-color:#e4bdb7; background:#fff6f4; }
+.loss-diagnostic-kpis .danger strong, .loss-diagnostic-kpis .neg { color:#b44537; }
+.loss-diagnostic-kpis .pos { color:var(--green); }
+.loss-diagnostic-layout { display:grid; grid-template-columns:1.15fr .85fr; gap:14px; }
+.loss-diagnostic-layout h4 { margin:0 0 8px; color:var(--navy); font-size:var(--fs-11); }
+.loss-reason-list, .loss-action-box ol { margin:0; padding-left:20px; color:#4d5955; font-size:var(--fs-9); line-height:1.7; }
+.loss-reason-list li + li, .loss-action-box li + li { margin-top:5px; }
+.compact-diagnostic-table td, .compact-diagnostic-table th { font-size:var(--fs-8); }
+.loss-action-box { margin-top:13px; padding:11px 13px; border:1px solid #eed9a9; border-radius:9px; background:#fffaf0; }
+.loss-action-box strong { display:block; margin-bottom:5px; color:#76591c; font-size:var(--fs-9); }
 .leverage-profit-card { margin-bottom:16px; }
 .leverage-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
 .leverage-head h3 { margin:4px 0 5px; }
@@ -813,6 +835,7 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .share-direct-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto; gap:8px; margin-top:12px; }
 .share-direct-row .btn { white-space:nowrap; }
 .share-warning { margin-top:11px; padding:10px; border-radius:8px; background:#fbf5e8; color:#76591c; font-size:var(--fs-9); line-height:1.55; }
+.share-manual-send { margin-top:14px; padding-top:13px; border-top:1px dashed #d9e5df; }
 .share-direct-status { margin-top:9px; color:var(--muted); font-size:var(--fs-9); line-height:1.5; }
 .share-direct-status.success { color:var(--green); }
 .share-direct-status.warning { color:#a4493f; }
@@ -1087,9 +1110,9 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .payroll-result-card { grid-column:1 / -1; }
 .marketing-allocation-card { margin-bottom:16px; }
 @media (max-width:760px) { .payroll-summary-grid { grid-template-columns:1fr 1fr; } }
-@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid, .investment-overview-grid { grid-template-columns:1fr 1fr; } .phase-cost-grid { grid-template-columns:1fr; } .leverage-head { flex-direction:column; } .leverage-kpis { grid-template-columns:1fr 1fr; } .confidence-check-grid { grid-template-columns:1fr 1fr; } }
+@media (max-width:900px) { .property-service-summary { grid-template-columns:1fr 1fr; } .property-service-mode-guide { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr 1fr; } .property-service-result-row { grid-template-columns:1fr 1fr 1fr; } .service-result-title { grid-column:1 / -1; } .channel-calculation-grid { grid-template-columns:1fr 1fr; } .channel-calculation-results { grid-template-columns:1fr 1fr; } .channel-calculation-head { align-items:flex-start; flex-direction:column; } .channel-calculation-head .select { width:100%; flex-basis:auto; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid, .investment-overview-grid, .loss-diagnostic-kpis { grid-template-columns:1fr 1fr; } .loss-diagnostic-layout { grid-template-columns:1fr; } .phase-cost-grid { grid-template-columns:1fr; } .leverage-head { flex-direction:column; } .leverage-kpis { grid-template-columns:1fr 1fr; } .confidence-check-grid { grid-template-columns:1fr 1fr; } }
 @media (max-width:900px) { .share-direct-row, .compare-select-grid { grid-template-columns:1fr; } .compare-insight-grid { grid-template-columns:1fr; } }
-@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid, .investment-overview-grid, .leverage-kpis, .confidence-check-grid { grid-template-columns:1fr; } .compare-summary-head { grid-template-columns:1fr; text-align:left; } .compare-summary-head > div:last-child { justify-content:flex-start; text-align:left; } .project-intro-actions { width:100%; } .project-intro-actions .btn { flex:1; } }
+@media (max-width:620px) { .operating-result-kpis { grid-template-columns:1fr 1fr; } .payroll-result-summary { grid-template-columns:1fr 1fr; } .property-service-summary { grid-template-columns:1fr; } .property-service-form-grid { grid-template-columns:1fr; } .property-service-result-row { grid-template-columns:1fr 1fr; } .channel-calculation-grid { grid-template-columns:1fr; } .channel-calculation-results { grid-template-columns:1fr; } .phase-cost-kpis, .funding-kpis, .funding-phase-grid, .investment-overview-grid, .leverage-kpis, .confidence-check-grid, .loss-diagnostic-kpis { grid-template-columns:1fr; } .compare-summary-head { grid-template-columns:1fr; text-align:left; } .compare-summary-head > div:last-child { justify-content:flex-start; text-align:left; } .project-intro-actions { width:100%; } .project-intro-actions .btn { flex:1; } }
 .market-detection-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:9px; margin:18px 0; }
 .market-detection-stats > div { padding:12px; border-radius:11px; border:1px solid var(--line); background:#fffdf9; }
 .market-detection-stats span { display:block; color:var(--muted); font-size: var(--fs-8); }

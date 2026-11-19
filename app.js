@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-sync1';
+import './backend.js?v=20261119-share1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.3';
+const APP_VERSION = '1.27.4';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1918,6 +1918,41 @@ function compactProjectModelForShare(model) {
   return compact;
 }
 
+function parseDD4CompressedBytes(shareCode) {
+  const body = String(shareCode || '').slice(4);
+  const metadata = body.match(/^([0-9a-z]+)\.([\s\S]+)$/i);
+  let expectedLength = 0;
+  let encodedText = body;
+  if (metadata) {
+    const parsed = parseInt(metadata[1], 36);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      expectedLength = parsed;
+      encodedText = metadata[2];
+    }
+  }
+  const decoded = chineseShareTextToBytes(encodedText);
+  if (expectedLength && decoded.length < expectedLength) {
+    throw new Error('分享码不完整，请重新下载或完整复制后再试');
+  }
+  return expectedLength ? decoded.slice(0, expectedLength) : decoded;
+}
+
+async function decompressShareJson(compressed) {
+  if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持新版分享码，请升级浏览器后重试');
+  let lastError = null;
+  for (let trimBytes = 0; trimBytes <= 2; trimBytes += 1) {
+    const candidate = trimBytes ? compressed.slice(0, Math.max(0, compressed.length - trimBytes)) : compressed;
+    if (!candidate.length) continue;
+    try {
+      const stream = new Blob([candidate]).stream().pipeThrough(new DecompressionStream('gzip'));
+      return JSON.parse(new TextDecoder().decode(new Uint8Array(await new Response(stream).arrayBuffer())));
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(`分享文件解压失败，文件可能不完整或版本过旧（${lastError?.message || '无法解压'}）。请让对方使用新版本重新生成分享文件。`);
+}
+
 async function encodeProjectShareCode(payload) {
   let sharePayload = payload;
   try {
@@ -1939,7 +1974,7 @@ async function encodeProjectShareCode(payload) {
     try {
       const stream = new Blob([json], { type: 'application/json' }).stream().pipeThrough(new CompressionStream('gzip'));
       const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
-      return `DD4.${bytesToChineseShareText(compressed)}`;
+      return `DD4.${compressed.byteLength.toString(36)}.${bytesToChineseShareText(compressed)}`;
     } catch (error) {
       console.warn('分享码压缩失败，使用兼容格式', error);
     }
@@ -1948,7 +1983,7 @@ async function encodeProjectShareCode(payload) {
 }
 
 async function decodeProjectShareCode(code) {
-  let clean = String(code || '').replace(/\s+/g, '');
+  let clean = String(code || '').replace(/^\uFEFF/, '').replace(/\s+/g, '');
   const modernSegmented = [...clean.matchAll(/DDP([24])-(\d+)OF(\d+):([\s\S]+?)(?=DDP[24]-\d+OF\d+:|$)/gi)].map(match => ({ format: match[1], index: Number(match[2]), total: Number(match[3]), payload: match[4] }));
   const segmented = modernSegmented.length ? modernSegmented : [...clean.matchAll(/DDP(\d+)OF(\d+):([A-Za-z0-9_-]+?)(?=DDP\d+OF\d+:|$)/gi)].map(match => ({ format: '2', index: Number(match[1]), total: Number(match[2]), payload: match[3] }));
   if (segmented.length) {
@@ -1958,15 +1993,9 @@ async function decodeProjectShareCode(code) {
   }
   let payload = null;
   if (clean.startsWith('DD4.')) {
-    if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持新版分享码，请升级浏览器后重试');
-    const compressed = chineseShareTextToBytes(clean.slice(4));
-    const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
-    payload = JSON.parse(new TextDecoder().decode(new Uint8Array(await new Response(stream).arrayBuffer())));
+    payload = await decompressShareJson(parseDD4CompressedBytes(clean));
   } else if (clean.startsWith('DD2.')) {
-    if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持新版分享码，请升级浏览器后重试');
-    const compressed = base64UrlToBytes(clean.slice(4));
-    const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
-    payload = JSON.parse(new TextDecoder().decode(new Uint8Array(await new Response(stream).arrayBuffer())));
+    payload = await decompressShareJson(base64UrlToBytes(clean.slice(4)));
   } else if (clean.startsWith('DDPROJECT1.')) {
     const bytes = base64UrlToBytes(clean.slice('DDPROJECT1.'.length));
     payload = JSON.parse(new TextDecoder().decode(bytes));
@@ -2012,7 +2041,7 @@ function buildWechatShareSegments(shareCode, chunkSize = 1800) {
 
 function inboxWireShareCode(shareCode) {
   if (String(shareCode || '').startsWith('DD4.')) {
-    const compressed = chineseShareTextToBytes(String(shareCode).slice(4));
+    const compressed = parseDD4CompressedBytes(String(shareCode));
     return `DD2.${bytesToBase64Url(compressed)}`;
   }
   return shareCode;
@@ -2051,9 +2080,16 @@ function shareInboxTopic(userId) {
   return `duoduo-share-${String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '')}`;
 }
 
-async function pollShareInbox(userId = state.user?.id) {
-  if (!userId || state.user?.id !== userId) return;
-  const topic = shareInboxTopic(userId);
+async function shareUsernameTopic(username) {
+  const normalized = String(username || '').trim().toLowerCase();
+  if (!normalized) return '';
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
+  const key = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 32);
+  return `duoduo-share-user-${key}`;
+}
+
+async function pollShareTopic(topic) {
+  if (!topic) return;
   try {
     const response = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}/json?poll=1&since=12h`, { cache: 'no-store' });
     if (!response.ok) return;
@@ -2090,8 +2126,19 @@ async function pollShareInbox(userId = state.user?.id) {
   }
 }
 
+async function pollShareInbox(userId = state.user?.id) {
+  if (!userId || state.user?.id !== userId) return;
+  const usernameTopic = await shareUsernameTopic(state.user?.username);
+  await Promise.all([
+    pollShareTopic(shareInboxTopic(userId)),
+    pollShareTopic(usernameTopic),
+  ]);
+}
+
 async function receiveRealtimeProjectShare(data) {
-  if (!data?.shareCode || data.recipientId !== state.user?.id || processedShareIds.has(data.shareId)) return;
+  const recipientMatches = data?.recipientId === state.user?.id
+    || (data?.recipientUsername && String(data.recipientUsername).toLowerCase() === String(state.user?.username || '').toLowerCase());
+  if (!data?.shareCode || !recipientMatches || processedShareIds.has(data.shareId)) return;
   const receive = async () => {
     const processedKey = `duoduo_share_received_${state.user.id}_${data.shareId || data.shareCode.slice(-24)}`;
     if (localStorage.getItem(processedKey)) return;
@@ -2169,8 +2216,10 @@ function startShareInbox() {
 async function sendProjectToInbox({ recipientId, recipientUsername, recipientName, shareCode, note }) {
   const config = cloudRealtimeConfig();
   if (!config) throw new Error('当前为本地模式，无法使用在线站内投递');
+  if (state.user?.localMode) throw new Error('当前是离线兼容账号，请先重新登录并同步到云端后再使用站内发送');
   const shareId = crypto.randomUUID();
-  const topic = `duoduo-share-${recipientId}`;
+  const topic = recipientId ? shareInboxTopic(recipientId) : await shareUsernameTopic(recipientUsername);
+  if (!topic) throw new Error('请输入接收方的云端用户名');
   const payload = {
     shareId,
     recipientId,
@@ -2297,7 +2346,11 @@ async function openShareProjectModal(projectId) {
           <div class="modal-body share-project-body">
             <div class="share-option-card">
               <div class="share-option-head"><strong>发送给系统内已审核用户</strong><span>对方收到的是独立副本，不会修改您的原项目。</span></div>
-              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}" data-name="${escapeHtml(user.displayName || user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>站内发送</span></button></div><div class="field-help">发送后进入对方站内收件箱：在线会立即提示，12小时内登录会自动接收项目副本。</div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前没有其他已审核用户。请先让对方注册并通过审核，或使用下方项目分享码。')}</div>`}
+              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}" data-name="${escapeHtml(user.displayName || user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>站内发送</span></button></div><div class="field-help">发送后进入对方站内收件箱，对方登录后会自动收到项目副本。</div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前无法显示完整用户目录。可直接在下方输入对方的云端用户名发送。')}</div>`}
+              <div class="share-manual-send">
+                <div class="share-option-head"><strong>手动输入对方用户名发送</strong><span>无需依赖用户下拉目录。请输入对方登录用的云端用户名；对方下次登录后会自动接收。</span></div>
+                <div class="share-direct-row"><input class="input" id="share-recipient-username" placeholder="对方用户名，例如 partner01"><input class="input" id="share-note-manual" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-username">${ICONS.share}<span>按用户名发送</span></button></div>
+              </div>
               <div id="share-direct-status" class="share-direct-status"></div>
             </div>
             <div class="share-divider"><span>或使用跨账号项目分享码</span></div>
@@ -2370,6 +2423,43 @@ async function openShareProjectModal(projectId) {
           status.classList.add('warning');
           status.textContent = `${error.message} 可复制分享码或下载分享文件发送。`;
         }
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.getElementById('send-project-username')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const status = document.getElementById('share-direct-status');
+      const recipientUsername = document.getElementById('share-recipient-username').value.trim().toLowerCase();
+      if (!recipientUsername) {
+        status.className = 'share-direct-status warning';
+        status.textContent = '请输入接收方的云端用户名。';
+        return;
+      }
+      if (recipientUsername === String(state.user?.username || '').toLowerCase()) {
+        status.className = 'share-direct-status warning';
+        status.textContent = '不能发送给当前登录账号。';
+        return;
+      }
+      button.disabled = true;
+      status.className = 'share-direct-status';
+      status.textContent = `正在向 @${recipientUsername} 的站内收件箱发送…`;
+      try {
+        const delivery = await sendProjectToInbox({
+          recipientId: '',
+          recipientUsername,
+          recipientName: recipientUsername,
+          shareCode,
+          note: document.getElementById('share-note-manual').value.trim(),
+        });
+        const retentionHours = delivery.expiresAt ? Math.max(1, Math.round((delivery.expiresAt - Date.now() / 1000) / 3600)) : 12;
+        status.classList.add('success');
+        status.textContent = delivery.persisted
+          ? `已发送给 @${recipientUsername}。对方约${retentionHours}小时内登录会自动收到项目副本。`
+          : `已向 @${recipientUsername} 发出在线投递；若未收到，可改用下方分享文件。`;
+      } catch (error) {
+        status.classList.add('warning');
+        status.textContent = error.message;
       } finally {
         button.disabled = false;
       }
@@ -5947,6 +6037,7 @@ function renderResultsStep() {
     </div>
     ${renderLeasingStageResultCard()}
     ${renderInvestmentOverviewCard()}
+    ${renderInvestmentOutcomeDiagnostic()}
     <div class="dashboard-grid">
       <div class="card"><h3>${fmt(state.result?.annual?.length || state.current?.model?.project?.operationYears || 20)}年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
       <div class="card"><h3>投资构成</h3><div class="donut-wrap"><canvas id="cost-donut"></canvas><div class="donut-legend">${state.result.investmentBreakdown.map((item, i) => `<div class="donut-item"><i style="background:${donutColor(i)}"></i><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)}万</strong></div>`).join('')}</div></div></div>
@@ -5997,6 +6088,119 @@ function renderLeasingStageResultCard() {
     const startRow = annual.find(row => Number(row.opYear) === Number(period.startYear)) || {};
     return `<tr><td><strong>${escapeHtml(period.name)}</strong><small class="range-hint">${escapeHtml(period.note || '')}</small></td><td>第${period.startYear}–${period.endYear}年</td><td class="num">${fmtPct(period.rentAdjustmentRate)}</td><td class="num">${period.targetOccupancy > 0 ? fmtPct(period.targetOccupancy) : '沿用原出租率'}</td><td class="num">×${fmt(startRow.rentGrowthFactor || (1 + period.rentAdjustmentRate), 3)}</td><td class="num">${fmt(period.oneOffLeasingCost, 2)}</td></tr>`;
   }).join('')}</tbody></table></div></div>`;
+}
+
+function analyzeInvestmentOutcome(result = state.result) {
+  const s = result?.summary || {};
+  const model = result?.model || state.current?.model || {};
+  const annual = (result?.annual || []).filter(row => Number(row.opYear) > 0);
+  const stableYear = Math.max(1, Number(model.operations?.stableYear || 3));
+  const stableRow = annual.find(row => Number(row.opYear) === stableYear)
+    || [...annual].reverse().find(row => Number(row.opYear) > 0)
+    || {};
+  const revenue = Number(stableRow.revenue || 0);
+  const operatingCost = Number(stableRow.operatingCost || 0);
+  const taxes = Number(stableRow.taxes || 0);
+  const costBurden = operatingCost + taxes;
+  const noi = Number(stableRow.noi ?? (revenue - costBurden));
+  const costRatio = revenue > 0 ? costBurden / revenue : 0;
+  const negativeNoiYears = annual.filter(row => Number(row.noi || 0) < 0).length;
+  const positiveCashYears = annual.filter(row => Number(row.projectCashFlow || 0) > 0).length;
+  const lastRow = annual.at(-1) || {};
+  const cumulativeEnd = Number(lastRow.cumulativeProjectCashFlow ?? s.projectNetCashProfit ?? 0);
+  const feeIncome = Number(stableRow.propertyRevenue || 0);
+  const feeServiceCost = ['propertyTeamCost', 'securityCost', 'cleaningCost', 'energyCost']
+    .reduce((sum, key) => sum + Number(stableRow[key] || 0), 0);
+  const feeBalance = feeIncome - feeServiceCost;
+  const driverDefinitions = [
+    ['人员及物业服务成本', 'staffCost'],
+    ['公共能耗', 'energyCost'],
+    ['物业基础运营', 'propertyOpsCost'],
+    ['办公行政', 'officeCost'],
+    ['招商费用', 'leasingCost'],
+    ['营销推广', 'marketingCost'],
+    ['维保维修', 'maintenanceCost'],
+    ['业主租金', 'ownerRent'],
+    ['保险费用', 'insuranceCost'],
+    ['坏账准备', 'badDebtCost'],
+    ['其他运营费用', 'otherOpexCost'],
+    ['经营税费', 'taxes'],
+  ];
+  const drivers = driverDefinitions
+    .map(([name, key]) => ({ name, value: Number(stableRow[key] || 0), share: revenue > 0 ? Number(stableRow[key] || 0) / revenue : 0 }))
+    .filter(item => item.value > 0.0001)
+    .sort((a, b) => b.value - a.value);
+  const reasons = [];
+  if (revenue > 0 && noi < 0) {
+    reasons.push(`稳定年第${stableYear}年收入 ${fmt(revenue, 2)} 万元，但运营成本与经营税费合计 ${fmt(costBurden, 2)} 万元，形成经营缺口 ${fmt(Math.abs(noi), 2)} 万元。每 100 元收入对应约 ${fmt(costRatio * 100, 1)} 元成本费用及税费。`);
+  } else if (revenue <= 0) {
+    reasons.push('稳定年营业收入为 0，无法覆盖运营成本和投资回收。请先核对出租率、计租面积、租金单价及联营扣点收入。');
+  }
+  if (drivers.length) {
+    const top = drivers.slice(0, 3);
+    reasons.push(`稳定年最大成本项为：${top.map(item => `${item.name} ${fmt(item.value, 2)} 万元`).join('、')}。这些项目合计占稳定年收入约 ${fmt(top.reduce((sum, item) => sum + item.share, 0) * 100, 1)}%。`);
+  }
+  if (feeIncome > 0 || feeServiceCost > 0) {
+    reasons.push(`物业管理费、商业管理费和空调费收入合计 ${fmt(feeIncome, 2)} 万元/年；对应物业工程、保安、保洁及公共能耗成本约 ${fmt(feeServiceCost, 2)} 万元/年，${feeBalance >= 0 ? `预计结余 ${fmt(feeBalance, 2)} 万元/年` : `预计缺口 ${fmt(Math.abs(feeBalance), 2)} 万元/年`}。`);
+  }
+  if (s.projectIrr == null) {
+    reasons.push(positiveCashYears === 0
+      ? '项目全周期没有形成正的年度项目现金流，IRR 因缺少“先投入、后回收”的有效正负现金流组合而不适用。'
+      : '项目存在部分正现金流年度，但全周期仍无法形成可求解的 IRR，通常是累计回收不足以覆盖前期投入。');
+  }
+  if (s.staticPayback == null) {
+    reasons.push(`全周期累计项目现金流为 ${fmt(cumulativeEnd, 2)} 万元，测算期末仍未由负转正，因此静态回收期显示“未回收”。`);
+  }
+  if (negativeNoiYears > 0) {
+    reasons.push(`在 ${annual.length} 个运营年度中，有 ${negativeNoiYears} 年 NOI 为负，说明当前租金及三项费用收入不足以覆盖稳定运营成本。`);
+  }
+  const actions = [];
+  if (noi < 0) actions.push('先压降稳定年成本：重点复核人员编制与薪资、第三方物业费率、公共能耗、营销和业主租金。');
+  if (feeBalance < 0) actions.push('重新校准物业费、商管费和空调费单价，至少让三项收费覆盖对应物业服务与公共能耗成本。');
+  if (Number(stableRow.occupancy || 0) < Number(model.operations?.stableOccupancy || 0) - 0.02) actions.push('稳定期实际出租率低于目标，请检查招商爬坡和空置假设。');
+  if (drivers.some(item => item.name === '业主租金')) actions.push('业主租金是主要成本项，建议重新谈判租金额、递增方式或免租期。');
+  if (s.staticPayback == null) actions.push('若经营修复后仍无法回收，应下调建设投资或提高租金/出租率，并重新测算 NPV 与回收期。');
+  if (!actions.length) actions.push('继续核对市场租金、出租率、成本单价和税费假设，确保达到投资决策阈值。');
+  return {
+    tone: noi < 0 || s.projectNpv < 0 ? 'critical' : s.projectIrr == null || s.staticPayback == null ? 'warning' : 'normal',
+    revenue,
+    operatingCost,
+    taxes,
+    costBurden,
+    noi,
+    costRatio,
+    cumulativeEnd,
+    negativeNoiYears,
+    positiveCashYears,
+    stableYear,
+    feeIncome,
+    feeServiceCost,
+    feeBalance,
+    drivers,
+    reasons,
+    actions: actions.slice(0, 4),
+  };
+}
+
+function renderInvestmentOutcomeDiagnostic() {
+  const d = analyzeInvestmentOutcome();
+  const s = state.result?.summary || {};
+  if (d.tone === 'normal' && Number(s.projectIrr || 0) > 0) return '';
+  return `<div class="card investment-diagnostic-card ${d.tone}">
+    <div class="loss-diagnosis-head"><div><span class="eyebrow">Loss driver diagnosis</span><h3>为什么当前测算显示亏损、IRR不适用或未回收</h3><p>系统按稳定年收入、成本费用、经营税费、年度NOI和全周期现金流自动定位原因。</p></div><span class="loss-diagnosis-badge">${d.tone === 'critical' ? '经营亏损' : '回收不足'}</span></div>
+    <div class="loss-diagnostic-kpis">
+      <div><span>稳定年营业收入</span><strong>${fmt(d.revenue, 2)}</strong><em>万元/年</em></div>
+      <div><span>运营成本及税费</span><strong>${fmt(d.costBurden, 2)}</strong><em>万元/年</em></div>
+      <div class="danger"><span>稳定年NOI缺口</span><strong>${fmt(d.noi, 2)}</strong><em>万元/年</em></div>
+      <div><span>全周期累计现金流</span><strong class="${d.cumulativeEnd < 0 ? 'neg' : 'pos'}">${fmt(d.cumulativeEnd, 2)}</strong><em>万元</em></div>
+      <div><span>三项费用结余</span><strong class="${d.feeBalance < 0 ? 'neg' : 'pos'}">${fmt(d.feeBalance, 2)}</strong><em>万元/年</em></div>
+    </div>
+    <div class="loss-diagnostic-layout">
+      <div><h4>系统判断</h4><ol class="loss-reason-list">${d.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ol></div>
+      <div><h4>稳定年成本费用影响排序</h4><div class="data-table-wrap"><table class="data-table compact-diagnostic-table"><thead><tr><th>项目</th><th class="num">金额（万元）</th><th class="num">占收入</th></tr></thead><tbody>${d.drivers.slice(0, 8).map(item => `<tr><td>${escapeHtml(item.name)}</td><td class="num">${fmt(item.value, 2)}</td><td class="num">${fmtPct(item.share)}</td></tr>`).join('') || '<tr><td colspan="3" class="admin-empty">暂无稳定年成本数据</td></tr>'}</tbody></table></div></div>
+    </div>
+    <div class="loss-action-box"><strong>建议优先调整</strong><ol>${d.actions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}</ol></div>
+  </div>`;
 }
 
 function renderInvestmentOverviewCard() {
