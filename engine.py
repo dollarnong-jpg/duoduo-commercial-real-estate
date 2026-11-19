@@ -2298,6 +2298,11 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     period_operating_noi = sum(as_float(row.get("noi")) for row in operation_rows)
     period_revenue_total = sum(as_float(row.get("revenue")) for row in operation_rows)
     period_profit_margin = safe_div(period_net_profit, period_revenue_total)
+    total_project_income = period_revenue_total
+    total_project_exit_value = sum(as_float(row.get("exitValue")) for row in annual_rows)
+    total_project_profit = sum(project_cash_flows)
+    total_project_expense = total_project_income + total_project_exit_value - total_project_profit
+    total_project_profit_margin = safe_div(total_project_profit, total_project_income)
     stable_commercial_management_cost = as_float(stable_row.get("operatingCostExOwnerRent"))
     stable_commercial_operating_balance = stable_revenue - stable_commercial_management_cost - stable_taxes
     period_commercial_management_cost = sum(as_float(row.get("operatingCostExOwnerRent")) for row in operation_rows)
@@ -3074,6 +3079,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "periodOperatingNoi": period_operating_noi,
             "periodRevenueTotal": period_revenue_total,
             "periodProfitMargin": period_profit_margin,
+            "totalProjectIncome": total_project_income,
+            "totalProjectExpense": total_project_expense,
+            "totalProjectProfit": total_project_profit,
+            "totalProjectProfitMargin": total_project_profit_margin,
             "stableCommercialManagementCost": stable_commercial_management_cost,
             "stableCommercialOperatingBalance": stable_commercial_operating_balance,
             "periodCommercialManagementCost": period_commercial_management_cost,

@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-managementcost1';
+import './backend.js?v=20261120-toptotals1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.35';
+const APP_VERSION = '1.28.36';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6345,6 +6345,7 @@ function renderResultsStep() {
   const kpiNotes = buildKpiNarratives(state.result);
   const kpiClass = value => value > 0 ? 'positive' : value < 0 ? 'negative' : '';
   return `
+    ${renderProjectTotalLedgerCard()}
     <div class="result-hero">
       <div class="result-hero-top"><div><span class="result-status">${escapeHtml(s.status)}</span><h2>${escapeHtml(s.projectName || '商业项目')}</h2><p>${escapeHtml(s.location || '')}｜总建筑面积 ${fmtArea(s.grossFloorArea)}㎡｜可租赁面积 ${fmtArea(s.leasableArea)}㎡｜${s.calculationMode === 'preliminary' ? `${fmt(s.floorCount, 0)}个楼层` : `${fmt(s.shopsCount, 0)}个铺位`}</p></div><div style="color:#c9dad5;font-size:var(--fs-10);text-align:right">${s.calculationMode === 'preliminary' ? '初步楼层均价测算' : '一铺一价精细测算'}<br>${new Date().toLocaleDateString('zh-CN')}</div></div>
     </div>
@@ -6380,6 +6381,24 @@ function renderResultsStep() {
     </div>
     ${renderFloorResultTable()}
     <div class="export-bar"><div><strong>生成汇报材料</strong><span>Excel用于继续分析；PPT用于内部评审和项目汇报。</span></div><div class="export-actions"><button class="btn btn-secondary" id="export-excel">${ICONS.excel}<span>导出Excel</span></button><button class="btn btn-primary" id="export-ppt">${ICONS.ppt}<span>导出PPT汇报</span></button></div></div>`;
+}
+
+function renderProjectTotalLedgerCard() {
+  const s = state.result?.summary || {};
+  const income = Number(s.totalProjectIncome ?? s.periodRevenueTotal ?? 0);
+  const expense = Number(s.totalProjectExpense ?? (income - Number(s.totalProjectProfit ?? s.projectProfitTotal ?? s.projectNetCashProfit ?? 0)));
+  const profit = Number(s.totalProjectProfit ?? s.projectProfitTotal ?? s.projectNetCashProfit ?? 0);
+  const margin = Number(s.totalProjectProfitMargin ?? (income ? profit / income : 0));
+  return `<div class="card project-total-ledger-card">
+    <div class="leverage-head"><div><span class="eyebrow">Whole project totals</span><h3>项目全周期总账</h3><p>先看项目整体收入、整体支出和整体盈利，具体构成、年度数据和计算出处见下方。</p></div><div class="leverage-formula-pill">项目口径 · 不含融资利息 · 单位：万元</div></div>
+    <div class="funding-kpis">
+      <div><span>全周期营业收入</span><strong>${fmt(income, 2)}</strong><em>万元 · 各运营年度营业收入合计</em></div>
+      <div><span>全周期项目支出</span><strong>${fmt(expense, 2)}</strong><em>万元 · 建设、筹备、运营、税费和资本支出</em></div>
+      <div class="highlight"><span>全周期项目盈利</span><strong class="${profit < 0 ? 'neg' : 'pos'}">${fmt(profit, 2)}</strong><em>万元 · 收入减项目全部支出</em></div>
+      <div><span>全周期盈利率</span><strong class="${margin < 0 ? 'neg' : 'pos'}">${fmtPct(margin)}</strong><em>全周期项目盈利 ÷ 全周期营业收入</em></div>
+    </div>
+    <div class="section-note">全周期项目支出包含原始建设投资、招商运营启动投入、运营人员及物业服务、营销推广、招商、办公、维保、业主租金、税费和资本性支出；自有产权项目才计入期末退出价值。</div>
+  </div>`;
 }
 
 function renderInvestmentDetailCard() {

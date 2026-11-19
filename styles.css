@@ -637,6 +637,7 @@ a { color: inherit; }
 .phase-cost-grid .subsection-heading { margin-top:0; padding-top:0; border-top:0; }
 .phase-cost-grid .data-table { min-width:420px; }
 .funding-plan-card { margin-bottom:16px; }
+.project-total-ledger-card { margin-bottom:16px; border-top:4px solid #d6a84b; }
 .funding-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; margin:12px 0; }
 .funding-kpis > div { padding:11px 12px; border:1px solid #e3e9e5; border-radius:10px; background:#f7faf8; }
 .funding-kpis > div.highlight { border-color:#d9c38e; background:#fbf5e8; }
