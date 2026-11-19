@@ -177,6 +177,7 @@ a { color: inherit; }
 .user-box strong { display: block; color: #fff; font-size: var(--fs-13); }
 .user-box span { display: block; color: #78978f; font-size: var(--fs-11); margin-top: 4px; }
 .user-box #logout-btn { margin-top: 12px; border: 0; background: transparent; color: #91aaa4; padding: 0; font-size: var(--fs-11); }
+.user-box .sidebar-build { display:inline-block; margin-top:9px; padding:3px 7px; border:1px solid rgba(255,255,255,.14); border-radius:999px; color:#c3d7d1; font-size:var(--fs-8); letter-spacing:.02em; }
 .font-size-setting { margin-top: 16px; padding-top: 13px; border-top: 1px solid rgba(255,255,255,.10); }
 .font-size-setting .font-size-setting-title { display: block; color: #91aaa4; font-size: var(--fs-10); margin: 0 0 8px; }
 .font-size-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border-radius: 9px; background: rgba(255,255,255,.07); }

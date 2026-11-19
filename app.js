@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-floorSync1';
+import './backend.js?v=20261119-previewfix1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.9';
+const APP_VERSION = '1.28.10';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -710,6 +710,7 @@ const state = {
 let locationGeocodeTimer = null;
 let activeMapPicker = null;
 let previewTimer = null;
+let previewRequestSeq = 0;
 let shareInboxSocket = null;
 let shareInboxHeartbeat = null;
 let shareInboxReconnect = null;
@@ -1624,6 +1625,7 @@ function sidebar(active = 'projects') {
           </div>
         </div>
         <button type="button" id="logout-btn">退出登录</button>
+        <span class="sidebar-build">当前版本 v${APP_VERSION}</span>
       </div>
     </aside>`;
 }
@@ -6777,10 +6779,7 @@ function bindStepInputs() {
       if (input.type === 'checkbox') value = input.checked;
       else if (type === 'number') {
         value = value === '' ? 0 : Number(value) * scale;
-        if (/^floors\.\d+\.(avgRent|buildingArea|leasableArea|salesPerSqmMonth|concessionRate)$/.test(path) || ['project.rentAreaBasis', 'project.revenueModel'].includes(path)) {
-        updateQuickRentEstimateFromModel();
-      }
-      if (input.dataset.annualize === 'true') {
+        if (input.dataset.annualize === 'true') {
           const period = getPath(state.current.model, input.dataset.periodPath || '');
           if (period === 'monthly') value *= 12;
         }
@@ -6795,6 +6794,9 @@ function bindStepInputs() {
       const previousCentralAcFee = path === 'revenues.centralAcFee' ? Number(getPath(state.current.model, path) || 0) : null;
       const previousLeasingPeriodMonths = path === 'project.leasingPeriodMonths' ? Number(getPath(state.current.model, path) || 0) : null;
       setPath(state.current.model, path, value);
+      if (/^floors\.\d+\.(avgRent|buildingArea|leasableArea|salesPerSqmMonth|concessionRate)$/.test(path) || ['project.rentAreaBasis', 'project.revenueModel'].includes(path)) {
+        updateQuickRentEstimateFromModel();
+      }
       if (path === 'project.operationYears') state.current.model.project.operationEndDate = '';
       if (path === 'project.constructionYears') {
         state.current.model.project.constructionEndDate = '';
@@ -7478,12 +7480,14 @@ class TileMap {
 
 function scheduleLivePreview() {
   if (!state.current) return;
+  previewRequestSeq += 1;
   clearTimeout(previewTimer);
   previewTimer = setTimeout(() => { runLivePreview(); }, 650);
 }
 
 async function runLivePreview() {
   if (!state.current) return null;
+  const requestSeq = ++previewRequestSeq;
   try {
     const shopBaselineChanged = ensureShopDetailedBaseline(state.current.model);
     const costBaseline = ensureCostBaselineForCalculation(state.current.model);
@@ -7504,6 +7508,7 @@ async function runLivePreview() {
       }
     }
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
+    if (requestSeq !== previewRequestSeq || !state.current) return null;
     state.preview = result;
     updateLiveStats();
     updateOperatingPreviewDom(result);
