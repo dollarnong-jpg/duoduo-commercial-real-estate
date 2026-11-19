@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-areasync1';
+import './backend.js?v=20261119-acfloors1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.14';
+const APP_VERSION = '1.28.15';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -5249,8 +5249,7 @@ function refreshCentralAcRevenueDom(model) {
     if (breakdownEl) {
       const breakdownRows = (breakdowns.get(config.building) || []).filter(item => Number(item.area) > 0)
         .sort((a, b) => a.floor.localeCompare(b.floor, 'zh-CN', { numeric: true }));
-      const parts = breakdownRows.map(item => `${item.floor} ${fmtArea(item.area)}㎡`);
-      breakdownEl.textContent = !parts.length ? '暂无计租面积' : (parts.length > 1 ? `${parts.join(' + ')} = ${fmtArea(area)}㎡` : parts[0]);
+      breakdownEl.textContent = breakdownRows.length ? `${breakdownRows.length} 个楼层 · 明细见下方` : '暂无计租面积';
     }
     const monthlyEl = row.querySelector('[data-central-ac-monthly]');
     if (monthlyEl) monthlyEl.textContent = fmt(monthly);
@@ -5258,6 +5257,27 @@ function refreshCentralAcRevenueDom(model) {
     if (annualEl) annualEl.textContent = fmt(monthly * 12 / 10000, 2);
     const statusEl = row.querySelector('[data-central-ac-status]');
     if (statusEl) statusEl.textContent = config.enabled ? '独立计入中央空调使用费收入' : '该楼栋不产生空调费收入，仍计入物业费和商管费';
+  });
+  document.querySelectorAll('[data-central-ac-floor-building]').forEach(row => {
+    const building = row.dataset.centralAcFloorBuilding;
+    const floorName = row.dataset.centralAcFloorName;
+    const config = configs.find(item => item.building === building);
+    const floor = (breakdowns.get(building) || []).find(item => item.floor === floorName);
+    if (!config || !floor) return;
+    const buildingArea = Number(areas.get(building) || 0);
+    const floorArea = Number(floor.area || 0);
+    const fee = config.enabled ? Number(config.fee || 0) : 0;
+    const floorMonthly = floorArea * fee * occupancy;
+    const statusEl = row.querySelector('[data-central-ac-floor-status]');
+    const feeEl = row.querySelector('[data-central-ac-floor-fee]');
+    const monthlyEl = row.querySelector('[data-central-ac-floor-monthly]');
+    const annualEl = row.querySelector('[data-central-ac-floor-annual]');
+    const shareEl = row.querySelector('[data-central-ac-floor-share]');
+    if (statusEl) statusEl.textContent = config.enabled ? '随楼栋收取' : '随楼栋停收';
+    if (feeEl) feeEl.textContent = config.enabled ? fmt(Number(config.fee || 0), 2) : '—';
+    if (monthlyEl) monthlyEl.textContent = fmt(floorMonthly);
+    if (annualEl) annualEl.textContent = fmt(floorMonthly * 12 / 10000, 2);
+    if (shareEl) shareEl.textContent = `占楼栋计租面积 ${fmtPct(buildingArea > 0 ? floorArea / buildingArea : 0)}`;
   });
 }
 
@@ -5415,25 +5435,44 @@ function renderRevenueAssumptionsSection() {
   </div>
   <div class="form-section">
     <div class="section-title">按楼栋设置中央空调收费</div>
-    <div class="section-note">默认单价会作为楼栋收费基准。计租面积与商户租金页保持同一口径：初步测算按楼层面积汇总，一铺一价按铺位面积汇总，并在下方展示楼层拆分。稳定期月收费按计租面积 × 楼栋空调单价 × 稳定期出租率估算。</div>
+    <div class="section-note">默认单价会作为楼栋收费基准。计租面积与商户租金页保持同一口径：初步测算按楼层面积汇总，一铺一价按铺位面积汇总；楼栋行是收费总控，缩进的楼层行按面积拆分收费，仅用于核对，不重复计入收入。</div>
     <div class="budget-toolbar central-ac-toolbar"><span>默认单价 <strong data-central-ac-default-fee>${fmt(defaultCentralAcFee, 2)}</strong> 元/㎡/月｜已启用 <strong data-central-ac-enabled-count>${enabledCentralAcBuildings}</strong> / ${configs.length} 栋</span><div><button type="button" class="btn btn-secondary btn-sm" id="enable-all-central-ac">全部按默认单价启用</button><button type="button" class="btn btn-ghost btn-sm" id="disable-all-central-ac">全部停用</button></div></div>
     <div class="data-table-wrap" style="max-height:none">
-      <table class="data-table">
-        <thead><tr><th>楼栋</th><th>是否收取中央空调费</th><th class="num">计租面积（㎡）<br><small>按当前测算模式汇总</small></th><th class="num">空调费单价（元/㎡/月）</th><th class="num">稳定期月收费（元）</th><th class="num">稳定期年收入（万元）</th><th>说明</th></tr></thead>
+      <table class="data-table central-ac-table">
+        <thead><tr><th>楼栋 / 楼层</th><th>是否收取中央空调费</th><th class="num">计租面积（㎡）<br><small>租金页同步口径</small></th><th class="num">空调费单价（元/㎡/月）</th><th class="num">稳定期月收费（元）</th><th class="num">稳定期年收入（万元）</th><th>说明</th></tr></thead>
         <tbody>
           ${configs.map((config, index) => {
             const area = Number(areas.get(config.building) || 0);
             const fee = config.enabled ? Number(config.fee || 0) : 0;
             const monthly = area * fee * occupancy;
-            return `<tr data-central-ac-row="${index}">
-              <td><strong>${escapeHtml(config.building)}</strong></td>
+            const floorRows = (breakdowns.get(config.building) || []).filter(item => Number(item.area) > 0)
+              .sort((a, b) => a.floor.localeCompare(b.floor, 'zh-CN', { numeric: true }));
+            const buildingRow = `<tr class="central-ac-building-row" data-central-ac-row="${index}">
+              <td><strong>${escapeHtml(config.building)}</strong><small class="central-ac-level-note">${floorRows.length ? `楼栋汇总 · ${floorRows.length} 个楼层` : '楼栋汇总 · 暂无楼层明细'}</small></td>
               <td><label class="switch-line"><input type="checkbox" data-path="revenues.centralAcBuildings.${index}.enabled" data-type="bool" ${config.enabled ? 'checked' : ''} data-central-ac-toggle="true"><span>${config.enabled ? '收取' : '不收取'}</span></label></td>
-              <td class="num"><strong data-central-ac-area>${fmtArea(area)}</strong><small class="rent-source" data-central-ac-breakdown>${centralAcAreaBreakdownText(model, config.building, area)}</small></td>
+              <td class="num"><strong data-central-ac-area>${fmtArea(area)}</strong><small class="rent-source" data-central-ac-breakdown>${floorRows.length ? `${floorRows.length} 个楼层 · 明细见下方` : '暂无计租面积'}</small></td>
               <td class="num"><div class="input-affix compact"><input class="table-input" data-path="revenues.centralAcBuildings.${index}.fee" data-type="number" data-central-ac-fee="true" type="number" step="0.01" value="${Number(config.fee || 0).toFixed(2)}" ${config.enabled ? '' : 'disabled'}><span>元/㎡/月</span></div><span data-central-ac-fee-status>${config.feeCustomized ? `<button type="button" class="btn btn-ghost btn-sm central-ac-reset" data-reset-central-ac-fee="${index}">恢复默认价</button>` : '<small class="rent-source">跟随默认价</small>'}</span></td>
               <td class="num"><strong data-central-ac-monthly>${fmt(monthly)}</strong></td>
               <td class="num"><strong data-central-ac-annual>${fmt(monthly * 12 / 10000, 2)}</strong></td>
               <td><span data-central-ac-status>${config.enabled ? '独立计入中央空调使用费收入' : '该楼栋不产生空调费收入，仍计入物业费和商管费'}</span></td>
             </tr>`;
+            const floorRowHtml = floorRows.map(floor => {
+              const floorShare = area > 0 ? Number(floor.area) / area : 0;
+              const floorMonthly = Number(floor.area) * fee * occupancy;
+              return `<tr class="central-ac-floor-row" data-central-ac-floor-building="${escapeHtml(config.building)}" data-central-ac-floor-name="${escapeHtml(floor.floor)}">
+                <td class="central-ac-floor-label"><span>↳</span><strong>${escapeHtml(floor.floor)}</strong><small>楼层拆分</small></td>
+                <td><span class="tag" data-central-ac-floor-status>${config.enabled ? '随楼栋收取' : '随楼栋停收'}</span></td>
+                <td class="num">${fmtArea(floor.area)}</td>
+                <td class="num" data-central-ac-floor-fee>${config.enabled ? fmt(Number(config.fee || 0), 2) : '—'}</td>
+                <td class="num" data-central-ac-floor-monthly>${fmt(floorMonthly)}</td>
+                <td class="num" data-central-ac-floor-annual>${fmt(floorMonthly * 12 / 10000, 2)}</td>
+                <td><small class="central-ac-floor-share" data-central-ac-floor-share>占楼栋计租面积 ${fmtPct(floorShare)}</small></td>
+              </tr>`;
+            }).join('') || `<tr class="central-ac-floor-row central-ac-floor-empty">
+              <td class="central-ac-floor-label"><span>↳</span><strong>暂无楼层</strong></td>
+              <td colspan="6">该楼栋没有计租面积记录，请先在“楼层均价与面积”或铺位明细中填写楼栋、楼层和面积。</td>
+            </tr>`;
+            return buildingRow + floorRowHtml;
           }).join('') || '<tr><td colspan="7" class="admin-empty">请先在商铺收益页添加楼栋或导入铺位明细。</td></tr>'}
         </tbody>
       </table>
