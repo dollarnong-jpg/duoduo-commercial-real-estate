@@ -648,7 +648,8 @@ a { color: inherit; }
 .funding-phase-item span { display:block; margin-top:4px; color:var(--muted); font-size:var(--fs-8); }
 .funding-phase-item em { display:block; color:var(--navy); font-size:var(--fs-10); font-style:normal; font-weight:700; }
 .funding-monthly-wrap { max-height:420px; }
-.funding-monthly-table { min-width:760px; }
+.funding-monthly-table { min-width:1120px; }
+.funding-monthly-table small { display:block; margin-top:2px; color:var(--muted); font-size:var(--fs-8); }
 .funding-monthly-table td.pos { color:var(--green); }
 .funding-monthly-table td.neg { color:#a4493f; }
 .investment-overview-card { margin-bottom:16px; }

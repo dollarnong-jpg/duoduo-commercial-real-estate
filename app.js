@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-autorent1';
+import './backend.js?v=20261119-cashflow3';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.22';
+const APP_VERSION = '1.28.25';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3377,8 +3377,6 @@ function renderOwnerRentSection() {
       ${enabled ? selectField('付款时点', 'ownerRent.paymentTiming', [{ value: 'prepay', label: '先付后用' }, { value: 'arrears', label: '先用后付' }], { help: '影响付款日期和启动资金峰值' }) : ''}
       ${enabled ? selectField('付款频率', 'ownerRent.paymentFrequency', [{ value: 'monthly', label: '按月' }, { value: 'quarterly', label: '按季度' }, { value: 'semiannual', label: '按半年' }, { value: 'annual', label: '按年' }], { help: '用于形成业主租金资金支付节点' }) : ''}
       ${enabled ? textField('业主租金起付日期', 'ownerRent.paymentStartDate', { type: 'date', help: '首期租金付款日期；先用后付时系统会按频率顺延' }) : ''}
-      ${enabled ? textField('业主免租开始日期', 'ownerRent.rentFreeStartDate', { type: 'date', optional: true }) : ''}
-      ${enabled ? textField('业主免租结束日期', 'ownerRent.rentFreeEndDate', { type: 'date', optional: true, help: '免租期结束后的首个完整月份开始计租' }) : ''}
       ${enabled ? textField('业主租赁保证金', 'ownerRent.depositAmount', { type: 'number', unit: '万元', optional: true, help: '保证金在付款日流出、退还日回流' }) : ''}
       ${enabled ? textField('保证金支付日期', 'ownerRent.depositPaymentDate', { type: 'date', optional: true }) : ''}
       ${enabled ? textField('保证金退还日期', 'ownerRent.depositRefundDate', { type: 'date', optional: true }) : ''}
@@ -3394,17 +3392,24 @@ function renderProjectTimelineSection() {
   const constructionMonths = Number(timeline.constructionMonths || 0);
   const leasingMonths = Number(timeline.leasingMonths || project.leasingPeriodMonths || 0);
   const operationMonths = Number(timeline.operationMonths || Number(project.operationYears || 20) * 12);
+  const constructionUnit = project.constructionPeriodUnit === 'month' ? 'month' : 'year';
+  const ownerRentEnabled = state.current.model.ownerRent?.enabled === true || [1, '1', 'true', 'yes', '是'].includes(String(state.current.model.ownerRent?.enabled || '').toLowerCase());
   return `<div class="form-section project-timeline-section">
     <div class="section-title">开发经营时间轴</div>
-    <div class="section-note">按真实年月日建立从立项进场、建设开工、竣工接管、招商启动到计划开业和运营结束的时间轴。日期优先于“建设期、招商月数、运营年限”参与项目阶段和资金计划；修改日期后请重新计算。</div>
-    ${formulaPanel('项目时间轴与现金流公式', '建设期月数 = 计划竣工日期 - 建设开工日期\n筹备招商月数 = 计划开业日期 - 招商启动日期\n运营月数 = 运营结束日期 - 计划开业日期\n月度资金计划 = 建设投资 + 筹备支出 + 业主租金/保证金 + 商户租金/物业费/商管费/空调费 + 税费', ['SUM','IF'], '真实日期用于把投入和收入放到对应月份；年度报表仍按建设期、筹备期和运营期汇总。')}
+    <div class="section-note">按真实年月日建立从立项进场、建设开工、竣工接管、招商启动到计划开业和运营结束的时间轴。建设期可以按年或按月录入；日期优先于“建设期、招商月数、运营年限”参与项目阶段和资金计划。</div>
+    ${formulaPanel('项目时间轴与现金流公式', '建设期月数 = IF(填写计划竣工日期, 计划竣工日期 - 建设开工日期, IF(按月录入, 建设期月数, 建设期年数 × 12))\n筹备招商月数 = 计划开业日期 - 招商启动日期\n运营月数 = 运营结束日期 - 计划开业日期\n月度现金流 = 当月经营流入 + 保证金流入 - 经营及税费支出 - 业主租金 - 建设/筹备支出 + 融资流入 - 还本付息 - 所得税 + 退出款\n累计资金缺口 = MAX(0, -累计项目现金流)', ['SUM','IF','MAX'], '按年录入适合投资初筛，按月录入适合精确安排开工、竣工、贷款提款和月度资金计划；资金缺口按逐月现金流滚动计算，不再用年度金额除以12。')}
     <div class="form-grid">
       ${textField('项目立项 / 进场日期', 'project.investmentDate', { type: 'date', help: '投资决策、前期启动或项目公司正式进场日期' })}
       ${textField('建设开工日期', 'project.constructionStartDate', { type: 'date', help: '工程正式开工日期' })}
-      ${textField('建设期', 'project.constructionYears', { type: 'number', unit: '年', help: '未填写竣工日期时用于推算；填写日期后以日期为准' })}
+      ${selectField('建设期核算方式', 'project.constructionPeriodUnit', [{ value: 'year', label: '按年核算' }, { value: 'month', label: '按月核算' }], { help: '切换后保留已录入的建设期，并自动换算为对应单位。' })}
+      ${constructionUnit === 'month'
+        ? textField('建设期', 'project.constructionMonthsInput', { type: 'number', unit: '月', help: '未填写竣工日期时用于推算；填写日期后以日期为准' })
+        : textField('建设期', 'project.constructionYears', { type: 'number', unit: '年', help: '未填写竣工日期时用于推算；填写日期后以日期为准' })}
       ${textField('计划竣工日期', 'project.constructionEndDate', { type: 'date', help: '竣工验收或项目移交日期' })}
       ${textField('项目接管 / 进场日期', 'project.handoverDate', { type: 'date', help: '商管团队进场接收项目的日期' })}
       ${textField('招商启动日期', 'project.leasingStartDate', { type: 'date', help: '正式启动招商、签约和租户落位的日期' })}
+      ${ownerRentEnabled ? textField('业主免租开始日期', 'ownerRent.rentFreeStartDate', { type: 'date', optional: true, help: '业主给予项目的租金免收开始日期' }) : ''}
+      ${ownerRentEnabled ? textField('业主免租结束日期', 'ownerRent.rentFreeEndDate', { type: 'date', optional: true, help: '免租期结束后的首个完整月份开始计租' }) : ''}
       ${textField('筹备招商月数', 'project.leasingPeriodMonths', { type: 'number', unit: '月', help: '没有填写开业日期时用于推算；填写日期后以日期为准' })}
       ${textField('计划开业日期', 'project.openingDate', { type: 'date', help: '首次开门营业日期；租金和运营收入从此日期开始进入月度资金计划' })}
       ${textField('招商运营年限', 'project.operationYears', { type: 'number', unit: '年', help: '可填1–50年，现金流、IRR、NPV、Excel和PPT均按该年限计算' })}
@@ -5408,6 +5413,7 @@ function renderRevenueAssumptionsSection() {
   const propertyFeeGrowthMode = formulas.propertyFeeGrowthMode || 'compound';
   const commercialManagementGrowthMode = formulas.commercialManagementGrowthMode || 'compound';
   const centralAcGrowthMode = formulas.centralAcGrowthMode || 'compound';
+  const rentCollectionMode = operations.rentCollectionMode || 'deposit_and_prepaid';
   const growthOptions = [
     { value: 'none', label: '不递增' },
     { value: 'compound', label: '每年复利递增' },
@@ -5428,7 +5434,7 @@ function renderRevenueAssumptionsSection() {
   const enabledCentralAcBuildings = configs.filter(item => item.enabled).length;
   return `<div class="form-section">
     <div class="section-title">出租率、租金增长与租赁条款</div>
-    ${formulaPanel('出租率、租金及费用递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子', ['IF', 'POWER', 'INT', 'SUM'], '租金、物业管理费、商业管理费和中央空调费分别设置增长方式和递增率；阶梯递增示例：每3年递增5%，第1—3年不变，第4年开始上调。')}
+    ${formulaPanel('出租率、租金及费用递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子\n签约现金流入 = 已租铺位月租金 ×（保证金月数 + 预付租金月数）\n商管进场月度成本 = 筹备团队 + 筹备物业 + 其他开办费用，按进场日至开业日分摊', ['IF', 'POWER', 'INT', 'SUM'], '租金、物业管理费、商业管理费和中央空调费分别设置增长方式和递增率；押金和预付租金在招商签约时形成真实现金流入，预付租金对应的后续月份不再重复计入实收租金。')}
     <div class="form-grid">
       ${textField('首年出租率', 'operations.occupancyY1', { type: 'number', unit: '%', scale: 0.01 })}
       ${textField('第二年出租率', 'operations.occupancyY2', { type: 'number', unit: '%', scale: 0.01 })}
@@ -5442,8 +5448,10 @@ function renderRevenueAssumptionsSection() {
         : textField('租金年递增率', 'operations.rentGrowth', { type: 'number', unit: '%', scale: 0.01 })}
       ${textField('联营销售额年增长率', 'operations.salesGrowth', { type: 'number', unit: '%', scale: 0.01 })}
       ${textField('租金收缴率', 'operations.collectionRate', { type: 'number', unit: '%', scale: 0.01 })}
+      ${selectField('租金收取方式', 'operations.rentCollectionMode', [{ value: 'deposit_and_prepaid', label: '押金 + 预付租金' }, { value: 'deposit_only', label: '仅收押金' }, { value: 'prepaid_only', label: '仅收预付租金' }], { help: '招商签约时按已租铺位收取押金和预付租金，形成招商期真实现金流入' })}
       ${textField('续租周期', 'operations.renewalCycle', { type: 'number', unit: '年' })}
-      ${textField('租赁保证金月数', 'operations.depositMonths', { type: 'number', unit: '月' })}
+      ${rentCollectionMode !== 'prepaid_only' ? textField('租赁保证金月数', 'operations.depositMonths', { type: 'number', unit: '月', help: '保证金 = 初始已租铺位月租金 × 保证金月数' }) : ''}
+      ${rentCollectionMode !== 'deposit_only' ? textField('预付租金月数', 'operations.prepaidRentMonths', { type: 'number', unit: '月', help: '预付租金 = 初始已租铺位月租金 × 预付月数；后续月份不再重复计入租金收入' }) : ''}
     </div>
     ${renderLeasingMilestoneSection(model)}
     ${renderLeasingAdjustmentSection(model, state.preview)}
@@ -5837,7 +5845,7 @@ function renderPreOpeningCostStep() {
   const marketing = Number(project.preOpeningMarketing || 0);
   const total = commission + totals.team + totals.property + marketing + totals.admin;
   return `
-    <div class="callout">${ICONS.info}<div>本页用于开业前的筹备费用，不包含土地和建设工程。筹备团队、筹备物业、首开招商佣金、筹备营销和行政开办费会进入项目总投资，但不重复计入运营期成本。</div></div>
+    <div class="callout">${ICONS.info}<div>本页用于开业前的筹备费用，不包含土地和建设工程。商管公司从项目接管/进场日开始按月发生筹备团队、物业及开办成本；招商启动后按合同收取的租赁保证金和预付租金会进入真实现金流，并在后续月份自动冲抵，不重复确认收入。</div></div>
     <div class="form-section">
       <div class="section-title">筹备期成本参数</div>
       ${formulaPanel('筹备期成本公式', '首开招商佣金 = 满租月租金 × 佣金月数 × 首年出租率 ÷ 10000\n筹备团队成本 = Σ（编制 × 税前月薪 × 筹备月数 + 单位社保 + 招聘培训）\n筹备物业成本 = Σ各服务模式岗位成本 + 第三方管理费 + 物业一次性费用\n行政开办费用 = Σ（每月金额 × 月数 或 一次性总额）\n筹备期非工程费用 = 团队 + 物业 + 行政 + 首开佣金 + 筹备营销', ['SUM','IF'], '明细预算会自动回写团队、物业和其他开办三项汇总；快速总额模式适合项目初筛。')}
@@ -6765,14 +6773,18 @@ function renderFundingPlanCard() {
   const visibleEvents = [...cashEvents.filter(item => item.category !== '业主租金').slice(0, 20), ...cashEvents.filter(item => item.category === '业主租金').slice(0, 16)].sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(0, 36);
   if (!phases.length) return '';
   const breakEvenText = s.cashFlowBreakEvenMonth ? `第 ${s.cashFlowBreakEvenMonth} 个月` : s.cashFlowBreakEvenYear ? `${s.cashFlowBreakEvenYear} 年` : '当前测算期内未转正';
+  const breakEvenBasis = s.cashFlowBreakEvenMonth ? '逐月现金流' : s.cashFlowBreakEvenYear ? '年度现金流' : '测算期内持续为负';
   return `<div class="card funding-plan-card">
     <h3>项目建设、招商运营与开业资金需求</h3>
     <div class="funding-kpis">
       <div class="highlight"><span>建议启动资金</span><strong>${fmt(s.recommendedStartupCapital, 2)}</strong><em>万元</em></div>
-      <div><span>项目资金缺口峰值</span><strong>${fmt(s.peakProjectFundingRequirement, 2)}</strong><em>万元</em></div>
-      <div><span>资本金缺口峰值</span><strong>${fmt(s.peakEquityFundingRequirement, 2)}</strong><em>万元</em></div>
-      <div><span>累计现金流转正</span><strong>${escapeHtml(breakEvenText)}</strong><em>${s.cashFlowBreakEvenMonth ? '按月资金计划' : '按年现金流'}</em></div>
+      <div><span>项目资金缺口峰值</span><strong>${fmt(s.peakProjectFundingRequirement, 2)}</strong><em>万元${s.peakProjectFundingDate ? ` · ${escapeHtml(s.peakProjectFundingDate)}` : ''}</em></div>
+      <div><span>资本金缺口峰值</span><strong>${fmt(s.peakEquityFundingRequirement, 2)}</strong><em>万元${s.peakEquityFundingDate ? ` · ${escapeHtml(s.peakEquityFundingDate)}` : ''}</em></div>
+      <div><span>累计现金流转正</span><strong>${escapeHtml(breakEvenText)}</strong><em>${breakEvenBasis}</em></div>
+      <div><span>常态化运营资金需求</span><strong>${fmt(s.normalOperationCapital, 2)}</strong><em>万元 · 月均现金支出 ${fmt(s.stableMonthlyCashOutflow, 2)} × ${fmt(state.current?.model?.project?.startupReserveMonths || 0, 2)}个月安全垫</em></div>
+      <div><span>稳定期月净现金流</span><strong class="${Number(s.stableMonthlyNetCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(s.stableMonthlyNetCashFlow, 2)}</strong><em>万元/月 · 扣除运营成本、资本性支出及还本付息</em></div>
     </div>
+    <div class="section-note">商管进场：${escapeHtml(s.managementStartDate || '待定')} 起，按月计入筹备团队、物业及开办成本 ${fmt(s.managementMonthlyCost, 2)} 万元/月；招商启动预计收取租赁保证金 ${fmt(s.merchantDepositCashInflow, 2)} 万元、预付租金 ${fmt(s.merchantPrepaidRentCashInflow, 2)} 万元（按首年出租率和合同月数估算）。</div>
     <div class="data-table-wrap" style="max-height:none;margin-bottom:16px"><table class="data-table"><thead><tr><th>资金阶段</th><th class="num">项目口径需准备（万元）</th><th class="num">资本金口径需准备（万元）</th><th class="num">阶段净现金流（万元）</th><th>说明</th></tr></thead><tbody>
       ${phaseFunding.filter(item => ['建设期', '筹备招商期', '开业首年'].includes(item.phase)).map(item => `<tr><td><strong>${escapeHtml(item.phase)}</strong></td><td class="num">${fmt(item.projectFundingNeed, 2)}</td><td class="num">${fmt(item.equityFundingNeed, 2)}</td><td class="num ${item.projectCashFlow < 0 ? 'neg' : 'pos'}">${fmt(item.projectCashFlow, 2)}</td><td>${item.phase === '建设期' ? '土地、工程、装修设备、规费、预备费及建设期利息的阶段性资金需求' : item.phase === '筹备招商期' ? '筹备团队、物业、招商佣金、营销、开办费及业主租金/保证金的阶段性资金需求' : '开业初期运营成本、税费、租金爬坡及安全垫对应的资金需求'}</td></tr>`).join('')}
     </tbody></table></div>
@@ -6802,8 +6814,13 @@ function renderFundingPlanCard() {
       ${visibleEvents.map(item => `<tr><td>${escapeHtml(item.date)}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.category)}</td><td class="num ${Number(item.amount) < 0 ? 'neg' : 'pos'}">${fmt(item.amount, 2)}</td></tr>`).join('')}
     </tbody></table></div>
     ${milestoneRows.length ? `<div class="data-table-wrap" style="max-height:none;margin-bottom:14px"><table class="data-table"><thead><tr><th>招商里程碑日期</th><th class="num">目标招商率</th><th class="num">可实现月租金（元）</th><th class="num">年化租金（万元）</th><th>说明</th></tr></thead><tbody>${milestoneRows.map(item => `<tr><td>${escapeHtml(item.date)}</td><td class="num">${fmtPct(item.occupancy)}</td><td class="num">${fmt(item.monthlyRentPotential, 0)}</td><td class="num">${fmt(item.annualRentPotential, 2)}</td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
-    <div class="section-note">月度资金计划按建设期、筹备招商期和开业首年拆分年度金额；上方关键日期和付款节点用于复核业主租金、保证金、招商率和开业节奏。实际付款仍应按合同、发票和工程进度调整。</div>
-    <div class="data-table-wrap funding-monthly-wrap"><table class="data-table funding-monthly-table"><thead><tr><th>月份</th><th>阶段</th><th>日历年</th><th class="num">项目净现金流（万元）</th><th class="num">项目累计现金流（万元）</th><th class="num">资本金净现金流（万元）</th><th class="num">资本金累计现金流（万元）</th></tr></thead><tbody>${monthly.map(row => `<tr><td>第${row.month}月</td><td>${escapeHtml(row.phase || '')}</td><td>${row.calendarYear || ''}</td><td class="num ${row.projectCashFlow < 0 ? 'neg' : 'pos'}">${fmt(row.projectCashFlow, 2)}</td><td class="num ${row.cumulativeProjectCashFlow < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeProjectCashFlow, 2)}</td><td class="num ${row.equityCashFlow < 0 ? 'neg' : 'pos'}">${fmt(row.equityCashFlow, 2)}</td><td class="num ${row.cumulativeEquityCashFlow < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeEquityCashFlow, 2)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="section-note">以下为<strong>按实际日期滚动的月度现金流水</strong>，不再把年度金额简单除以12：商管从项目接管/进场开始按月发生团队、物业及开办成本；招商启动时按签约铺位收取保证金和预付租金；商户租金及费用按各月招商率、免租期、起收日期及收缴率进入；业主租金按付款频率与免租期进入，融资按投放和还本付息进入。实际付款仍应按合同、发票和工程进度调整。</div>
+    <div class="data-table-wrap funding-monthly-wrap"><table class="data-table funding-monthly-table"><thead><tr><th>月份 / 日期</th><th>阶段</th><th class="num">经营流入（万元）</th><th class="num">经营及税费支出（万元）</th><th class="num">建设/筹备支出（万元）</th><th class="num">融资流入（万元）</th><th class="num">还本付息（万元）</th><th class="num">项目净现金流（万元）</th><th class="num">项目累计现金流（万元）</th><th class="num">资本金净现金流（万元）</th><th class="num">资本金累计/缺口（万元）</th></tr></thead><tbody>${monthly.map(row => {
+      const operatingIn = Number(row.operatingInflow ?? 0) + Number(row.depositInflow ?? 0);
+      const operatingOut = Number(row.operatingOutflow ?? 0) + Number(row.ownerRentOutflow ?? 0) + Number(row.depositOutflow ?? 0) + Number(row.taxOutflow ?? 0);
+      const debtService = Number(row.loanInterest ?? 0) + Number(row.loanPrincipal ?? 0);
+      return `<tr><td>${escapeHtml(row.date || `第${row.month}月`)}${row.month ? `<small>第${row.month}月</small>` : ''}</td><td>${escapeHtml(row.phase || '')}</td><td class="num pos">${fmt(operatingIn, 2)}${Number(row.prepaidRentInflow || 0) > 0 ? `<small>含预收租金 ${fmt(row.prepaidRentInflow, 2)}</small>` : ''}</td><td class="num neg">${fmt(operatingOut, 2)}${Number(row.preopeningManagementOutflow || 0) > 0 ? `<small>含商管进场 ${fmt(row.preopeningManagementOutflow, 2)}</small>` : ''}</td><td class="num ${Number(row.capexOutflow || 0) < 0 ? 'neg' : ''}">${fmt(row.capexOutflow, 2)}</td><td class="num pos">${fmt(row.loanDraw, 2)}</td><td class="num neg">${fmt(debtService, 2)}</td><td class="num ${Number(row.projectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.projectCashFlow, 2)}</td><td class="num ${Number(row.cumulativeProjectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeProjectCashFlow, 2)}</td><td class="num ${Number(row.equityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.equityCashFlow, 2)}</td><td class="num ${Number(row.cumulativeEquityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeEquityCashFlow, 2)}${Number(row.equityFundingGap || 0) > 0 ? `<small>缺口 ${fmt(row.equityFundingGap, 2)}</small>` : ''}</td></tr>`;
+    }).join('')}</tbody></table></div>
   </div>`;
 }
 
@@ -6954,9 +6971,24 @@ function bindStepInputs() {
         updateQuickRentEstimateFromModel();
       }
       if (path === 'project.operationYears') state.current.model.project.operationEndDate = '';
-      if (path === 'project.constructionYears') {
+      if (path === 'project.constructionYears' || path === 'project.constructionMonthsInput') {
         state.current.model.project.constructionEndDate = '';
         state.current.model.project.handoverDate = '';
+      }
+      if (path === 'project.constructionPeriodUnit') {
+        const project = state.current.model.project;
+        const derivedMonths = Number(state.preview?.timeline?.constructionMonths || project.constructionMonthsInput || 0);
+        if (value === 'month' && Number(project.constructionMonthsInput || 0) <= 0) {
+          project.constructionMonthsInput = Math.round(derivedMonths || Number(project.constructionYears || 0) * 12);
+        }
+        if (value === 'year' && Number(project.constructionYears || 0) <= 0) {
+          project.constructionYears = Math.max(1, Math.ceil(Number(project.constructionMonthsInput || derivedMonths || 0) / 12));
+        }
+        state.dirty = true;
+        state.preview = null;
+        renderWorkspace();
+        scheduleLivePreview();
+        return;
       }
       if (path === 'project.leasingPeriodMonths') {
         state.current.model.project.openingDate = '';
@@ -7008,7 +7040,7 @@ function bindStepInputs() {
         scheduleLivePreview();
         return;
       }
-      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode', 'ownerRent.paymentTiming', 'ownerRent.paymentFrequency', 'costs.inputMode', 'project.ownerRentAreaBasis', 'formulas.rentGrowthMode', 'formulas.propertyFeeGrowthMode', 'formulas.commercialManagementGrowthMode', 'formulas.centralAcGrowthMode'].includes(path)) {
+      if (['ownerRent.enabled', 'ownerRent.leaseType', 'ownerRent.landPricingMode', 'ownerRent.propertyPricingMode', 'ownerRent.growthMode', 'ownerRent.paymentTiming', 'ownerRent.paymentFrequency', 'operations.rentCollectionMode', 'costs.inputMode', 'project.ownerRentAreaBasis', 'formulas.rentGrowthMode', 'formulas.propertyFeeGrowthMode', 'formulas.commercialManagementGrowthMode', 'formulas.centralAcGrowthMode'].includes(path)) {
         state.dirty = true;
         state.preview = null;
         renderWorkspace();
@@ -8169,11 +8201,11 @@ function applyImportHints(hints) {
   const project = model.project;
   const projectHints = hints.project || {};
   const revenueHints = hints.revenues || {};
-  const numeric = new Set(['startYear', 'constructionYears', 'gbaOverride', 'landArea', 'landPrice', 'otherPreOpening', 'preOpeningMarketing']);
+  const numeric = new Set(['startYear', 'constructionYears', 'constructionMonthsInput', 'gbaOverride', 'landArea', 'landPrice', 'otherPreOpening', 'preOpeningMarketing']);
   for (const [key, value] of Object.entries(projectHints)) {
     if (value === null || value === undefined || value === '') continue;
     if (numeric.has(key)) project[key] = Number(value) || 0;
-    else if (['name', 'location', 'projectType', 'developmentType', 'rentAreaBasis', 'ownerRentAreaBasis'].includes(key)) project[key] = value;
+    else if (['name', 'location', 'projectType', 'developmentType', 'rentAreaBasis', 'ownerRentAreaBasis', 'constructionPeriodUnit'].includes(key)) project[key] = value;
     else if (project[key] === '' || project[key] === null || project[key] === undefined) project[key] = value;
   }
   model.revenues = model.revenues || {};

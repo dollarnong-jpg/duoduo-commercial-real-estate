@@ -71,6 +71,8 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "revenueModel": "rent",
             "startYear": datetime.now().year + 1,
             "constructionYears": 2,
+            "constructionPeriodUnit": "year",
+            "constructionMonthsInput": 24,
             "leasingPeriodMonths": 12,
             "investmentDate": "",
             "constructionStartDate": "",
@@ -241,6 +243,8 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "rentFreeMonths": 3.0,
             "rentFreeUntilDate": "",
             "collectionRate": 0.98,
+            "rentCollectionMode": "deposit_and_prepaid",
+            "prepaidRentMonths": 3.0,
             "renewalCycle": 3,
             "commissionMonths": 1.0,
             "renewalCommissionMonths": 0.5,
@@ -479,14 +483,36 @@ def months_between(start: date, end: date) -> int:
     return max(0, value)
 
 
+def calendar_month_start(value: date) -> date:
+    return date(value.year, value.month, 1)
+
+
+def month_end(value: date) -> date:
+    return date(value.year, value.month, monthrange(value.year, value.month)[1])
+
+
+def month_overlap_fraction(start: date | None, end: date | None, target: date) -> float:
+    """Return the fraction of a calendar month covered by [start, end)."""
+    month_first = calendar_month_start(target)
+    month_last = month_end(target)
+    period_start = max(month_first, start) if start else month_first
+    period_end = min(month_last + timedelta(days=1), end) if end else month_last + timedelta(days=1)
+    if period_end <= period_start:
+        return 0.0
+    return max(0.0, min(1.0, (period_end - period_start).days / (month_last - month_first).days + 1))
+
+
 def normalize_project_timeline(project: dict[str, Any]) -> dict[str, Any]:
-    construction_years = max(0, min(10, int(as_float(project.get("constructionYears"), 2))))
+    construction_unit = "month" if str(project.get("constructionPeriodUnit") or "year").strip().lower() == "month" else "year"
+    construction_years_input = max(0.0, min(10.0, as_float(project.get("constructionYears"), 2)))
+    construction_months_input = max(0, min(120, int(round(as_float(project.get("constructionMonthsInput"), construction_years_input * 12)))))
+    planned_construction_months = construction_months_input if construction_unit == "month" and construction_months_input > 0 else int(round(construction_years_input * 12))
     operation_years = max(1, min(50, int(as_float(project.get("operationYears"), 20))))
     leasing_period_months = max(0, min(60, int(as_float(project.get("leasingPeriodMonths"), 12))))
     fallback_start = date(max(2000, min(2200, int(as_float(project.get("startYear"), datetime.now().year + 1)))), 1, 1)
     investment_date = parse_iso_date(project.get("investmentDate")) or add_months(fallback_start, -1)
     construction_start = parse_iso_date(project.get("constructionStartDate")) or fallback_start
-    construction_end = parse_iso_date(project.get("constructionEndDate")) or add_months(construction_start, construction_years * 12)
+    construction_end = parse_iso_date(project.get("constructionEndDate")) or add_months(construction_start, planned_construction_months)
     handover_date = parse_iso_date(project.get("handoverDate")) or construction_end
     leasing_start = parse_iso_date(project.get("leasingStartDate")) or handover_date
     opening_date = parse_iso_date(project.get("openingDate")) or add_months(leasing_start, leasing_period_months)
@@ -501,7 +527,9 @@ def normalize_project_timeline(project: dict[str, Any]) -> dict[str, Any]:
     project["openingDate"] = iso_date(opening_date)
     project["operationEndDate"] = iso_date(operation_end)
     project["startYear"] = construction_start.year
+    project["constructionPeriodUnit"] = construction_unit
     project["constructionYears"] = max(0, min(10, math.ceil(construction_months / 12)))
+    project["constructionMonthsInput"] = construction_months
     project["leasingPeriodMonths"] = max(0, min(60, derived_leasing_months))
     operation_months = max(1, months_between(opening_date, operation_end))
     project["operationYears"] = max(1, min(50, math.ceil(operation_months / 12)))
@@ -1514,6 +1542,19 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     owner_rent_annual_increase = as_float(owner_rent_config.get("annualIncrease"))
     owner_rent_step_years = max(1, int(as_float(owner_rent_config.get("stepYears"), 3)))
 
+    owner_rent_free_start = parse_iso_date(owner_rent_config.get("rentFreeStartDate"))
+    owner_rent_free_end = parse_iso_date(owner_rent_config.get("rentFreeEndDate"))
+
+    def owner_rent_month_billable(month_start: date) -> bool:
+        payment_start = parse_iso_date(owner_rent_config.get("paymentStartDate")) or opening_date
+        if month_start < payment_start:
+            return False
+        if owner_rent_free_end and owner_rent_free_end > payment_start:
+            free_start = owner_rent_free_start or payment_start
+            if free_start <= month_start < owner_rent_free_end:
+                return False
+        return True
+
     def owner_rent_components_for_year(operation_year: int) -> tuple[float, float]:
         if owner_rent_base_annual <= 0:
             return 0.0, 0.0
@@ -1531,14 +1572,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             factor = (1 + owner_rent_growth_rate) ** steps
         else:
             factor = (1 + owner_rent_growth_rate) ** periods
-        payment_factor = 1.0
-        if operation_year == 1:
-            payment_factor = max(0.0, min(1.0, billable_months_for_fee(
-                operation_year,
-                owner_rent_config.get("paymentStartDate") or project.get("openingDate"),
-                owner_rent_config.get("rentFreeEndDate"),
-            ) / 12))
-        return owner_land_rent_base_annual * factor * payment_factor, owner_property_rent_base_annual * factor * payment_factor
+        year_start = add_months(opening_date, (operation_year - 1) * 12)
+        billable_months = sum(1 for month in range(12) if owner_rent_month_billable(add_months(year_start, month)))
+        return owner_land_rent_base_annual * factor * billable_months / 12, owner_property_rent_base_annual * factor * billable_months / 12
 
     annual_cost_adjustments = operations.get("annualCostAdjustments") if isinstance(operations.get("annualCostAdjustments"), dict) else {}
 
@@ -1666,8 +1702,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                     "principal": loan["principal"],
                     "netProfit": -loan["interest"],
                     "projectCapex": project_capex,
+                    "capexReserve": 0.0,
+                    "openingWorkingCapital": 0.0,
+                    "openingDeferredCapex": deferred_construction_capex if in_leasing else 0.0,
                     "projectCashFlow": project_cf,
                     "equityCashFlow": equity_cf,
+                    "loanDraw": loan["draw"],
+                    "loanInterest": loan["interest"],
+                    "loanPrincipal": loan["principal"],
                     "cumulativeProjectCashFlow": 0.0,
                     "cumulativeEquityCashFlow": 0.0,
                     "exitValue": 0.0,
@@ -1986,8 +2028,14 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "principal": loan["principal"],
                 "netProfit": net_profit,
                 "projectCapex": project_capex,
+                "capexReserve": capex_reserve,
+                "openingWorkingCapital": opening_working_capital,
+                "openingDeferredCapex": opening_deferred_capex,
                 "projectCashFlow": project_cf,
                 "equityCashFlow": equity_cf,
+                "loanDraw": loan["draw"],
+                "loanInterest": loan["interest"],
+                "loanPrincipal": loan["principal"],
                 "cumulativeProjectCashFlow": cumulative_project,
                 "cumulativeEquityCashFlow": cumulative_equity,
                 "exitValue": exit_value,
@@ -2210,36 +2258,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         for item in phase_cash_flow_summary
     ]
     monthly_funding_plan: list[dict[str, Any]] = []
-    monthly_cumulative_project = 0.0
-    monthly_cumulative_equity = 0.0
-    month_index = 0
-    for row in annual_rows:
-        phase = str(row.get("phase") or "")
-        if phase == "建设期":
-            month_count = 12
-        elif phase == "筹备招商期":
-            month_count = min(12, max(1, leasing_period_months))
-        elif row.get("opYear") == 1:
-            month_count = 12
-        else:
-            break
-        monthly_project_cf = as_float(row.get("projectCashFlow")) / month_count
-        monthly_equity_cf = as_float(row.get("equityCashFlow")) / month_count
-        for month in range(month_count):
-            month_index += 1
-            monthly_cumulative_project += monthly_project_cf
-            monthly_cumulative_equity += monthly_equity_cf
-            monthly_funding_plan.append({
-                "month": month_index,
-                "phase": phase or ("开业首年" if row.get("opYear") == 1 else ""),
-                "calendarYear": row.get("calendarYear"),
-                "projectCashFlow": monthly_project_cf,
-                "equityCashFlow": monthly_equity_cf,
-                "cumulativeProjectCashFlow": monthly_cumulative_project,
-                "cumulativeEquityCashFlow": monthly_cumulative_equity,
-            })
-    peak_project_funding = max([0.0] + [-as_float(row.get("cumulativeProjectCashFlow")) for row in monthly_funding_plan])
-    peak_equity_funding = max([0.0] + [-as_float(row.get("cumulativeEquityCashFlow")) for row in monthly_funding_plan])
+    peak_project_funding = 0.0
+    peak_equity_funding = 0.0
     stable_monthly_operating_cost = (stable_operating_cost + stable_taxes) / 12
     startup_reserve_months = max(0.0, as_float(project.get("startupReserveMonths"), 3.0))
     recommended_startup_capital = peak_equity_funding + stable_monthly_operating_cost * startup_reserve_months
@@ -2260,11 +2280,19 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     construction_end_date = parse_iso_date(project.get("constructionEndDate")) or construction_start_date
     add_cash_event(construction_start_date, "建设投资首批支出", -hard_investment * 0.55, "建设投资")
     add_cash_event(construction_end_date, "建设投资完工支出", -hard_investment * 0.45, "建设投资")
-    add_cash_event(project.get("leasingStartDate"), "筹备招商投入首批支出", -soft_preopening_investment * 0.50, "筹备支出")
-    add_cash_event(project.get("openingDate"), "筹备招商投入开业前支出", -soft_preopening_investment * 0.50, "筹备支出")
-    tenant_deposit_total = total_monthly_revenue * max(0.0, as_float(operations.get("depositMonths"))) / 10000
+    preopening_management_total = preopening_team + preopening_property + preopening_other_direct
+    preopening_non_management = commission + preopening_marketing
+    add_cash_event(project.get("leasingStartDate"), "筹备招商投入首批支出", -preopening_non_management * 0.50, "筹备支出")
+    add_cash_event(project.get("openingDate"), "筹备招商投入开业前支出", -preopening_non_management * 0.50, "筹备支出")
+    initial_occupancy = max(0.0, min(1.0, as_float(operations.get("occupancyY1"))))
+    rent_collection_mode = str(operations.get("rentCollectionMode") or "deposit_and_prepaid")
+    include_tenant_deposit = rent_collection_mode in {"deposit_and_prepaid", "deposit_only"}
+    include_prepaid_rent = rent_collection_mode in {"deposit_and_prepaid", "prepaid_only"}
+    tenant_deposit_total = total_monthly_revenue * initial_occupancy * (max(0.0, as_float(operations.get("depositMonths"))) if include_tenant_deposit else 0.0) / 10000
+    prepaid_rent_total = total_monthly_revenue * initial_occupancy * (max(0.0, as_float(operations.get("prepaidRentMonths"))) if include_prepaid_rent else 0.0) / 10000
     add_cash_event(project.get("leasingStartDate"), "商户租赁保证金收取", tenant_deposit_total, "保证金")
     add_cash_event(project.get("operationEndDate"), "商户租赁保证金退还", -tenant_deposit_total, "保证金")
+    add_cash_event(project.get("leasingStartDate"), "商户预付租金收取", prepaid_rent_total, "预收租金")
     owner_deposit = max(0.0, as_float(owner_rent_config.get("depositAmount")))
     add_cash_event(owner_rent_config.get("depositPaymentDate") or project.get("leasingStartDate"), "向业主支付租赁保证金", -owner_deposit, "保证金")
     add_cash_event(owner_rent_config.get("depositRefundDate") or project.get("operationEndDate"), "收回业主租赁保证金", owner_deposit, "保证金")
@@ -2274,6 +2302,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     payment_base_monthly = owner_rent_base_annual / 12
     if payment_base_monthly > 0:
         payment_start = parse_iso_date(owner_rent_config.get("paymentStartDate")) or opening_date
+        if owner_rent_free_end and owner_rent_free_end > payment_start:
+            payment_start = owner_rent_free_end
         if str(owner_rent_config.get("paymentTiming") or "arrears") == "arrears":
             payment_start = add_months(payment_start, payment_interval)
         cursor = payment_start
@@ -2295,6 +2325,288 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             cursor = add_months(cursor, payment_interval)
             event_count += 1
     key_cash_events.sort(key=lambda item: item["date"])
+
+    # Build the funding plan from dated cash events and monthly operating activity.
+    # The previous implementation spread each annual figure over 12 equal months;
+    # that hides the funding peak caused by construction, rent-free periods and
+    # the lease-up ramp. This ledger keeps each month's actual timing and amount.
+    operation_by_year = {int(row.get("opYear") or 0): row for row in annual_rows if int(row.get("opYear") or 0) > 0}
+    construction_start_month = calendar_month_start(construction_start_date)
+    construction_end_month = calendar_month_start(construction_end_date)
+    opening_month = calendar_month_start(opening_date)
+    operation_end_month = calendar_month_start(operation_end_date)
+    timeline_derived = project.get("timelineDerived") if isinstance(project.get("timelineDerived"), dict) else {}
+    actual_construction_months = max(0, int(as_float(timeline_derived.get("constructionMonths"), construction_years * 12)))
+    actual_leasing_months = max(0, int(as_float(timeline_derived.get("leasingMonths"), leasing_period_months)))
+    first_event_date = min(
+        [item_date for item_date in (
+            parse_iso_date(project.get("investmentDate")),
+            construction_start_date,
+            parse_iso_date(project.get("leasingStartDate")),
+            opening_date,
+        ) if item_date]
+        or [construction_start_date]
+    )
+    event_by_month: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for event in key_cash_events:
+        event_date = parse_iso_date(event.get("date"))
+        if not event_date:
+            continue
+        event_by_month.setdefault((event_date.year, event_date.month), []).append(event)
+
+    construction_phase_months = max(1, months_between(construction_start_date, construction_end_date))
+    leasing_start_date = parse_iso_date(project.get("leasingStartDate")) or construction_end_date
+    leasing_phase_months = max(1, months_between(leasing_start_date, opening_date))
+    construction_loan_draw = sum(as_float(loan_schedule[index].get("draw")) for index in range(min(construction_years, len(loan_schedule))))
+    construction_loan_interest = sum(as_float(loan_schedule[index].get("interest")) for index in range(min(construction_years, len(loan_schedule))))
+    leasing_loan_draw = sum(as_float(loan_schedule[index].get("draw")) for index in range(construction_years, min(construction_years + leasing_years, len(loan_schedule))))
+    leasing_loan_interest = sum(as_float(loan_schedule[index].get("interest")) for index in range(construction_years, min(construction_years + leasing_years, len(loan_schedule))))
+    management_start_date = parse_iso_date(project.get("handoverDate")) or parse_iso_date(project.get("investmentDate")) or construction_end_date
+    management_months = max(1, months_between(management_start_date, opening_date))
+    management_monthly_cost = (preopening_team + preopening_property + preopening_other_direct) / management_months
+    prepaid_rent_balance = 0.0
+
+    def operation_month_offset(month: date) -> int:
+        return (month.year - opening_date.year) * 12 + (month.month - opening_date.month)
+
+    def occupancy_for_month(month: date, fallback: float) -> float:
+        if not milestone_dates:
+            return fallback
+        sample = calendar_month_start(month)
+        occupancy = milestone_dates[0][1] if sample < milestone_dates[0][0] else milestone_dates[-1][1]
+        for milestone_date, target in milestone_dates:
+            if milestone_date <= sample:
+                occupancy = target
+            else:
+                break
+        return occupancy
+
+    def rent_free_fraction(month: date, op_offset: int) -> float:
+        free_until = parse_iso_date(operations.get("rentFreeUntilDate"))
+        if free_until:
+            return 1.0 - month_overlap_fraction(opening_date, free_until, month)
+        free_months = max(0.0, as_float(operations.get("rentFreeMonths")))
+        if op_offset < math.floor(free_months):
+            return 0.0
+        if op_offset == math.floor(free_months) and free_months % 1 > 0:
+            return 1.0 - (free_months % 1)
+        return 1.0
+
+    def fee_fraction(month: date, start_value: Any, free_until_value: Any) -> float:
+        start_date = parse_iso_date(start_value) or opening_date
+        free_until = parse_iso_date(free_until_value)
+        billable_start = max(opening_date, start_date)
+        if free_until and free_until > billable_start:
+            billable_start = max(billable_start, free_until)
+        return month_overlap_fraction(billable_start, None, month)
+
+    def operation_revenue_weights(row: dict[str, Any]) -> dict[str, float]:
+        op_year_number = max(1, int(as_float(row.get("opYear"), 1)))
+        start = add_months(opening_date, (op_year_number - 1) * 12)
+        result = {"rent": 0.0, "property": 0.0, "commercial": 0.0, "central": 0.0, "other": 0.0}
+        for offset in range(12):
+            month = calendar_month_start(add_months(start, offset))
+            op_offset = (op_year_number - 1) * 12 + offset
+            occupancy = occupancy_for_month(month, as_float(row.get("occupancy")))
+            result["rent"] += occupancy * rent_free_fraction(month, op_offset)
+            result["property"] += occupancy * fee_fraction(month, revenues.get("propertyFeeStartDate"), revenues.get("propertyFeeFreeUntil"))
+            result["commercial"] += occupancy * fee_fraction(month, revenues.get("commercialManagementFeeStartDate"), revenues.get("commercialManagementFeeFreeUntil"))
+            result["central"] += occupancy * fee_fraction(month, revenues.get("centralAcStartDate"), revenues.get("centralAcFreeUntil"))
+            result["other"] += occupancy
+        return {key: value for key, value in result.items()}
+
+    monthly_weights_by_year = {year: operation_revenue_weights(row) for year, row in operation_by_year.items()}
+
+    def allocate_component(total: float, weights: dict[str, float], component: str) -> float:
+        weight_total = weights.get(component, 0.0)
+        return as_float(total) * weight_total / sum(weights.values()) if weight_total > 0 and sum(weights.values()) > 0 else 0.0
+
+    monthly_funding_plan = []
+    monthly_cumulative_project = 0.0
+    monthly_cumulative_equity = 0.0
+    cursor = calendar_month_start(first_event_date)
+    while cursor <= operation_end_month:
+        month_date = cursor
+        calendar_key = (cursor.year, cursor.month)
+        phase = "前期准备期"
+        if construction_start_month <= cursor < construction_end_month:
+            phase = "建设期"
+        elif construction_end_month <= cursor < opening_month:
+            phase = "筹备招商期"
+        elif cursor >= opening_month:
+            phase = "运营期"
+
+        operating_inflow = 0.0
+        rent_inflow = 0.0
+        property_inflow = 0.0
+        commercial_inflow = 0.0
+        central_ac_inflow = 0.0
+        other_inflow = 0.0
+        operating_outflow = 0.0
+        preopening_management_outflow = 0.0
+        owner_rent_outflow = 0.0
+        deposit_inflow = 0.0
+        deposit_outflow = 0.0
+        prepaid_rent_inflow = 0.0
+        prepaid_rent_amortization = 0.0
+        tax_outflow = 0.0
+        project_income_tax = 0.0
+        equity_income_tax = 0.0
+        capex_outflow = 0.0
+        loan_draw = 0.0
+        loan_interest = 0.0
+        loan_principal = 0.0
+        exit_inflow = 0.0
+        operation_year = 0
+
+        if cursor >= opening_month:
+            op_offset = operation_month_offset(cursor)
+            operation_year = op_offset // 12 + 1
+            row = operation_by_year.get(operation_year)
+            if row:
+                weights = monthly_weights_by_year.get(operation_year, {})
+                weight_total = sum(weights.values()) or 1.0
+                op_month = calendar_month_start(add_months(opening_date, (operation_year - 1) * 12 + (op_offset % 12)))
+                op_offset_in_year = op_offset % 12
+                occupancy = occupancy_for_month(op_month, as_float(row.get("occupancy")))
+                rent_weight = occupancy * rent_free_fraction(op_month, op_offset_in_year) / weight_total
+                property_weight = occupancy * fee_fraction(op_month, revenues.get("propertyFeeStartDate"), revenues.get("propertyFeeFreeUntil")) / weight_total
+                commercial_weight = occupancy * fee_fraction(op_month, revenues.get("commercialManagementFeeStartDate"), revenues.get("commercialManagementFeeFreeUntil")) / weight_total
+                central_weight = occupancy * fee_fraction(op_month, revenues.get("centralAcStartDate"), revenues.get("centralAcFreeUntil")) / weight_total
+                other_weight = occupancy / weight_total
+                collection_rate = max(0.0, min(1.0, as_float(row.get("rentCollectionRate"), 1.0)))
+                rent_inflow = as_float(row.get("collectedRentRevenue")) * rent_weight
+                if prepaid_rent_balance > 0 and rent_inflow > 0:
+                    prepaid_rent_amortization = min(rent_inflow, prepaid_rent_balance)
+                    rent_inflow -= prepaid_rent_amortization
+                    prepaid_rent_balance -= prepaid_rent_amortization
+                property_inflow = as_float(row.get("propertyRevenue")) * property_weight * collection_rate
+                commercial_inflow = as_float(row.get("commercialManagementRevenue")) * commercial_weight * collection_rate
+                central_ac_inflow = as_float(row.get("centralAcRevenue")) * central_weight * collection_rate
+                other_inflow = as_float(row.get("otherRevenue")) * other_weight * collection_rate
+                operating_inflow = rent_inflow + property_inflow + commercial_inflow + central_ac_inflow + other_inflow
+                # Owner rent is handled by dated payment events below, so remove it
+                # from the annual operating-cost total to avoid double counting.
+                operating_outflow = max(0.0, as_float(row.get("operatingCost")) - as_float(row.get("ownerRent"))) / 12
+                tax_outflow = as_float(row.get("taxes")) / 12
+                project_income_tax = as_float(row.get("projectIncomeTax")) / 12
+                equity_income_tax = as_float(row.get("equityIncomeTax")) / 12
+                capex_outflow = as_float(row.get("capexReserve")) / 12
+                if op_offset == 0:
+                    capex_outflow += as_float(row.get("openingWorkingCapital")) + as_float(row.get("openingDeferredCapex"))
+                loan_interest = as_float(row.get("loanInterest")) / 12
+                loan_principal = as_float(row.get("loanPrincipal")) / 12
+                if op_offset == max(0, as_float(project.get("timelineDerived", {}).get("operationMonths"), operation_years * 12)) - 1:
+                    exit_inflow = as_float(row.get("exitValue"))
+        else:
+            if phase == "建设期":
+                loan_interest = construction_loan_interest / construction_phase_months
+                loan_draw = construction_loan_draw / construction_phase_months
+            elif phase == "筹备招商期":
+                loan_interest = leasing_loan_interest / leasing_phase_months
+                loan_draw = leasing_loan_draw / leasing_phase_months
+        management_fraction = month_overlap_fraction(management_start_date, opening_date, cursor)
+        if management_fraction > 0:
+            preopening_management_outflow = management_monthly_cost * management_fraction
+            operating_outflow += preopening_management_outflow
+
+        # Dated events: construction/pre-opening payments, deposits and owner rent.
+        for event in event_by_month.get(calendar_key, []):
+            category = str(event.get("category") or "")
+            amount = as_float(event.get("amount"))
+            if category == "业主租金":
+                owner_rent_outflow += max(0.0, -amount)
+            elif category == "保证金":
+                if amount >= 0:
+                    deposit_inflow += amount
+                else:
+                    deposit_outflow += -amount
+            elif category == "预收租金":
+                prepaid_rent_inflow += amount
+                prepaid_rent_balance += amount
+                operating_inflow += amount
+            elif category == "建设投资":
+                capex_outflow += max(0.0, -amount)
+            elif category == "筹备支出":
+                capex_outflow += max(0.0, -amount)
+
+        project_cash_flow = operating_inflow + deposit_inflow - operating_outflow - owner_rent_outflow - deposit_outflow - tax_outflow - capex_outflow - project_income_tax + exit_inflow
+        equity_cash_flow = operating_inflow + deposit_inflow - operating_outflow - owner_rent_outflow - deposit_outflow - tax_outflow - capex_outflow - equity_income_tax + exit_inflow + loan_draw - loan_interest - loan_principal
+        monthly_cumulative_project += project_cash_flow
+        monthly_cumulative_equity += equity_cash_flow
+        monthly_funding_plan.append({
+            "month": len(monthly_funding_plan) + 1,
+            "date": iso_date(month_date),
+            "calendarYear": cursor.year,
+            "calendarMonth": cursor.month,
+            "phase": phase,
+            "operationYear": operation_year,
+            "operatingInflow": operating_inflow,
+            "rentInflow": rent_inflow,
+            "propertyInflow": property_inflow,
+            "commercialManagementInflow": commercial_inflow,
+            "centralAcInflow": central_ac_inflow,
+            "otherInflow": other_inflow,
+            "operatingOutflow": operating_outflow,
+            "preopeningManagementOutflow": preopening_management_outflow,
+            "ownerRentOutflow": owner_rent_outflow,
+            "depositInflow": deposit_inflow,
+            "depositOutflow": deposit_outflow,
+            "prepaidRentInflow": prepaid_rent_inflow,
+            "prepaidRentAmortization": prepaid_rent_amortization,
+            "taxOutflow": tax_outflow,
+            "incomeTaxOutflow": project_income_tax,
+            "capexOutflow": capex_outflow,
+            "loanDraw": loan_draw,
+            "loanInterest": loan_interest,
+            "loanPrincipal": loan_principal,
+            "exitInflow": exit_inflow,
+            "projectCashFlow": project_cash_flow,
+            "equityCashFlow": equity_cash_flow,
+            "cumulativeProjectCashFlow": monthly_cumulative_project,
+            "cumulativeEquityCashFlow": monthly_cumulative_equity,
+            "projectFundingGap": max(0.0, -monthly_cumulative_project),
+            "equityFundingGap": max(0.0, -monthly_cumulative_equity),
+        })
+        cursor = add_months(cursor, 1)
+
+    peak_project_row = min(monthly_funding_plan, key=lambda item: as_float(item.get("cumulativeProjectCashFlow")), default={})
+    peak_equity_row = min(monthly_funding_plan, key=lambda item: as_float(item.get("cumulativeEquityCashFlow")), default={})
+    peak_project_funding = max(0.0, -as_float(peak_project_row.get("cumulativeProjectCashFlow")))
+    peak_equity_funding = max(0.0, -as_float(peak_equity_row.get("cumulativeEquityCashFlow")))
+    peak_project_funding_month = int(peak_project_row.get("month") or 0) or None
+    peak_project_funding_date = peak_project_row.get("date") or ""
+    peak_equity_funding_month = int(peak_equity_row.get("month") or 0) or None
+    peak_equity_funding_date = peak_equity_row.get("date") or ""
+    recommended_startup_capital = peak_equity_funding + stable_monthly_operating_cost * startup_reserve_months
+    stable_monthly_debt_service = (as_float(stable_row.get("interest")) + as_float(stable_row.get("principal"))) / 12
+    stable_monthly_capex_reserve = as_float(stable_row.get("capexReserve")) / 12
+    stable_monthly_cash_outflow = stable_monthly_operating_cost + stable_monthly_debt_service + stable_monthly_capex_reserve
+    stable_collection_rate = max(0.0, min(1.0, as_float(operations.get("collectionRate"), 1.0)))
+    stable_monthly_cash_inflow = (
+        as_float(stable_row.get("collectedRentRevenue"))
+        + (as_float(stable_row.get("revenue")) - as_float(stable_row.get("rentRevenue"))) * stable_collection_rate
+    ) / 12
+    stable_monthly_net_cash_flow = stable_monthly_cash_inflow - stable_monthly_cash_outflow
+    normal_operation_capital = max(0.0, stable_monthly_cash_outflow - stable_monthly_cash_inflow) * startup_reserve_months
+    normal_operation_working_capital = stable_monthly_cash_outflow * startup_reserve_months
+    monthly_phase_cash_flow_summary = [
+        {"phase": "建设期", "projectCashFlow": sum(as_float(row.get("projectCashFlow")) for row in monthly_funding_plan if row.get("phase") == "建设期"), "equityCashFlow": sum(as_float(row.get("equityCashFlow")) for row in monthly_funding_plan if row.get("phase") == "建设期")},
+        {"phase": "筹备招商期", "projectCashFlow": sum(as_float(row.get("projectCashFlow")) for row in monthly_funding_plan if row.get("phase") == "筹备招商期"), "equityCashFlow": sum(as_float(row.get("equityCashFlow")) for row in monthly_funding_plan if row.get("phase") == "筹备招商期")},
+        {"phase": "开业首年", "projectCashFlow": sum(as_float(row.get("projectCashFlow")) for row in monthly_funding_plan if int(row.get("operationYear") or 0) == 1), "equityCashFlow": sum(as_float(row.get("equityCashFlow")) for row in monthly_funding_plan if int(row.get("operationYear") or 0) == 1)},
+        {"phase": "运营期合计", "projectCashFlow": sum(as_float(row.get("projectCashFlow")) for row in monthly_funding_plan if row.get("phase") == "运营期"), "equityCashFlow": sum(as_float(row.get("equityCashFlow")) for row in monthly_funding_plan if row.get("phase") == "运营期")},
+    ]
+    phase_cash_flow_summary = monthly_phase_cash_flow_summary
+    phase_funding_requirements = [
+        {
+            "phase": item["phase"],
+            "projectFundingNeed": max(0.0, -as_float(item.get("projectCashFlow"))),
+            "equityFundingNeed": max(0.0, -as_float(item.get("equityCashFlow"))),
+            "projectCashFlow": as_float(item.get("projectCashFlow")),
+            "equityCashFlow": as_float(item.get("equityCashFlow")),
+        }
+        for item in phase_cash_flow_summary
+    ]
     leasing_milestone_analysis = []
     for milestone in operations.get("leasingMilestones", []) if isinstance(operations.get("leasingMilestones"), list) else []:
         if not isinstance(milestone, dict):
@@ -2344,6 +2656,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"item": "债务融资", "amount": loan_amount, "note": "项目总投资 × 债务融资比例"},
         {"item": "自有资本金", "amount": max(0.0, total_investment - loan_amount), "note": "项目总投资 - 债务融资"},
         {"item": "商户租赁保证金流入", "amount": tenant_deposit_total, "note": "可在招商期形成阶段性现金来源，但期末需退还"},
+        {"item": "商户预付租金流入", "amount": prepaid_rent_total, "note": "按租赁合同预付月数形成招商期现金来源，后续月份不再重复计入实收租金"},
     ]
     funding_use_phase_totals = {
         phase: sum(as_float(item.get("amount")) for item in funding_use_breakdown if item.get("phase") == phase)
@@ -2351,6 +2664,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     }
     peak_month_index = min(range(len(monthly_funding_plan)), key=lambda index: as_float(monthly_funding_plan[index].get("cumulativeProjectCashFlow"))) if monthly_funding_plan else -1
     cash_flow_break_even_month = next((row.get("month") for row in monthly_funding_plan[peak_month_index + 1:] if as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_month_index >= 0 else None
+    cash_flow_break_even_date = next((row.get("date") for row in monthly_funding_plan[peak_month_index + 1:] if as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_month_index >= 0 else None
     peak_annual_index = min(range(len(annual_rows)), key=lambda index: as_float(annual_rows[index].get("cumulativeProjectCashFlow"))) if annual_rows else -1
     cash_flow_break_even_row = next((row for row in annual_rows[peak_annual_index + 1:] if row.get("opYear", 0) > 0 and as_float(row.get("cumulativeProjectCashFlow")) >= 0), None) if peak_annual_index >= 0 else None
     equity_investment = max(0.0, total_investment - loan_amount)
@@ -2590,6 +2904,16 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "operationEndDate": project.get("operationEndDate"),
             "peakProjectFundingRequirement": peak_project_funding,
             "peakEquityFundingRequirement": peak_equity_funding,
+            "peakProjectFundingMonth": peak_project_funding_month,
+            "peakProjectFundingDate": peak_project_funding_date,
+            "peakEquityFundingMonth": peak_equity_funding_month,
+            "peakEquityFundingDate": peak_equity_funding_date,
+            "managementStartDate": iso_date(management_start_date),
+            "managementMonthlyCost": management_monthly_cost,
+            "merchantDepositCashInflow": tenant_deposit_total,
+            "merchantPrepaidRentCashInflow": prepaid_rent_total,
+            "prepaidRentMonths": max(0.0, as_float(operations.get("prepaidRentMonths"))),
+            "rentCollectionMode": rent_collection_mode,
             "constructionProjectFundingRequirement": next((x["projectFundingNeed"] for x in phase_funding_requirements if x["phase"] == "建设期"), 0.0),
             "constructionEquityFundingRequirement": next((x["equityFundingNeed"] for x in phase_funding_requirements if x["phase"] == "建设期"), 0.0),
             "leasingProjectFundingRequirement": next((x["projectFundingNeed"] for x in phase_funding_requirements if x["phase"] == "筹备招商期"), 0.0),
@@ -2600,7 +2924,16 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "leasingPhaseUseTotal": funding_use_phase_totals.get("筹备招商期", 0.0),
             "openingPhaseUseTotal": funding_use_phase_totals.get("开业首年", 0.0),
             "recommendedStartupCapital": recommended_startup_capital,
+            "normalOperationCapital": normal_operation_capital,
+            "normalOperationWorkingCapital": normal_operation_working_capital,
+            "stableMonthlyOperatingCost": stable_monthly_operating_cost,
+            "stableMonthlyDebtService": stable_monthly_debt_service,
+            "stableMonthlyCapexReserve": stable_monthly_capex_reserve,
+            "stableMonthlyCashOutflow": stable_monthly_cash_outflow,
+            "stableMonthlyCashInflow": stable_monthly_cash_inflow,
+            "stableMonthlyNetCashFlow": stable_monthly_net_cash_flow,
             "cashFlowBreakEvenMonth": cash_flow_break_even_month,
+            "cashFlowBreakEvenDate": cash_flow_break_even_date,
             "cashFlowBreakEvenYear": cash_flow_break_even_row.get("calendarYear") if cash_flow_break_even_row else None,
             "equityInvestment": total_investment - loan_amount,
             "equityCapital": equity_investment,

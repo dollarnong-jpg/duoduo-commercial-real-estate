@@ -72,6 +72,10 @@ def audit_defaults_and_units() -> None:
     backend = read("backend.js")
     app = read("app.js")
     engine_text = read("engine.py")
+    require_text(engine_text, "constructionPeriodUnit", "construction duration unit")
+    require_text(engine_text, "constructionMonthsInput", "construction duration months input")
+    require_text(engine_text, "owner_rent_month_billable", "owner rent-free monthly recognition")
+    require_text(engine_text, "actual_construction_months", "monthly funding uses actual construction months")
     require_text(backend, "['默认筹备月数', 12,", "preopening template default months")
     for department, position, salary in (
         ("项目筹备组", "筹备负责人", 18000),
@@ -175,6 +179,10 @@ def audit_defaults_and_units() -> None:
     require_text(app, "data-project-rent-monthly", "immediate project rent total update")
     require_text(app, "租金指标已按当前输入即时更新，NOI/NPV正在重算", "instant rent status message")
     require_text(app, "自然年运营收入与支出报表", "natural-year report UI")
+    require_text(app, "建设期核算方式", "construction duration unit selector")
+    require_text(app, "project.constructionMonthsInput", "construction duration in months")
+    require_text(app, "业主免租开始日期", "owner rent-free start date")
+    require_text(app, "业主免租结束日期", "owner rent-free end date")
     require_text(app, "逐年经营收入明细", "natural-year income detail table")
     require_text(app, "逐年成本、税费与现金流", "natural-year cost and cash-flow table")
     require_text(app, "natural-year-income-table", "natural-year income table layout")
@@ -411,6 +419,73 @@ def audit_engine_invariants() -> None:
     assert close(enabled_ac["monthlyCentralAcFee"], 720)
 
 
+def audit_monthly_cash_flow() -> None:
+    model = engine.default_model("真实月度现金流审计")
+    model["project"].update({
+        "constructionStartDate": "2027-01-01",
+        "constructionEndDate": "2027-07-01",
+        "handoverDate": "2027-07-01",
+        "leasingStartDate": "2027-07-01",
+        "openingDate": "2027-10-01",
+        "operationEndDate": "2029-09-30",
+        "constructionPeriodUnit": "month",
+        "constructionMonthsInput": 6,
+        "leasingPeriodMonths": 3,
+        "operationYears": 2,
+        "startYear": 2027,
+        "gbaOverride": 12000,
+        "landArea": 4000,
+        "landPrice": 5000,
+        "preOpeningTeamCost": 60,
+        "preOpeningPropertyCost": 30,
+        "otherPreOpening": 10,
+    })
+    model["costs"].update({
+        "preconstructionRate": 200,
+        "constructionRate": 3000,
+        "fitoutRate": 600,
+        "equipmentRate": 250,
+        "otherEngineeringRate": 80,
+    })
+    model["calculationMode"] = "detailed"
+    model["shops"] = [
+        {"id": f"CF{i:02d}", "building": "1号楼", "floor": "1F", "buildingArea": 500, "leasableArea": 400, "category": "零售", "rentOverride": 80}
+        for i in range(12)
+    ]
+    model["operations"]["leasingMilestones"] = [
+        {"date": "2027-10-01", "occupancy": 0.40},
+        {"date": "2028-01-01", "occupancy": 0.70},
+        {"date": "2028-07-01", "occupancy": 0.90},
+    ]
+    model["operations"]["rentFreeMonths"] = 0
+    model["operations"]["rentFreeUntilDate"] = "2028-01-01"
+    model["ownerRent"].update({
+        "enabled": True,
+        "leaseType": "property",
+        "propertyMonthlyRent": 100,
+        "propertyPaymentMonths": 12,
+        "paymentTiming": "arrears",
+        "paymentFrequency": "monthly",
+        "paymentStartDate": "2027-10-01",
+        "rentFreeStartDate": "2027-10-01",
+        "rentFreeEndDate": "2028-01-01",
+    })
+    result = engine.calculate_model(model, include_sensitivity=False)
+    plan = result["monthlyFundingPlan"]
+    assert len(plan) >= 24, len(plan)
+    assert all(row.get("date") for row in plan)
+    assert all(close(row["projectCashFlow"], row["operatingInflow"] + row["depositInflow"] - row["operatingOutflow"] - row["ownerRentOutflow"] - row["depositOutflow"] - row["taxOutflow"] - row["capexOutflow"] - row["incomeTaxOutflow"] + row["exitInflow"]) for row in plan)
+    phase = {row["phase"]: row for row in result["phaseCashFlowSummary"]}
+    construction = [row for row in plan if row["phase"] == "建设期"]
+    assert close(phase["建设期"]["projectCashFlow"], sum(row["projectCashFlow"] for row in construction))
+    operating_inflows = [row["operatingInflow"] for row in plan if row["phase"] == "运营期"][:9]
+    assert max(operating_inflows) - min(operating_inflows) > 1e-6, operating_inflows
+    assert any(row["prepaidRentInflow"] > 0 for row in plan), "prepaid rent cash inflow missing"
+    assert any(row["preopeningManagementOutflow"] > 0 for row in plan), "management entry cost missing"
+    assert result["summary"]["normalOperationWorkingCapital"] >= result["summary"]["normalOperationCapital"]
+    assert result["summary"]["peakProjectFundingDate"] in {row["date"] for row in plan}
+
+
 def main() -> None:
     audits = [
         audit_version_and_cache,
@@ -418,6 +493,7 @@ def main() -> None:
         audit_presets_and_formulas,
         audit_function_annotations,
         audit_engine_invariants,
+        audit_monthly_cash_flow,
     ]
     for audit in audits:
         audit()
