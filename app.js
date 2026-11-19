@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-ownerrent1';
+import './backend.js?v=20261119-live1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.5';
+const APP_VERSION = '1.28.6';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3700,7 +3700,7 @@ function renderFloorEditor(m, mode, preview) {
             <td class="num">${fmtPct(ratio)}</td>
             <td class="num"><input class="table-input highlight-input" data-path="floors.${i}.avgRent" data-type="number" type="number" step="any" value="${floor.avgRent ?? 0}"></td>
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
-            <td class="num">${fmt(monthly)}</td>
+            <td class="num" data-floor-monthly="${escapeHtml(buildingFloorKey(floor))}">${fmt(monthly)}</td>
             <td class="num" data-floor-actual="${escapeHtml(buildingFloorKey(floor))}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 1) : '待计算'}</td>
             <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
           </tr>`;
@@ -3827,11 +3827,11 @@ function renderDetailedPricing(m, shops, preview) {
     ${state.importWarnings.length ? `<div class="warning-list">${state.importWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
     <div class="shop-rent-recognition">
       <div><span>已识别租金单价</span><strong>${rentOverrideShops.length} / ${shops.length}</strong><em>个铺位${importedStats?.rentColumn ? `｜列：${escapeHtml(importedStats.rentColumn)}` : ''}</em></div>
-      <div><span>项目租金均价</span><strong>${fmt(revenueImpliedAverageRent, 2)}</strong><em>月租金总收入 ÷ 计租总面积</em></div>
-      <div><span>满租月租金收入</span><strong>${fmt(monthlyRentPreview)}</strong><em>元/月 · 全部铺位满租口径</em></div>
-      <div><span>满租季度租金收入</span><strong>${fmt(quarterlyRentPreview)}</strong><em>元/季度 · 月租金 × 3</em></div>
-      <div><span>满租年租金收入</span><strong>${fmt(annualFullRentPreview / 10000, 1)}</strong><em>万元/年 · 月租金 × 12</em></div>
-      <div><span>运营周期租金收入</span><strong>${fmt(operationPeriodRentRevenue, 1)}</strong><em>万元 · ${rentAnnualRows.length}年累计，含递增/出租率/免租</em></div>
+      <div><span>项目租金均价</span><strong data-live="avgRent">${fmt(revenueImpliedAverageRent, 2)}</strong><em>月租金总收入 ÷ 计租总面积</em></div>
+      <div><span>满租月租金收入</span><strong data-live="monthlyRent">${fmt(monthlyRentPreview)}</strong><em>元/月 · 全部铺位满租口径</em></div>
+      <div><span>满租季度租金收入</span><strong data-live="quarterlyRent">${fmt(quarterlyRentPreview)}</strong><em>元/季度 · 月租金 × 3</em></div>
+      <div><span>满租年租金收入</span><strong data-live="annualRent">${fmt(annualFullRentPreview / 10000, 1)}</strong><em>万元/年 · 月租金 × 12</em></div>
+      <div><span>运营周期租金收入</span><strong data-live="operationRent">${fmt(operationPeriodRentRevenue, 1)}</strong><em>万元 · ${rentAnnualRows.length}年累计，含递增/出租率/免租</em></div>
     </div>
     <div class="rent-average-check">
       <div class="rent-average-formula"><strong>项目租金均价核算</strong><span>项目租金均价 = 满租月租金总收入 ÷ 商户计租面积合计</span><code>${fmt(monthlyRentPreview, 2)} 元/月 ÷ ${fmtArea(totalRentArea)}㎡ = ${fmt(revenueImpliedAverageRent, 2)} 元/㎡/月</code></div>
@@ -6739,7 +6739,10 @@ function bindStepInputs() {
       if (input.type === 'checkbox') value = input.checked;
       else if (type === 'number') {
         value = value === '' ? 0 : Number(value) * scale;
-        if (input.dataset.annualize === 'true') {
+        if (/^floors\.\d+\.(avgRent|buildingArea|leasableArea|salesPerSqmMonth|concessionRate)$/.test(path) || ['project.rentAreaBasis', 'project.revenueModel'].includes(path)) {
+        updateQuickRentEstimateFromModel();
+      }
+      if (input.dataset.annualize === 'true') {
           const period = getPath(state.current.model, input.dataset.periodPath || '');
           if (period === 'monthly') value *= 12;
         }
@@ -7468,12 +7471,43 @@ async function runLivePreview() {
   }
 }
 
+function updateQuickRentEstimateFromModel() {
+  if (!state.current?.model) return;
+  const model = state.current.model;
+  const floors = Array.isArray(model.floors) ? model.floors : [];
+  if (!floors.length) return;
+  const revenueMode = model.project?.revenueModel || 'rent';
+  let totalMonthly = 0;
+  let totalArea = 0;
+  floors.forEach(floor => {
+    const area = rentAreaFor(floor, model);
+    const guarantee = area * Number(floor.avgRent || 0);
+    const concession = area * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
+    const monthly = revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee;
+    totalMonthly += monthly;
+    totalArea += area;
+    const monthlyCell = document.querySelector(`[data-floor-monthly="${CSS.escape(buildingFloorKey(floor))}"]`);
+    if (monthlyCell) monthlyCell.textContent = fmt(monthly);
+  });
+  const averageRent = totalArea > 0 ? totalMonthly / totalArea : 0;
+  document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(totalMonthly); });
+  document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(totalMonthly * 3); });
+  document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(totalMonthly * 12 / 10000, 1); });
+  document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(averageRent, 2); });
+  document.querySelectorAll('[data-live="operationRent"]').forEach(el => { el.textContent = '计算中…'; });
+  document.querySelectorAll('[data-live="statusAdvice"]').forEach(el => { el.textContent = '租金指标已按当前输入即时更新，NOI/NPV正在重算'; });
+}
+
 function updateLiveStats() {
   if (!state.preview) return;
   const summary = state.preview.summary;
   document.querySelectorAll('[data-live="investment"], #cost-estimate').forEach(el => { el.textContent = fmt(summary.totalInvestment); });
   document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(summary.totalMonthlyRent); });
-  document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(summary.averageRent, 1); });
+  document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(Number(summary.totalMonthlyRent || 0) * 3); });
+  document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(Number(summary.totalMonthlyRent || 0) * 12 / 10000, 1); });
+  const operationRentRevenue = (state.preview?.annual || []).filter(row => Number(row.opYear) > 0).reduce((sum, row) => sum + Number(row.rentRevenue || 0), 0);
+  document.querySelectorAll('[data-live="operationRent"]').forEach(el => { el.textContent = fmt(operationRentRevenue, 1); });
+  document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(summary.averageRent, 2); });
   const statusAdvice = buildStatusAdvice(state.preview || state.result);
   document.querySelectorAll('[data-live="status"]').forEach(el => { el.textContent = statusAdvice.title; });
   document.querySelectorAll('[data-live="statusAdvice"]').forEach(el => { el.textContent = statusAdvice.short; });
