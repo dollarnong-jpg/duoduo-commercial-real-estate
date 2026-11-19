@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-cashflow3';
+import './backend.js?v=20261119-ownerrent1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.25';
+const APP_VERSION = '1.28.26';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6685,8 +6685,8 @@ function renderNaturalYearReportCard() {
     <div class="subsection-heading natural-year-subsection-heading"><div><strong>逐年经营收入明细</strong><span>单位：万元；按每个自然年实际计费区间拆分</span></div></div>
     <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table natural-year-income-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">有效月数</th><th class="num">招商率</th><th class="num">收租率</th><th class="num">应收租金</th><th class="num">未收租金</th><th class="num">实收租金</th><th class="num">物业管理费收入</th><th class="num">商业管理费收入</th><th class="num">中央空调费收入</th><th class="num">三项费用合计</th><th class="num">其他收入</th><th class="num">总收入</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(row.activeMonths, 0)}</td><td class="num">${fmtPct(row.occupancy)}</td><td class="num">${fmtPct(row.rentCollectionRate)}</td><td class="num">${fmt(row.scheduledRentRevenue, 2)}</td><td class="num neg">${fmt(row.uncollectedRentRevenue, 2)}</td><td class="num"><strong>${fmt(row.rentRevenue, 2)}</strong></td><td class="num">${fmt(row.propertyManagementRevenue, 2)}</td><td class="num">${fmt(row.commercialManagementRevenue, 2)}</td><td class="num">${fmt(row.centralAcRevenue, 2)}</td><td class="num"><strong>${fmt(feeTotal(row), 2)}</strong></td><td class="num">${fmt(row.otherRevenue, 2)}</td><td class="num"><strong>${fmt(row.totalIncome, 2)}</strong></td></tr>`).join('')}</tbody></table></div>
 
-    <div class="subsection-heading natural-year-subsection-heading"><div><strong>逐年成本、税费与现金流</strong><span>单位：万元；调整后净现金流为当前报表口径</span></div></div>
-    <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">运营成本</th><th class="num">税费</th><th class="num">项目所得税</th><th class="num">资本支出</th><th class="num">总支出</th><th class="num">NOI</th><th class="num">调整后净现金流</th><th class="num">累计运营现金流</th><th>调整说明</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(row.cashOperatingCost, 2)}</td><td class="num">${fmt(row.taxes, 2)}</td><td class="num">${fmt(row.projectIncomeTax, 2)}</td><td class="num">${fmt(row.projectCapex, 2)}</td><td class="num"><strong>${fmt(row.totalExpense, 2)}</strong></td><td class="num ${Number(row.noi || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.noi, 2)}</td><td class="num ${row.adjustedProjectCashFlow < 0 ? 'neg' : 'pos'}"><strong>${fmt(row.adjustedProjectCashFlow, 2)}</strong></td><td class="num">${fmt(row.cumulativeOperationCashFlow, 2)}</td><td>${escapeHtml(row.adjustmentNote || (Math.abs((row.revenueAdjustment || 0) + (row.operatingCostAdjustment || 0) + (row.taxAdjustment || 0) + (row.capexAdjustment || 0)) > 0.005 ? '已应用导入调整' : ''))}</td></tr>`).join('')}</tbody></table></div>
+    <div class="subsection-heading natural-year-subsection-heading"><div><strong>逐年成本、税费与现金流</strong><span>单位：万元；运营成本不含业主租金，业主租金单列并计入总支出与NOI</span></div></div>
+    <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">运营成本<br>（不含业主租金）</th><th class="num">业主租金</th><th class="num">税费</th><th class="num">项目所得税</th><th class="num">资本支出</th><th class="num">总支出</th><th class="num">NOI</th><th class="num">调整后净现金流</th><th class="num">累计运营现金流</th><th>调整说明</th></tr></thead><tbody>${rows.map(row => { const ownerRent = Number(row.ownerRent ?? 0); const operatingExOwner = Number(row.cashOperatingCostExOwnerRent ?? (Number(row.cashOperatingCost || 0) - ownerRent)); return `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(operatingExOwner, 2)}</td><td class="num ${ownerRent > 0 ? 'neg' : ''}">${fmt(ownerRent, 2)}</td><td class="num">${fmt(row.taxes, 2)}</td><td class="num">${fmt(row.projectIncomeTax, 2)}</td><td class="num">${fmt(row.projectCapex, 2)}</td><td class="num"><strong>${fmt(row.totalExpense, 2)}</strong></td><td class="num ${Number(row.noi || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.noi, 2)}</td><td class="num ${row.adjustedProjectCashFlow < 0 ? 'neg' : 'pos'}"><strong>${fmt(row.adjustedProjectCashFlow, 2)}</strong></td><td class="num">${fmt(row.cumulativeOperationCashFlow, 2)}</td><td>${escapeHtml(row.adjustmentNote || (Math.abs((row.revenueAdjustment || 0) + (row.operatingCostAdjustment || 0) + (row.taxAdjustment || 0) + (row.capexAdjustment || 0)) > 0.005 ? '已应用导入调整' : ''))}</td></tr>`; }).join('')}</tbody></table></div>
     <div class="field-help">自然年报表的原始数据由项目设定的运营年限和开业日期决定；下载模板后只能修改“调整额”和备注，导入后会保留原始测算与调整前数据，并重新计算调整后净现金流。</div>
   </div>`;
 }
@@ -6815,11 +6815,11 @@ function renderFundingPlanCard() {
     </tbody></table></div>
     ${milestoneRows.length ? `<div class="data-table-wrap" style="max-height:none;margin-bottom:14px"><table class="data-table"><thead><tr><th>招商里程碑日期</th><th class="num">目标招商率</th><th class="num">可实现月租金（元）</th><th class="num">年化租金（万元）</th><th>说明</th></tr></thead><tbody>${milestoneRows.map(item => `<tr><td>${escapeHtml(item.date)}</td><td class="num">${fmtPct(item.occupancy)}</td><td class="num">${fmt(item.monthlyRentPotential, 0)}</td><td class="num">${fmt(item.annualRentPotential, 2)}</td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div class="section-note">以下为<strong>按实际日期滚动的月度现金流水</strong>，不再把年度金额简单除以12：商管从项目接管/进场开始按月发生团队、物业及开办成本；招商启动时按签约铺位收取保证金和预付租金；商户租金及费用按各月招商率、免租期、起收日期及收缴率进入；业主租金按付款频率与免租期进入，融资按投放和还本付息进入。实际付款仍应按合同、发票和工程进度调整。</div>
-    <div class="data-table-wrap funding-monthly-wrap"><table class="data-table funding-monthly-table"><thead><tr><th>月份 / 日期</th><th>阶段</th><th class="num">经营流入（万元）</th><th class="num">经营及税费支出（万元）</th><th class="num">建设/筹备支出（万元）</th><th class="num">融资流入（万元）</th><th class="num">还本付息（万元）</th><th class="num">项目净现金流（万元）</th><th class="num">项目累计现金流（万元）</th><th class="num">资本金净现金流（万元）</th><th class="num">资本金累计/缺口（万元）</th></tr></thead><tbody>${monthly.map(row => {
+    <div class="data-table-wrap funding-monthly-wrap"><table class="data-table funding-monthly-table"><thead><tr><th>月份 / 日期</th><th>阶段</th><th class="num">经营流入（万元）</th><th class="num">经营及税费支出<br>（不含业主租金）</th><th class="num">业主租金（万元）</th><th class="num">建设/筹备支出（万元）</th><th class="num">融资流入（万元）</th><th class="num">还本付息（万元）</th><th class="num">项目净现金流（万元）</th><th class="num">项目累计现金流（万元）</th><th class="num">资本金净现金流（万元）</th><th class="num">资本金累计/缺口（万元）</th></tr></thead><tbody>${monthly.map(row => {
       const operatingIn = Number(row.operatingInflow ?? 0) + Number(row.depositInflow ?? 0);
-      const operatingOut = Number(row.operatingOutflow ?? 0) + Number(row.ownerRentOutflow ?? 0) + Number(row.depositOutflow ?? 0) + Number(row.taxOutflow ?? 0);
+      const operatingOut = Number(row.operatingOutflow ?? 0) + Number(row.depositOutflow ?? 0) + Number(row.taxOutflow ?? 0);
       const debtService = Number(row.loanInterest ?? 0) + Number(row.loanPrincipal ?? 0);
-      return `<tr><td>${escapeHtml(row.date || `第${row.month}月`)}${row.month ? `<small>第${row.month}月</small>` : ''}</td><td>${escapeHtml(row.phase || '')}</td><td class="num pos">${fmt(operatingIn, 2)}${Number(row.prepaidRentInflow || 0) > 0 ? `<small>含预收租金 ${fmt(row.prepaidRentInflow, 2)}</small>` : ''}</td><td class="num neg">${fmt(operatingOut, 2)}${Number(row.preopeningManagementOutflow || 0) > 0 ? `<small>含商管进场 ${fmt(row.preopeningManagementOutflow, 2)}</small>` : ''}</td><td class="num ${Number(row.capexOutflow || 0) < 0 ? 'neg' : ''}">${fmt(row.capexOutflow, 2)}</td><td class="num pos">${fmt(row.loanDraw, 2)}</td><td class="num neg">${fmt(debtService, 2)}</td><td class="num ${Number(row.projectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.projectCashFlow, 2)}</td><td class="num ${Number(row.cumulativeProjectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeProjectCashFlow, 2)}</td><td class="num ${Number(row.equityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.equityCashFlow, 2)}</td><td class="num ${Number(row.cumulativeEquityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeEquityCashFlow, 2)}${Number(row.equityFundingGap || 0) > 0 ? `<small>缺口 ${fmt(row.equityFundingGap, 2)}</small>` : ''}</td></tr>`;
+      return `<tr><td>${escapeHtml(row.date || `第${row.month}月`)}${row.month ? `<small>第${row.month}月</small>` : ''}</td><td>${escapeHtml(row.phase || '')}</td><td class="num pos">${fmt(operatingIn, 2)}${Number(row.prepaidRentInflow || 0) > 0 ? `<small>含预收租金 ${fmt(row.prepaidRentInflow, 2)}</small>` : ''}</td><td class="num neg">${fmt(operatingOut, 2)}${Number(row.preopeningManagementOutflow || 0) > 0 ? `<small>含商管进场 ${fmt(row.preopeningManagementOutflow, 2)}</small>` : ''}</td><td class="num ${Number(row.ownerRentOutflow || 0) > 0 ? 'neg' : ''}">${fmt(row.ownerRentOutflow, 2)}</td><td class="num ${Number(row.capexOutflow || 0) < 0 ? 'neg' : ''}">${fmt(row.capexOutflow, 2)}</td><td class="num pos">${fmt(row.loanDraw, 2)}</td><td class="num neg">${fmt(debtService, 2)}</td><td class="num ${Number(row.projectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.projectCashFlow, 2)}</td><td class="num ${Number(row.cumulativeProjectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeProjectCashFlow, 2)}</td><td class="num ${Number(row.equityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.equityCashFlow, 2)}</td><td class="num ${Number(row.cumulativeEquityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeEquityCashFlow, 2)}${Number(row.equityFundingGap || 0) > 0 ? `<small>缺口 ${fmt(row.equityFundingGap, 2)}</small>` : ''}</td></tr>`;
     }).join('')}</tbody></table></div>
   </div>`;
 }
@@ -6834,11 +6834,13 @@ function renderPhaseCostCard() {
   const tableRows = (items, total) => items.filter(item => Number(item.value || 0) > 0).map(item => `<tr><td>${escapeHtml(item.name)}</td><td class="num">${fmt(item.value, 2)}万</td><td class="num">${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</td></tr>`).join('') || '<tr><td colspan="3" class="empty-table-cell">暂无数据</td></tr>';
   const prepTotal = Number(s.preOpeningInvestment || 0);
   const operationTotal = Number(s.operationPeriodOperatingCost || 0) + Number(s.operationPeriodTaxes || 0);
+  const operationExOwner = Number(s.operationPeriodOperatingCostExOwnerRent ?? (Number(s.operationPeriodOperatingCost || 0) - Number(s.operationPeriodOwnerRent || 0)));
   return `<div class="card phase-cost-card">
     <h3>筹备期与运营期成本结构</h3>
     <div class="phase-cost-kpis">
       <div><span>筹备期投入</span><strong>${fmt(prepTotal, 2)}</strong><em>万元</em></div>
-      <div><span>运营期经营成本</span><strong>${fmt(s.operationPeriodOperatingCost, 2)}</strong><em>万元</em></div>
+      <div><span>运营期运营成本（不含业主租金）</span><strong>${fmt(operationExOwner, 2)}</strong><em>万元</em></div>
+      <div><span>运营期业主租金</span><strong>${fmt(s.operationPeriodOwnerRent, 2)}</strong><em>万元</em></div>
       <div><span>运营期税费</span><strong>${fmt(s.operationPeriodTaxes, 2)}</strong><em>万元</em></div>
       <div class="highlight"><span>全周期成本（不含融资）</span><strong>${fmt(s.fullCycleCostExcludingFinancing, 2)}</strong><em>万元</em></div>
     </div>
@@ -6846,7 +6848,7 @@ function renderPhaseCostCard() {
       <div><div class="subsection-heading"><div><strong>筹备期投入构成</strong><span>土地、工程、装修设备、规费、招商开办及流动资金</span></div></div><table class="data-table"><thead><tr><th>成本项目</th><th class="num">金额</th><th class="num">占比</th></tr></thead><tbody>${tableRows(preparation, prepTotal)}</tbody></table></div>
       <div><div class="subsection-heading"><div><strong>运营期成本构成</strong><span>${fmt(state.result?.annual?.length || 0, 0)}个运营年度累计</span></div></div><table class="data-table"><thead><tr><th>成本项目</th><th class="num">金额</th><th class="num">占比</th></tr></thead><tbody>${tableRows(operation, operationTotal)}</tbody></table></div>
     </div>
-    <span class="table-subnote">筹备期投入包含项目总投资及铺底流动资金；运营期成本为各运营年度经营成本与税费合计，不含融资利息。包含融资的现金成本为 ${fmt(s.fullCycleCashCostIncludingFinancing, 2)} 万元。</span>
+    <span class="table-subnote">筹备期投入包含项目总投资及铺底流动资金；运营期成本按运营成本（不含业主租金）、业主租金与税费分列，业主租金已单独纳入总支出和NOI。包含融资的现金成本为 ${fmt(s.fullCycleCashCostIncludingFinancing, 2)} 万元。</span>
   </div>`;
 }
 
@@ -6876,9 +6878,10 @@ function renderOperatingResultCards() {
         <div><span>三项经营性费用收入合计</span><strong>${fmt(s.stablePropertyFeeIncome, 2)} 万/年</strong>${reasonLine('propertyRevenue', s.stablePropertyFeeIncome)}</div>
         <div><span>营销费用</span><strong>${fmt(s.stableMarketingCost, 2)} 万/年</strong></div>
         <div><span>维保费用</span><strong>${fmt(s.stableMaintenanceCost, 2)} 万/年</strong></div>
+        <div><span>业主租金</span><strong>${fmt(s.stableOwnerRentCost, 2)} 万/年</strong></div>
       </div>
       <div class="operating-cost-bars">${breakdown.map((item, i) => `<div class="operating-cost-row"><span>${escapeHtml(item.name)}</span><div><i style="width:${Math.max(2, Number(item.value || 0) / Math.max(total, 1) * 100)}%;background:${donutColor(i)}"></i></div><strong>${fmt(item.value, 2)}</strong><em>${fmtPct(Number(item.value || 0) / Math.max(total, 1))}</em></div>`).join('')}</div>
-      <div class="budget-total-line"><span>稳定期运营成本及税费合计</span><strong>${fmt(total, 2)} 万元/年</strong></div>
+      <div class="budget-total-line"><span>稳定期运营成本、业主租金及税费合计</span><strong>${fmt(total, 2)} 万元/年</strong></div>
     </div>
     <div class="card payroll-result-card">
       <h3>组织架构与人员成本</h3>

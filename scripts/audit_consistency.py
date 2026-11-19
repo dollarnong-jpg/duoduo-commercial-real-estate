@@ -382,6 +382,10 @@ def audit_engine_invariants() -> None:
     owner_leasable = engine.calculate_model(owner_basis_model, False)
     assert close(owner_leasable["summary"]["ownerPropertyRentBaseAnnual"], 96)
     assert close(owner_building["summary"]["totalMonthlyRent"], owner_leasable["summary"]["totalMonthlyRent"])
+    owner_row = next(row for row in owner_building["annual"] if row.get("ownerRent", 0) > 0)
+    assert close(owner_row["operatingCost"], owner_row["operatingCostExOwnerRent"] + owner_row["ownerRent"])
+    owner_natural = next(row for row in owner_building["naturalYearReport"] if row.get("ownerRent", 0) > 0)
+    assert close(owner_natural["cashOperatingCost"], owner_natural["cashOperatingCostExOwnerRent"] + owner_natural["ownerRent"])
 
     month_conflict = engine.default_model("筹备月数冲突")
     month_conflict["preOpeningBudget"]["mode"] = "detailed"

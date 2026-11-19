@@ -1876,6 +1876,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         owner_rent_input_vat_actual = owner_rent_input_vat * safe_div(input_vat, raw_input_vat)
         other_input_vat_actual = other_input_vat * safe_div(input_vat, raw_input_vat)
         operating_cost_net = operating_cost_gross - input_vat
+        operating_cost_ex_owner_rent = max(0.0, operating_cost_net - owner_rent)
         rent_net = scheduled_rent_net
         collected_rent_net = rent_net * rent_collection_rate
         uncollected_rent_net = rent_net - collected_rent_net
@@ -1996,6 +1997,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "ownerRent": owner_rent,
                 "ownerLandRent": owner_land_rent,
                 "ownerPropertyRent": owner_property_rent,
+                "operatingCostExOwnerRent": operating_cost_ex_owner_rent,
                 "leasingAdjustmentFactor": leasing_adjustment_factor,
                 "operationsAdjustmentFactor": operations_adjustment_factor,
                 "extraOperatingCost": extra_operating_cost,
@@ -2087,6 +2089,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 "centralAcRevenue": 0.0,
                 "otherRevenue": 0.0,
                 "operatingCost": 0.0,
+                "operatingCostExOwnerRent": 0.0,
+                "ownerRent": 0.0,
                 "taxes": 0.0,
                 "projectIncomeTax": 0.0,
                 "projectCapex": 0.0,
@@ -2106,7 +2110,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             bucket["activeMonths"] += 1
             for field in (
                 "revenue", "scheduledRentRevenue", "collectedRentRevenue", "uncollectedRentRevenue",
-                "propertyRevenue", "propertyManagementRevenue", "commercialManagementRevenue", "centralAcRevenue", "otherRevenue", "operatingCost", "badDebtCost", "taxes",
+                "propertyRevenue", "propertyManagementRevenue", "commercialManagementRevenue", "centralAcRevenue", "otherRevenue", "operatingCost", "operatingCostExOwnerRent", "ownerRent", "badDebtCost", "taxes",
                 "projectIncomeTax", "projectCapex", "noi", "projectCashFlow",
                 "equityCashFlow", "interest", "principal", "exitValue",
             ):
@@ -2137,6 +2141,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         bucket["uncollectedRentRevenue"] = max(0.0, as_float(bucket.get("uncollectedRentRevenue")))
         bucket["rentRevenue"] = as_float(bucket.get("collectedRentRevenue"))
         bucket["cashOperatingCost"] = max(0.0, as_float(bucket.get("operatingCost")) - as_float(bucket.get("badDebtCost")))
+        bucket["cashOperatingCostExOwnerRent"] = max(0.0, as_float(bucket.get("operatingCostExOwnerRent")) - as_float(bucket.get("badDebtCost")))
         override = overrides.get(year, {})
         adjustments = {
             "revenueAdjustment": as_float(override.get("revenueAdjustment")),
@@ -2148,11 +2153,15 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         bucket["rawRevenue"] = as_float(bucket.get("revenue"))
         bucket["rawOperatingCost"] = as_float(bucket.get("operatingCost"))
         bucket["rawCashOperatingCost"] = as_float(bucket.get("cashOperatingCost"))
+        bucket["rawOperatingCostExOwnerRent"] = as_float(bucket.get("operatingCostExOwnerRent"))
+        bucket["rawOwnerRent"] = as_float(bucket.get("ownerRent"))
         bucket["rawTaxes"] = as_float(bucket.get("taxes"))
         bucket["rawProjectCapex"] = as_float(bucket.get("projectCapex"))
         bucket["revenue"] = bucket["rawRevenue"] + adjustments["revenueAdjustment"]
         bucket["operatingCost"] = bucket["rawOperatingCost"] + adjustments["operatingCostAdjustment"]
         bucket["cashOperatingCost"] = bucket["rawCashOperatingCost"] + adjustments["operatingCostAdjustment"]
+        bucket["operatingCostExOwnerRent"] = bucket["rawOperatingCostExOwnerRent"] + adjustments["operatingCostAdjustment"]
+        bucket["cashOperatingCostExOwnerRent"] = max(0.0, bucket["operatingCostExOwnerRent"] - as_float(bucket.get("badDebtCost")))
         bucket["taxes"] = bucket["rawTaxes"] + adjustments["taxAdjustment"]
         bucket["projectCapex"] = bucket["rawProjectCapex"] + adjustments["capexAdjustment"]
         bucket["totalIncome"] = max(0.0, as_float(bucket.get("revenue")) - as_float(bucket.get("uncollectedRentRevenue")))
@@ -2186,6 +2195,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_marketing_cost = as_float(stable_row.get("marketingCost"))
     stable_maintenance_cost = as_float(stable_row.get("maintenanceCost"))
     stable_owner_rent_cost = as_float(stable_row.get("ownerRent"))
+    stable_operating_cost_ex_owner_rent = as_float(stable_row.get("operatingCostExOwnerRent"))
     stable_owner_land_rent_cost = as_float(stable_row.get("ownerLandRent"))
     stable_owner_property_rent_cost = as_float(stable_row.get("ownerPropertyRent"))
     stable_extra_operating_cost = as_float(stable_row.get("extraOperatingCost"))
@@ -2209,6 +2219,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     stable_tax_occupancy = as_float(stable_row.get("taxOccupancy"))
     operation_rows = [row for row in annual_rows if row.get("opYear", 0) > 0]
     operation_period_operating_cost = sum(as_float(row.get("operatingCost")) for row in operation_rows)
+    operation_period_operating_cost_ex_owner_rent = sum(as_float(row.get("operatingCostExOwnerRent")) for row in operation_rows)
+    operation_period_owner_rent = sum(as_float(row.get("ownerRent")) for row in operation_rows)
     operation_period_taxes = sum(as_float(row.get("taxes")) for row in operation_rows)
     operation_period_output_vat = sum(as_float(row.get("outputVat")) for row in operation_rows)
     operation_period_input_vat = sum(as_float(row.get("inputVat")) for row in operation_rows)
@@ -2232,7 +2244,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"stage": "运营期", "name": "公共能耗", "value": sum(as_float(row.get("energyCost")) for row in operation_rows)},
         {"stage": "运营期", "name": "人员及物业服务成本", "value": sum(as_float(row.get("staffCost")) for row in operation_rows)},
         {"stage": "运营期", "name": "办公行政", "value": sum(as_float(row.get("officeCost")) for row in operation_rows)},
-        {"stage": "运营期", "name": "招商及租赁费用", "value": sum(as_float(row.get("leasingCost")) + as_float(row.get("ownerRent")) for row in operation_rows)},
+        {"stage": "运营期", "name": "招商费用", "value": sum(as_float(row.get("leasingCost")) for row in operation_rows)},
+        {"stage": "运营期", "name": "业主租金", "value": operation_period_owner_rent},
         {"stage": "运营期", "name": "营销推广", "value": sum(as_float(row.get("marketingCost")) for row in operation_rows)},
         {"stage": "运营期", "name": "维保与保险", "value": sum(as_float(row.get("maintenanceCost")) + as_float(row.get("insuranceCost")) for row in operation_rows)},
         {"stage": "运营期", "name": "坏账及其他运营费用", "value": sum(as_float(row.get("badDebtCost")) + as_float(row.get("otherOpexCost")) + as_float(row.get("extraOperatingCost")) for row in operation_rows)},
@@ -2760,8 +2773,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         {"name": "保险费用", "value": as_float(stable_row.get("insuranceCost"))},
         {"name": "未收租金扣减", "value": as_float(stable_row.get("badDebtCost"))},
         {"name": "其他运营费用", "value": as_float(stable_row.get("otherOpexCost"))},
-        {"name": "土地租赁支出", "value": stable_owner_land_rent_cost},
-        {"name": "物业租赁支出", "value": stable_owner_property_rent_cost},
+        {"name": "业主租金—土地", "value": stable_owner_land_rent_cost},
+        {"name": "业主租金—物业", "value": stable_owner_property_rent_cost},
         {"name": "年度成本调整额", "value": stable_extra_operating_cost},
         {"name": "阶段招商调整成本", "value": stable_leasing_stage_cost},
         {"name": "税费", "value": stable_taxes},
@@ -2875,6 +2888,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "preOpeningOtherCost": preopening_other_direct,
             "preOpeningCommission": commission,
             "operationPeriodOperatingCost": operation_period_operating_cost,
+            "operationPeriodOperatingCostExOwnerRent": operation_period_operating_cost_ex_owner_rent,
+            "operationPeriodOwnerRent": operation_period_owner_rent,
             "operationPeriodTaxes": operation_period_taxes,
             "operationPeriodOutputVat": operation_period_output_vat,
             "operationPeriodInputVat": operation_period_input_vat,
@@ -3009,6 +3024,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "ownerDepositRefundDate": owner_rent_config.get("depositRefundDate") or "",
             "stableExtraOperatingCost": stable_extra_operating_cost,
             "stableOperatingCost": stable_operating_cost,
+            "stableOperatingCostExOwnerRent": stable_operating_cost_ex_owner_rent,
             "stableTaxes": stable_taxes,
             "stableOutputVat": stable_output_vat,
             "stableInputVat": stable_input_vat,

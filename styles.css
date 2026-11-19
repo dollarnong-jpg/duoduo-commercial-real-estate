@@ -1258,7 +1258,7 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .natural-year-kpis .danger strong { color:#b44537; }
 .natural-year-kpis .positive strong { color:var(--green); }
 .natural-year-table-wrap { max-height:none; overflow:auto; }
-.natural-year-table { min-width:1260px; }
+.natural-year-table { min-width:1420px; }
 .natural-year-income-table { min-width:1880px; }
 .natural-year-subsection-heading { margin-top:16px; }
 .partial-year-tag { display:block; margin-top:3px; color:#a66b27; font-size:var(--fs-7); }
