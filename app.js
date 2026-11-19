@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-naturalyear1';
+import './backend.js?v=20261119-autorent1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.21';
+const APP_VERSION = '1.28.22';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -696,6 +696,7 @@ const state = {
   preOpeningWarnings: [],
   costBaselineNoticeShown: false,
   shopBaselineNoticeShown: false,
+  floorRentAutoSyncNoticeShown: false,
   sidebarOpen: false,
   adminUsers: [],
   adminProjects: [],
@@ -3015,24 +3016,26 @@ async function openProject(projectId) {
     const payload = await api(`/api/projects/${projectId}`);
     state.current = { ...payload.project, model: payload.result?.model || payload.project.model };
     const benchmarkInitialized = ensureSettlementBenchmarks(state.current.model);
+    const floorRentSynced = reconcileFloorRentOverrides(state.current.model);
     state.result = payload.result;
-    state.preview = benchmarkInitialized ? null : payload.result;
+    state.preview = benchmarkInitialized || floorRentSynced ? null : payload.result;
     state.calculating = false;
     state.calculationError = '';
     state.lastCalculatedAt = payload.result ? Date.now() : 0;
     state.marketAnalysis = null;
     state.marketError = null;
     state.step = 0;
-    state.dirty = benchmarkInitialized;
+    state.dirty = benchmarkInitialized || floorRentSynced > 0;
+    state.floorRentAutoSyncNoticeShown = false;
     state.importWarnings = [];
     state.rentImportStats = null;
     state.preOpeningWarnings = [];
     state.shopPage = 1;
     state.shopSearch = '';
     renderWorkspace();
-    if (benchmarkInitialized) {
+    if (benchmarkInitialized || floorRentSynced) {
       scheduleLivePreview();
-      setTimeout(() => toast('已按行业常规和项目地区补充联营销售/扣点基准，请核对后保存', 'success'), 250);
+      setTimeout(() => toast(benchmarkInitialized ? '已按行业常规和项目地区补充联营销售/扣点基准，请核对后保存' : '已自动按楼层基准租金同步铺位覆盖价，请核对后保存', 'success'), 250);
     }
   } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
 }
@@ -3605,35 +3608,38 @@ function buildStatusAdvice(result = state.preview || state.result) {
   return { status, title, short, detail, tone, requiredNoiUplift, investmentGapRatio };
 }
 
-function syncFloorRentToShops(path, previousRent, nextRent) {
-  const model = state.current?.model;
-  if (!model || model.calculationMode !== 'detailed' || !Array.isArray(model.shops) || !model.shops.length) return;
-  const floorIndex = Number(String(path).split('.')[1]);
-  const floor = model.floors?.[floorIndex];
-  if (!floor) return;
+function syncFloorOverrideAverage(model, floor, targetRent) {
+  if (!model || !floor || model.calculationMode !== 'detailed' || !Array.isArray(model.shops) || !model.shops.length) return false;
   const key = buildingFloorKey(floor);
-  const targetRent = Math.max(0, Number(nextRent) || 0);
-  if (targetRent <= 0) {
-    state.preview = null;
-    return;
-  }
+  const target = Math.max(0, Number(targetRent) || 0);
+  if (target <= 0) return false;
   const matchingShops = model.shops.filter(shop => buildingFloorKey(shop) === key);
   const overrideShops = matchingShops.filter(shop => shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0);
-  if (!overrideShops.length) {
-    state.preview = null;
-    return;
-  }
+  if (!overrideShops.length) return false;
   const overrideArea = overrideShops.reduce((sum, shop) => sum + rentAreaFor(shop, model), 0);
   const overrideMonthly = overrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0) * rentAreaFor(shop, model), 0);
   const currentOverrideAverage = overrideArea > 0 ? overrideMonthly / overrideArea : 0;
-  // A floor rent edit is authoritative: force the weighted shop-override average back to the edited floor rent.
-  const baseRent = currentOverrideAverage > 0 ? currentOverrideAverage : Number(previousRent);
-  if (baseRent <= 0) return;
-  const ratio = targetRent / baseRent;
+  if (currentOverrideAverage <= 0 || Math.abs(currentOverrideAverage - target) <= 0.01) return false;
+  const ratio = target / currentOverrideAverage;
   overrideShops.forEach(shop => {
     shop.rentOverride = Number((Number(shop.rentOverride || 0) * ratio).toFixed(2));
   });
+  return true;
+}
+
+function syncFloorRentToShops(path, previousRent, nextRent) {
+  const model = state.current?.model;
+  const floorIndex = Number(String(path).split('.')[1]);
+  const floor = model?.floors?.[floorIndex];
+  if (!floor) return false;
+  const changed = syncFloorOverrideAverage(model, floor, nextRent);
   state.preview = null;
+  return changed;
+}
+
+function reconcileFloorRentOverrides(model) {
+  const floors = Array.isArray(model?.floors) ? model.floors : [];
+  return floors.reduce((count, floor) => count + (syncFloorOverrideAverage(model, floor, floor.avgRent) ? 1 : 0), 0);
 }
 
 function currentFloorRentSummary(model) {
@@ -3741,7 +3747,7 @@ function renderFloorEditor(m, mode, preview) {
   return `<div class="form-section">
     <div class="section-title">楼层均价与面积</div>
     <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层均价将作为一铺一价的基础：再乘业态系数并叠加铺位条件溢价。'}</div>
-    ${detailedOverrideCount ? `<div class="callout soft"><div>当前有 <strong>${detailedOverrideCount}</strong> 个铺位设置了“租金单价覆盖”。实际加权收益按铺位覆盖价计算；修改楼层均价时，系统会强制把该层铺位覆盖价的加权平均同步到楼层均价。</div><button type="button" class="btn btn-secondary btn-sm" data-sync-all-floor-rents>全部按楼层均价同步</button></div>` : ''}
+    ${detailedOverrideCount ? `<div class="callout soft"><div>当前有 <strong>${detailedOverrideCount}</strong> 个铺位设置了“租金单价覆盖”。系统会自动把该层铺位覆盖价的加权平均同步到楼层基准租金，无需手动操作。</div></div>` : ''}
     ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层基准满租月收益 = 商户计租面积 × 楼层基准租金\n实际楼层平均租金 = 该层实际月租金收入 ÷ 该层商户计租面积\n项目平均租金 = 项目实际月租金收入 ÷ 项目商户计租面积', ['SUM', 'MAX', 'IF'], '一铺一价下，铺位租金覆盖价优先；修改楼层基准租金时，系统会同步铺位覆盖价，使该层实际加权平均租金回到楼层值。')}
     <div class="data-table-wrap floor-table-wrap">
       <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">${mode === 'detailed' ? '楼层基准租金（元/㎡/月）' : '楼层平均租金（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">${mode === 'detailed' ? '基准满租月收益（元）' : '满租月收益（元）'}</th><th class="num">${mode === 'detailed' ? '实际平均租金（元/㎡/月）' : '实际加权收益'}</th><th></th></tr></thead><tbody>
@@ -3766,7 +3772,7 @@ function renderFloorEditor(m, mode, preview) {
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
             <td class="num" data-floor-monthly="${escapeHtml(buildingFloorKey(floor))}">${fmt(monthly)}</td>
             <td class="num"><span data-floor-actual="${escapeHtml(buildingFloorKey(floor))}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 2) : '待计算'}</span>${floorOverrideCount ? `<small class="rent-source">铺位覆盖价 ${floorOverrideCount} 个</small>` : ''}</td>
-            <td>${floorOverrideCount ? `<button type="button" class="btn btn-secondary btn-sm" data-sync-floor-rent="${i}" title="按本层均价同步该层铺位覆盖价">同步铺位</button>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
+            <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
           </tr>`;
         }).join('') : `<tr><td colspan="${concessionEnabled ? 12 : 10}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
       </tbody></table>
@@ -7659,6 +7665,7 @@ async function runLivePreview() {
   try {
     const shopBaselineChanged = ensureShopDetailedBaseline(state.current.model);
     const costBaseline = ensureCostBaselineForCalculation(state.current.model);
+    const floorRentSynced = reconcileFloorRentOverrides(state.current.model);
     if (shopBaselineChanged) {
       state.dirty = true;
       updateSaveState();
@@ -7673,6 +7680,14 @@ async function runLivePreview() {
       if (!state.costBaselineNoticeShown) {
         state.costBaselineNoticeShown = true;
         toast(`检测到工程投资为空，已按${costBaseline.cityLabel} · ${costBaseline.developmentLabel}补充参考单价，请到“建设投资”复核`, 'success');
+      }
+    }
+    if (floorRentSynced) {
+      state.dirty = true;
+      updateSaveState();
+      if (!state.floorRentAutoSyncNoticeShown) {
+        state.floorRentAutoSyncNoticeShown = true;
+        toast(`已自动按楼层基准租金同步 ${floorRentSynced} 个楼层的铺位覆盖价`, 'success');
       }
     }
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
@@ -8056,31 +8071,6 @@ function bindShopsStep() {
     renderWorkspace();
     scheduleLivePreview();
   }));
-  document.querySelectorAll('[data-sync-floor-rent]').forEach(btn => btn.addEventListener('click', () => {
-    const index = Number(btn.dataset.syncFloorRent);
-    const floor = state.current.model.floors?.[index];
-    if (!floor || Number(floor.avgRent || 0) <= 0) return toast('请先填写本层平均租金', 'error');
-    syncFloorRentToShops(`floors.${index}.avgRent`, 0, Number(floor.avgRent || 0));
-    state.dirty = true;
-    state.preview = null;
-    state.result = null;
-    renderWorkspace();
-    scheduleLivePreview();
-    toast('已按本层平均租金同步铺位覆盖价', 'success');
-  }));
-  document.querySelector('[data-sync-all-floor-rents]')?.addEventListener('click', () => {
-    const floors = state.current.model.floors || [];
-    floors.forEach((floor, index) => {
-      const rent = Number(floor.avgRent || 0);
-      if (rent > 0) syncFloorRentToShops(`floors.${index}.avgRent`, 0, rent);
-    });
-    state.dirty = true;
-    state.preview = null;
-    state.result = null;
-    renderWorkspace();
-    scheduleLivePreview();
-    toast('已按各楼层均价同步全部铺位覆盖价', 'success');
-  });
   const fileInput = document.getElementById('shop-file');
   document.getElementById('choose-file')?.addEventListener('click', () => fileInput.click());
   fileInput?.addEventListener('change', () => fileInput.files[0] && handleShopImport(fileInput.files[0]));
