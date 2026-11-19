@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-previewfix1';
+import './backend.js?v=20261119-linkshops1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.10';
+const APP_VERSION = '1.28.11';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3597,6 +3597,38 @@ function buildStatusAdvice(result = state.preview || state.result) {
   return { status, title, short, detail, tone, requiredNoiUplift, investmentGapRatio };
 }
 
+function syncFloorRentToShops(path, previousRent, nextRent) {
+  const model = state.current?.model;
+  if (!model || model.calculationMode !== 'detailed' || !Array.isArray(model.shops) || !model.shops.length) return;
+  const floorIndex = Number(String(path).split('.')[1]);
+  const floor = model.floors?.[floorIndex];
+  if (!floor) return;
+  const key = buildingFloorKey(floor);
+  const ratio = Number(previousRent) > 0 && Number(nextRent) > 0 ? Number(nextRent) / Number(previousRent) : 0;
+  model.shops.forEach(shop => {
+    if (buildingFloorKey(shop) !== key) return;
+    const currentRent = Number(shop.rentOverride || 0);
+    if (currentRent > 0 && ratio > 0) {
+      shop.rentOverride = Number((currentRent * ratio).toFixed(2));
+    } else if (currentRent <= 0 && Number(nextRent) > 0 && shop.rentOverride !== null && shop.rentOverride !== undefined) {
+      shop.rentOverride = Number(nextRent);
+    }
+  });
+  state.preview = null;
+}
+
+function currentFloorRentSummary(model) {
+  const floors = Array.isArray(model?.floors) ? model.floors : [];
+  const revenueMode = model?.project?.revenueModel || 'rent';
+  return floors.map(floor => {
+    const rentArea = rentAreaFor(floor, model);
+    const guarantee = rentArea * Number(floor.avgRent || 0);
+    const concession = rentArea * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
+    const monthlyRevenue = revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee;
+    return { ...floor, rentArea, monthlyRevenue, weightedRent: rentArea > 0 ? monthlyRevenue / rentArea : 0, avgRent: Number(floor.avgRent || 0) };
+  });
+}
+
 function renderShopsStep() {
   const m = state.current.model;
   const mode = m.calculationMode || 'preliminary';
@@ -3627,8 +3659,8 @@ function renderShopsStep() {
     ${renderFloorEditor(m, mode, preview)}
     <div class="stats-row">
       <div class="mini-stat"><strong data-live="investment">${preview ? fmt(preview.summary.totalInvestment) : '待计算'}</strong><span>项目总投资/万元</span></div>
-      <div class="mini-stat"><strong data-live="monthlyRent">${preview ? fmt(preview.summary.totalMonthlyRent) : fmt(totalMonthly)}</strong><span>满租月收益/元</span></div>
-      <div class="mini-stat"><strong data-live="avgRent">${preview ? fmt(preview.summary.averageRent, 1) : fmt(totalRentArea ? totalMonthly / totalRentArea : 0, 1)}</strong><span>平均月收益/计租㎡</span></div>
+      <div class="mini-stat"><strong data-live="monthlyRent">${fmt(totalMonthly)}</strong><span>满租月收益/元</span></div>
+      <div class="mini-stat"><strong data-live="avgRent">${fmt(totalRentArea ? totalMonthly / totalRentArea : 0, 2)}</strong><span>平均月收益/计租㎡</span></div>
       <div class="mini-stat status-advice-stat"><strong data-live="status">${escapeHtml(statusAdvice.title)}</strong><span>实时测算判断</span><small data-live="statusAdvice">${escapeHtml(statusAdvice.short)}</small></div>
     </div>
     <div class="live-advice-strip ${statusAdvice.tone}"><strong>建议：${escapeHtml(statusAdvice.title)}</strong><span>${escapeHtml(statusAdvice.detail)}</span><em>当前系统状态：${escapeHtml(statusAdvice.status)}</em></div>
@@ -3800,12 +3832,15 @@ function renderDetailedPricing(m, shops, preview) {
   const totalBuilding = shops.reduce((sum, shop) => sum + Number(shop.buildingArea || 0), 0);
   const totalLease = shops.reduce((sum, shop) => sum + Number(shop.leasableArea || 0), 0);
   const rentOverrideShops = shops.filter(shop => shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0);
-  const totalRentArea = shops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
+  const quickFloorSummary = currentFloorRentSummary(m);
+  const quickMonthlyRevenue = quickFloorSummary.reduce((sum, floor) => sum + Number(floor.monthlyRevenue || 0), 0);
+  const quickRentArea = quickFloorSummary.reduce((sum, floor) => sum + Number(floor.rentArea || 0), 0);
+  const totalRentArea = quickRentArea || shops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
   const overrideRentArea = rentOverrideShops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
   const overrideRentNumerator = rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0) * rentAreaFor(shop, m), 0);
   const weightedOverrideRent = overrideRentArea > 0 ? overrideRentNumerator / overrideRentArea : 0;
   const simpleOverrideRent = rentOverrideShops.length ? rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0), 0) / rentOverrideShops.length : 0;
-  const monthlyRentPreview = Number(preview?.summary?.totalMonthlyRent || 0);
+  const monthlyRentPreview = quickMonthlyRevenue || Number(preview?.summary?.totalMonthlyRent || 0);
   const quarterlyRentPreview = monthlyRentPreview * 3;
   const annualFullRentPreview = monthlyRentPreview * 12;
   const revenueImpliedAverageRent = totalRentArea > 0 ? monthlyRentPreview / totalRentArea : 0;
@@ -3817,7 +3852,7 @@ function renderDetailedPricing(m, shops, preview) {
   const operationPeriodRentRevenue = Number(preview?.summary?.operationPeriodCollectedRentRevenue ?? rentAnnualRows.reduce((sum, row) => sum + Number(row.collectedRentRevenue ?? Number(row.rentRevenue || 0) * rentCollectionRate), 0));
   const operationPeriodScheduledRent = Number(preview?.summary?.operationPeriodScheduledRentRevenue ?? rentAnnualRows.reduce((sum, row) => sum + Number(row.scheduledRentRevenue ?? row.rentRevenue ?? 0), 0));
   const operationPeriodUncollectedRent = Number(preview?.summary?.operationPeriodUncollectedRentRevenue ?? Math.max(0, operationPeriodScheduledRent - operationPeriodRentRevenue));
-  const floorAverageRows = (preview?.floors || []).filter(floor => Number(floor.rentArea || 0) > 0 || Number(floor.monthlyRevenue || 0) > 0);
+  const floorAverageRows = quickFloorSummary.filter(floor => Number(floor.rentArea || 0) > 0 || Number(floor.monthlyRevenue || 0) > 0);
   const floorAverageTotal = floorAverageRows.reduce((acc, floor) => {
     acc.rentArea += Number(floor.rentArea || 0);
     acc.monthlyRevenue += Number(floor.monthlyRevenue || 0);
@@ -6793,7 +6828,11 @@ function bindStepInputs() {
       }
       const previousCentralAcFee = path === 'revenues.centralAcFee' ? Number(getPath(state.current.model, path) || 0) : null;
       const previousLeasingPeriodMonths = path === 'project.leasingPeriodMonths' ? Number(getPath(state.current.model, path) || 0) : null;
+      const previousFloorRent = /^floors\.\d+\.avgRent$/.test(path) ? Number(getPath(state.current.model, path) || 0) : null;
       setPath(state.current.model, path, value);
+      if (/^floors\.\d+\.avgRent$/.test(path)) {
+        syncFloorRentToShops(path, previousFloorRent, Number(value || 0));
+      }
       if (/^floors\.\d+\.(avgRent|buildingArea|leasableArea|salesPerSqmMonth|concessionRate)$/.test(path) || ['project.rentAreaBasis', 'project.revenueModel'].includes(path)) {
         updateQuickRentEstimateFromModel();
       }
@@ -6928,6 +6967,7 @@ function bindStepInputs() {
       input.addEventListener('change', () => {
         updateQuickRentEstimateFromModel();
         state.previewRefreshPending = true;
+        renderWorkspace();
         scheduleLivePreview();
       });
     }
@@ -7606,6 +7646,14 @@ function updateLiveStats() {
     const floor = floors.get(el.dataset.floorMonthly);
     if (floor) el.textContent = fmt(floor.monthlyRevenue);
   });
+  const operationCollectedRent = Number(summary.operationPeriodCollectedRentRevenue || 0);
+  const previewMonthlyTotal = Number(summary.totalMonthlyRent || 0);
+  document.querySelectorAll('[data-floor-avg-row]').forEach(rowEl => {
+    const floor = floors.get(rowEl.dataset.floorAvgRow);
+    const allocated = rowEl.querySelector('[data-floor-avg-allocated]');
+    if (floor && allocated && previewMonthlyTotal > 0) allocated.textContent = fmt(operationCollectedRent * Number(floor.monthlyRevenue || 0) / previewMonthlyTotal, 2);
+  });
+  document.querySelectorAll('[data-project-rent-allocated]').forEach(el => { el.textContent = fmt(operationCollectedRent, 2); });
   const shops = new Map((state.preview.shops || []).map(shop => [shopRecordKey(shop), shop]));
   document.querySelectorAll('[data-shop-revenue]').forEach(el => {
     const shop = shops.get(el.dataset.shopRevenue);
