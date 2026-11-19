@@ -1,7 +1,7 @@
-import './backend.js?v=20261112-style19';
+import './backend.js?v=20261119-admin1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.1';
+const APP_VERSION = '1.27.2';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -700,6 +700,9 @@ const state = {
   adminStatus: 'all',
   adminSearch: '',
   adminLoaded: false,
+  adminActive: false,
+  adminLastLoadedAt: 0,
+  adminSyncBusy: false,
   fontScale: localStorage.getItem('duoduo_font_scale_v1') || '1',
 };
 
@@ -1358,6 +1361,9 @@ function clearSession() {
   state.adminLogs = [];
   state.adminWarnings = [];
   state.adminLoaded = false;
+  state.adminActive = false;
+  state.adminLastLoadedAt = 0;
+  state.adminSyncBusy = false;
   localStorage.removeItem('cr_token');
   localStorage.removeItem('cr_user');
 }
@@ -1620,6 +1626,7 @@ function renderWorkspaceLoading(message = '正在载入项目数据…') {
 }
 
 function shell(content, active = 'projects', workspace = false) {
+  state.adminActive = active === 'admin';
   const title = workspace ? (state.current?.model?.project?.name || '未命名项目') : active === 'admin' ? '用户与项目管理' : '项目工作台';
   const subtitle = workspace ? '项目测算与汇报' : active === 'admin' ? '账号审核 · 项目数据总览' : '商业地产投资测算';
   app.innerHTML = `
@@ -1697,6 +1704,7 @@ function bindShell() {
 }
 
 function renderProjectList() {
+  state.adminActive = false;
   const cards = state.projects.map(project => projectCard(project)).join('');
   const storageCopy = state.user?.username === 'demo'
     ? '演示账号项目只保存在当前浏览器，适合体验功能。' : state.user?.localMode
@@ -1712,6 +1720,7 @@ function renderProjectList() {
       <div class="project-intro-actions"><button class="btn btn-secondary" id="compare-projects-btn">${ICONS.compare}<span>方案对比</span></button><button class="btn btn-secondary" id="import-share-btn">${ICONS.download}<span>接收项目</span></button><button class="btn btn-primary" id="new-project-btn">${ICONS.plus}<span>新建测算项目</span></button></div>
     </div>
     ${state.projectLoadError ? `<div class="warning-list project-load-warning"><div class="warning-item"><strong>项目数据未完整加载</strong><span>${escapeHtml(state.projectLoadError)}。账号仍保持登录，模块不会因此隐藏。</span><button class="btn btn-secondary btn-sm" id="retry-projects">重新加载项目</button></div></div>` : ''}
+    ${state.user?.localMode && state.user?.username !== 'demo' ? `<div class="warning-list"><div class="warning-item"><strong>当前是本机兼容工作区</strong><span>这里新建或修改的项目只保存在当前设备，不会出现在管理员后台，也不会同步到其他电脑。请退出后使用已审核的正式云端账号登录；同一浏览器中的历史本机项目会在正式账号登录后自动迁移。</span></div></div>` : ''}
     ${state.projects.length ? `<div class="project-grid">${cards}${newProjectCard()}</div>` : state.projectLoadError ? '' : emptyProjectState()}`;
   shell(content, 'projects', false);
   document.getElementById('new-project-btn')?.addEventListener('click', openNewProjectModal);
@@ -2634,6 +2643,7 @@ function updateAdminLists() {
 }
 
 function bindAdminListActions() {
+  document.getElementById('admin-refresh-inline')?.addEventListener('click', () => openAdminDashboard(true));
   document.querySelectorAll('[data-admin-user]').forEach(button => button.addEventListener('click', async () => {
     const nextStatus = button.dataset.adminStatus;
     const meta = adminStatusMeta(nextStatus);
@@ -2650,26 +2660,55 @@ function bindAdminListActions() {
   document.querySelectorAll('[data-admin-project]').forEach(button => button.addEventListener('click', () => openAdminProject(button.dataset.adminProject)));
 }
 
+async function syncAdminDataAfterFocus(force = false) {
+  if (!state.adminActive || !isSuperAdmin() || !state.token || document.hidden || state.adminSyncBusy) return;
+  if (!force && Date.now() - Number(state.adminLastLoadedAt || 0) < 15000) return;
+  if (modalRegion.innerHTML.trim()) return;
+  const previousProjectCount = state.adminProjects.length;
+  const previousUserCount = state.adminUsers.length;
+  try {
+    await loadAdminData();
+    if (!state.adminActive) return;
+    renderAdminDashboard();
+    const newProjects = state.adminProjects.length - previousProjectCount;
+    if (newProjects > 0) toast(`后台已同步到 ${newProjects} 个新项目`, 'success');
+    else if (state.adminUsers.length !== previousUserCount) toast('用户与项目数据已刷新', 'success');
+  } catch (error) {
+    if (state.adminActive) toast(`后台自动同步失败：${error.message}`, 'error');
+  }
+}
+
 async function loadAdminData() {
-  state.adminUsers = [];
-  state.adminProjects = [];
-  state.adminLogs = [];
-  const tasks = [
-    ['用户与审核数据', '/api/admin/users', payload => { state.adminUsers = payload.users || []; }],
-    ['项目总览数据', '/api/admin/projects', payload => { state.adminProjects = payload.projects || []; }],
-    ['管理操作记录', '/api/admin/audit', payload => { state.adminLogs = payload.logs || []; }],
-  ];
-  const results = await Promise.allSettled(tasks.map(item => api(item[1])));
-  state.adminWarnings = [];
-  results.forEach((result, index) => {
-    if (result.status === 'fulfilled') tasks[index][2](result.value);
-    else state.adminWarnings.push(`${tasks[index][0]}加载失败：${result.reason?.message || '未知错误'}`);
-  });
-  state.adminLoaded = true;
+  if (state.adminSyncBusy) return;
+  state.adminSyncBusy = true;
+  try {
+    const tasks = [
+      ['用户与审核数据', '/api/admin/users', payload => { state.adminUsers = payload.users || []; }],
+      ['项目总览数据', '/api/admin/projects', payload => { state.adminProjects = payload.projects || []; }],
+      ['管理操作记录', '/api/admin/audit', payload => { state.adminLogs = payload.logs || []; }],
+    ];
+    const results = await Promise.allSettled(tasks.map(item => api(item[1])));
+    const warnings = [];
+    let successfulRequests = 0;
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        successfulRequests += 1;
+        tasks[index][2](result.value);
+      } else {
+        warnings.push(`${tasks[index][0]}加载失败：${result.reason?.message || '未知错误'}。页面保留上一次成功数据。`);
+      }
+    });
+    state.adminWarnings = warnings;
+    if (successfulRequests) state.adminLastLoadedAt = Date.now();
+    state.adminLoaded = successfulRequests > 0;
+  } finally {
+    state.adminSyncBusy = false;
+  }
 }
 
 async function openAdminDashboard(force = false) {
   if (!isSuperAdmin()) return toast('仅超级管理员可访问用户管理', 'error');
+  state.adminActive = true;
   state.current = null;
   state.result = null;
   state.preview = null;
@@ -2684,6 +2723,7 @@ async function openAdminDashboard(force = false) {
 }
 
 function renderAdminDashboard() {
+  state.adminActive = true;
   const pending = state.adminUsers.filter(user => user.status === 'pending').length;
   const approved = state.adminUsers.filter(user => user.status === 'approved').length;
   const totalInvestment = state.adminProjects.reduce((sum, project) => sum + Number(project.summary?.totalInvestment || 0), 0);
@@ -2708,7 +2748,7 @@ function renderAdminDashboard() {
     <section class="admin-section">
       <div class="admin-section-head">
         <div><span class="eyebrow">Access control</span><h2>注册用户与授权</h2></div>
-        <span class="admin-count" id="admin-visible-count">${adminFilteredUsers().length} 位用户 · ${adminFilteredProjects().length} 个项目</span>
+        <div class="admin-sync-tools"><span class="admin-count" id="admin-visible-count">${adminFilteredUsers().length} 位用户 · ${adminFilteredProjects().length} 个项目</span><span class="admin-date">同步于 ${state.adminLastLoadedAt ? new Date(state.adminLastLoadedAt).toLocaleTimeString('zh-CN', { hour12: false }) : '—'}</span><button class="btn btn-secondary btn-sm" id="admin-refresh-inline">刷新全部项目</button></div>
       </div>
       <div class="admin-toolbar">
         <label class="admin-search">${ICONS.search}<input id="admin-search" type="search" value="${escapeHtml(state.adminSearch)}" placeholder="搜索用户名、项目名称或地址"></label>
@@ -2718,6 +2758,7 @@ function renderAdminDashboard() {
     </section>
     <section class="admin-section">
       <div class="admin-section-head"><div><span class="eyebrow">Project oversight</span><h2>全部用户项目</h2></div></div>
+      <div class="admin-cloud-note"><strong>这里是云端项目总览</strong><span>只显示已同步到云端的正式项目。伙伴如勾选“本机兼容登录”，项目只保存在其当前设备，管理员后台不会出现；请伙伴退出本机兼容模式，用已审核账号重新登录。</span></div>
       <div id="admin-project-list">${adminProjectTable()}</div>
     </section>
     <section class="admin-section admin-audit-section">
@@ -7489,10 +7530,15 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.user?.id && state.token) {
     pollShareInbox(state.user.id);
     syncProjectsAfterFocus();
+    syncAdminDataAfterFocus();
   }
 });
 
-window.addEventListener('focus', () => syncProjectsAfterFocus());
+window.addEventListener('focus', () => {
+  syncProjectsAfterFocus();
+  syncAdminDataAfterFocus();
+});
+setInterval(() => syncAdminDataAfterFocus(), 30000);
 
 applyFontScale(state.fontScale);
 boot();
