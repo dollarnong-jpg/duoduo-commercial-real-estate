@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-share1';
+import './backend.js?v=20261119-ledger1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.4';
+const APP_VERSION = '1.27.5';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6038,6 +6038,7 @@ function renderResultsStep() {
     ${renderLeasingStageResultCard()}
     ${renderInvestmentOverviewCard()}
     ${renderInvestmentOutcomeDiagnostic()}
+    ${renderOperatingLedgerCard()}
     <div class="dashboard-grid">
       <div class="card"><h3>${fmt(state.result?.annual?.length || state.current?.model?.project?.operationYears || 20)}年营业收入与NOI</h3><div class="chart-wrap"><canvas id="revenue-chart"></canvas></div><div class="legend"><span><i style="background:#1d6b57"></i>营业收入</span><span><i style="background:#d6a84b"></i>NOI</span></div></div>
       <div class="card"><h3>投资构成</h3><div class="donut-wrap"><canvas id="cost-donut"></canvas><div class="donut-legend">${state.result.investmentBreakdown.map((item, i) => `<div class="donut-item"><i style="background:${donutColor(i)}"></i><span>${escapeHtml(item.name)}</span><strong>${fmt(item.value)}万</strong></div>`).join('')}</div></div></div>
@@ -6088,6 +6089,162 @@ function renderLeasingStageResultCard() {
     const startRow = annual.find(row => Number(row.opYear) === Number(period.startYear)) || {};
     return `<tr><td><strong>${escapeHtml(period.name)}</strong><small class="range-hint">${escapeHtml(period.note || '')}</small></td><td>第${period.startYear}–${period.endYear}年</td><td class="num">${fmtPct(period.rentAdjustmentRate)}</td><td class="num">${period.targetOccupancy > 0 ? fmtPct(period.targetOccupancy) : '沿用原出租率'}</td><td class="num">×${fmt(startRow.rentGrowthFactor || (1 + period.rentAdjustmentRate), 3)}</td><td class="num">${fmt(period.oneOffLeasingCost, 2)}</td></tr>`;
   }).join('')}</tbody></table></div></div>`;
+}
+
+function buildOperatingLedger(result = state.result) {
+  const model = result?.model || state.current?.model || {};
+  const annual = (result?.annual || []).filter(row => Number(row.opYear) > 0);
+  const stableYear = Math.max(1, Number(model.operations?.stableYear || 3));
+  const stableRow = annual.find(row => Number(row.opYear) === stableYear) || annual.at(-1) || {};
+  const shops = Array.isArray(result?.shops) ? result.shops : [];
+  const floors = Array.isArray(result?.floors) ? result.floors : [];
+  const rentArea = shops.length
+    ? shops.reduce((sum, shop) => sum + Number(shop.rentArea || 0), 0)
+    : floors.reduce((sum, floor) => sum + Number(floor.rentArea || 0), 0);
+  const defaultPropertyFee = Number(model.revenues?.propertyFee || 0);
+  const defaultCommercialFee = Number(model.revenues?.commercialManagementFee || 0);
+  const defaultCentralAcFee = Number(model.revenues?.centralAcFee || 0);
+  const propertyOverrides = shops.filter(shop => Number(shop.propertyFeeOverride || 0) > 0).length;
+  const commercialOverrides = shops.filter(shop => Number(shop.commercialManagementFeeOverride || 0) > 0).length;
+  const centralConfigs = Array.isArray(model.revenues?.centralAcBuildings) ? model.revenues.centralAcBuildings : [];
+  const enabledCentralBuildings = centralConfigs.filter(item => item?.enabled && Number(item?.fee || defaultCentralAcFee) > 0).length;
+  const annualSum = key => annual.reduce((sum, row) => sum + Number(row[key] || 0), 0);
+  const stable = key => Number(stableRow[key] || 0);
+  const zeroReason = key => {
+    if (key === 'rentRevenue') {
+      if (rentArea <= 0) return '商户计租面积为 0，请先导入铺位或填写楼层面积。';
+      if (!shops.length && floors.every(floor => Number(floor.avgRent || 0) <= 0)) return '楼层平均租金为 0。';
+      if (shops.length && shops.every(shop => Number(shop.rent || shop.rentOverride || 0) <= 0)) return '所有铺位租金单价为 0。';
+      return '出租率、免租期或收入结算方式导致稳定年租金收入为 0，请检查出租率和联营扣点设置。';
+    }
+    if (key === 'propertyManagementRevenue') {
+      if (rentArea <= 0) return '商户计租面积为 0，无法形成物业管理费收入。';
+      if (defaultPropertyFee <= 0 && propertyOverrides === 0) return '项目默认物业管理费单价为 0，且没有铺位设置正数覆盖价。';
+      return '物业管理费单价已有设置，但出租率、起收日期或免收期导致稳定年收入为 0。';
+    }
+    if (key === 'commercialManagementRevenue') {
+      if (rentArea <= 0) return '商户计租面积为 0，无法形成商业管理费收入。';
+      if (defaultCommercialFee <= 0 && commercialOverrides === 0) return '项目默认商业管理费单价为 0，且没有铺位设置正数覆盖价。';
+      return '商业管理费单价已有设置，但出租率、起收日期或免收期导致稳定年收入为 0。';
+    }
+    if (key === 'centralAcRevenue') {
+      if (!centralConfigs.length) return '没有楼栋收费设置；中央空调收入不会自动产生。';
+      if (!enabledCentralBuildings) return '所有楼栋的中央空调收费开关均为关闭，或启用楼栋单价为 0。';
+      return '中央空调已启用，但计租面积、出租率或起收日期导致稳定年收入为 0。';
+    }
+    if (key === 'propertyRevenue') return '物业管理费、商业管理费和中央空调费均未形成收入，请分别检查三项单价、楼栋开关和计租面积。';
+    if (key === 'otherRevenue') return '停车位数量、停车月租和其他收入比例均未设置，因此其他收入为 0。';
+    if (key === 'revenue') return '租金及联营收入、三项费用收入和其他收入均为 0。';
+    if (key === 'propertyOpsCost') return '物业基础运营成本和按面积参考单价均为 0。';
+    if (key === 'energyCost') return '公共能耗预算和参考单价均为 0。';
+    if (key === 'staffCost') return '组织架构编制人数为 0、岗位未匹配，或人员成本来源设置为无效值。';
+    if (key === 'officeCost') return '行政办公预算金额和按面积参考单价均为 0。';
+    if (key === 'leasingCost') return '年度招商预算为 0，且未到续租佣金计提周期。';
+    if (key === 'marketingCost') return '年度常规营销预算和开业专项营销均为 0。';
+    if (key === 'maintenanceCost') return '固定维保预算和按工程投资比例计取的维保费用均为 0。';
+    if (key === 'insuranceCost') return '保险预算和按工程投资比例计取的保险费均为 0。';
+    if (key === 'badDebtCost') return '租金收缴率为 100% 或收入为 0，因此坏账准备为 0。';
+    if (key === 'otherOpexCost') return '其他运营费用比例和直接金额均为 0。';
+    if (key === 'ownerRent') return '业主租金未启用，或土地/物业租赁基数、单价为 0。';
+    if (key === 'taxes') return '当前收入和可计税基数未形成经营税费。';
+    if (key === 'outsourcedManagementFee') return '物业、保安和保洁均为自营模式，或对应岗位成本为 0，因此无第三方物业服务管理费。';
+    if (key === 'centralAcServiceCost') return '中央空调对应物业工程、保安、保洁和公共能耗成本均为 0。';
+    if (key === 'noi') return 'NOI为0，营业收入刚好覆盖运营成本和经营税费。';
+    return '该项目当前为 0，请检查对应输入参数。';
+  };
+  const rows = [
+    { section: '收入', key: 'rentRevenue', name: '租金及联营收入（不含税）', formula: '保底租金收入 + 联营扣点收入；按出租率、免租期和递增因子计算' },
+    { section: '收入', key: 'propertyManagementRevenue', name: '物业管理费收入', formula: '商户计租面积 × 物业管理费单价 × 12 × 出租率 × 递增因子', zeroKey: 'propertyManagementRevenue' },
+    { section: '收入', key: 'commercialManagementRevenue', name: '商业管理费收入', formula: '商户计租面积 × 商业管理费单价 × 12 × 出租率 × 递增因子', zeroKey: 'commercialManagementRevenue' },
+    { section: '收入', key: 'centralAcRevenue', name: '中央空调使用费收入', formula: '启用楼栋计租面积 × 楼栋空调单价 × 12 × 出租率 × 递增因子', zeroKey: 'centralAcRevenue' },
+    { section: '收入小计', key: 'propertyRevenue', name: '三项经营性费用收入合计', formula: '物业管理费 + 商业管理费 + 中央空调使用费', total: true, zeroKey: 'propertyRevenue' },
+    { section: '收入', key: 'otherRevenue', name: '其他收入', formula: '停车收入 + 其他收入比例 × 租金收入', zeroKey: 'otherRevenue' },
+    { section: '收入合计', key: 'revenue', name: '营业收入合计（不含税）', formula: '租金及联营收入 + 三项经营性费用收入 + 其他收入', total: true, zeroKey: 'revenue' },
+    { section: '成本', key: 'propertyOpsCost', name: '物业基础运营', formula: '按面积参考单价或年度直接金额 × 运营调整系数', zeroKey: 'propertyOpsCost' },
+    { section: '成本', key: 'energyCost', name: '公共能耗', formula: '总建筑面积 × 能耗单价 × 12 × 出租率 × 运营调整系数', zeroKey: 'energyCost' },
+    { section: '成本', key: 'staffCost', name: '人员及物业服务成本', formula: '组织架构工资社保 + 物业服务岗位成本 + 第三方管理费 + 自营招聘培训', zeroKey: 'staffCost' },
+    { section: '成本', key: 'officeCost', name: '办公行政', formula: '行政办公预算合计或总建筑面积 × 参考单价', zeroKey: 'officeCost' },
+    { section: '成本', key: 'leasingCost', name: '招商费用', formula: '年度招商预算 × 招商调整系数 + 续租佣金', zeroKey: 'leasingCost' },
+    { section: '成本', key: 'marketingCost', name: '年度营销推广', formula: '常规营销金额 + 开业首年专项营销', zeroKey: 'marketingCost' },
+    { section: '成本', key: 'maintenanceCost', name: '日常及专项维保', formula: '固定维保预算 + 工程投资 × 维保比例', zeroKey: 'maintenanceCost' },
+    { section: '成本', key: 'insuranceCost', name: '保险费用', formula: '保险直接金额或工程投资 × 保险费率', zeroKey: 'insuranceCost' },
+    { section: '成本', key: 'badDebtCost', name: '坏账准备', formula: '不含税营业收入 ×（1 - 收缴率）', zeroKey: 'badDebtCost' },
+    { section: '成本', key: 'otherOpexCost', name: '其他运营费用', formula: '不含税营业收入 × 其他运营费率或直接金额', zeroKey: 'otherOpexCost' },
+    { section: '成本', key: 'ownerRent', name: '业主租金支出', formula: '土地租赁支出 + 物业租赁支出', zeroKey: 'ownerRent' },
+    { section: '成本', key: 'extraOperatingCost', name: '额外运营成本', formula: '年度运营调整中的额外成本', zeroKey: 'extraOperatingCost' },
+    { section: '成本', key: 'leasingStageCost', name: '阶段招商一次性成本', formula: '招商调整阶段起始年一次性成本', zeroKey: 'leasingStageCost' },
+    { section: '成本调整', key: 'inputVat', name: '可抵扣进项税冲减', formula: '以负数冲减成本，最终形成不含税运营成本', negative: true },
+    { section: '成本合计', key: 'operatingCost', name: '运营成本合计（不含税）', formula: '上述运营成本合计 - 可抵扣进项税', total: true, zeroKey: 'operatingCost' },
+    { section: '税费', key: 'taxes', name: '经营税费', formula: '房产税 + 土地使用税 + 印花税 + 附加税 + 地方基金', total: true, zeroKey: 'taxes' },
+    { section: '经营结果', key: 'noi', name: 'NOI（经营净收益）', formula: '营业收入 - 不含税运营成本 - 经营税费', total: true },
+    { section: '备注口径', key: 'outsourcedManagementFee', name: '其中：第三方物业服务管理费', formula: '已包含在“人员及物业服务成本”中，仅作管理口径展示，不重复计入总成本', memo: true, zeroKey: 'outsourcedManagementFee' },
+  ];
+  const mappedRows = rows.map(row => {
+    const annualValue = stable(row.key) * (row.negative ? -1 : 1);
+    const cumulative = annualSum(row.key) * (row.negative ? -1 : 1);
+    let note = '';
+    if (Math.abs(annualValue) < 0.005) note = zeroReason(row.zeroKey || row.key);
+    else if (row.key === 'noi' && annualValue < 0) note = `NOI为负：成本及税费比营业收入高 ${fmt(Math.abs(annualValue), 2)} 万元。`;
+    return { ...row, annual: annualValue, monthly: annualValue / 12, cumulative, note };
+  });
+  const feeServiceCumulative = annual.reduce((sum, row) => sum + ['propertyTeamCost', 'securityCost', 'cleaningCost', 'energyCost'].reduce((inner, key) => inner + Number(row[key] || 0), 0), 0);
+  const feeIncomeCumulative = annualSum('propertyRevenue');
+  const feeServiceStable = ['propertyTeamCost', 'securityCost', 'cleaningCost', 'energyCost'].reduce((sum, key) => sum + stable(key), 0);
+  const feeBalanceStable = stable('propertyRevenue') - feeServiceStable;
+  const feeBalanceCumulative = feeIncomeCumulative - feeServiceCumulative;
+  const yearly = annual.map(row => {
+    const serviceCost = ['propertyTeamCost', 'securityCost', 'cleaningCost', 'energyCost'].reduce((sum, key) => sum + Number(row[key] || 0), 0);
+    return {
+      opYear: row.opYear,
+      phase: row.phase,
+      rent: Number(row.rentRevenue || 0),
+      propertyFee: Number(row.propertyManagementRevenue || 0),
+      commercialFee: Number(row.commercialManagementRevenue || 0),
+      centralAcFee: Number(row.centralAcRevenue || 0),
+      feeIncome: Number(row.propertyRevenue || 0),
+      serviceCost,
+      feeBalance: Number(row.propertyRevenue || 0) - serviceCost,
+      revenue: Number(row.revenue || 0),
+      operatingCost: Number(row.operatingCost || 0),
+      taxes: Number(row.taxes || 0),
+      noi: Number(row.noi || 0),
+      cumulativeCash: Number(row.cumulativeProjectCashFlow || 0),
+    };
+  });
+  return {
+    model,
+    annual,
+    yearly,
+    rows: mappedRows,
+    feeIncomeStable: stable('propertyRevenue'),
+    feeServiceStable,
+    feeBalanceStable,
+    feeIncomeCumulative,
+    feeServiceCumulative,
+    feeBalanceCumulative,
+    rentArea,
+  };
+}
+
+function renderOperatingLedgerCard() {
+  const ledger = buildOperatingLedger();
+  if (!ledger.annual.length) return '';
+  const rowClass = row => row.total ? 'total-row' : row.memo ? 'ledger-memo-row' : '';
+  return `<div class="card operating-ledger-card">
+    <div class="ledger-head"><div><span class="eyebrow">Operating ledger</span><h3>经营收入、成本与三项费用结余总表</h3><p>稳定月均为稳定年金额 ÷ 12；运营期累计为全部运营年度合计。为 0 的项目同时列出对应原因。</p></div><span class="tag">${ledger.annual.length} 个运营年度</span></div>
+    <div class="ledger-summary-kpis">
+      <div><span>三项费用收入 · 稳定年</span><strong>${fmt(ledger.feeIncomeStable, 2)}</strong><em>万元/年</em></div>
+      <div><span>三项费用对应成本 · 稳定年</span><strong>${fmt(ledger.feeServiceStable, 2)}</strong><em>万元/年</em></div>
+      <div class="${ledger.feeBalanceStable < 0 ? 'danger' : 'positive'}"><span>三项费用结余 · 稳定年</span><strong>${fmt(ledger.feeBalanceStable, 2)}</strong><em>万元/年</em></div>
+      <div><span>三项费用收入 · 运营期累计</span><strong>${fmt(ledger.feeIncomeCumulative, 2)}</strong><em>万元</em></div>
+      <div class="${ledger.feeBalanceCumulative < 0 ? 'danger' : 'positive'}"><span>三项费用结余 · 运营期累计</span><strong>${fmt(ledger.feeBalanceCumulative, 2)}</strong><em>万元</em></div>
+    </div>
+    <div class="data-table-wrap" style="max-height:none"><table class="data-table operating-ledger-table"><thead><tr><th>归类 / 项目</th><th>计算口径与出处</th><th class="num">稳定月均（万元）</th><th class="num">稳定年（万元）</th><th class="num">运营期累计（万元）</th><th>为 0 / 异常原因</th></tr></thead><tbody>
+      ${ledger.rows.map(row => `<tr class="${rowClass(row)}"><td><span class="ledger-section">${escapeHtml(row.section)}</span><strong>${escapeHtml(row.name)}</strong></td><td class="ledger-formula">${escapeHtml(row.formula)}</td><td class="num">${fmt(row.monthly, 2)}</td><td class="num">${fmt(row.annual, 2)}</td><td class="num">${fmt(row.cumulative, 2)}</td><td class="ledger-reason ${row.note ? 'has-reason' : ''}">${escapeHtml(row.note || '已形成有效数据')}</td></tr>`).join('')}
+    </tbody></table></div>
+    <details class="advanced ledger-year-details"><summary>逐年收入、三项费用结余与现金流明细（${ledger.annual.length}年）</summary><div class="advanced-body"><div class="data-table-wrap" style="max-height:560px"><table class="data-table"><thead><tr><th>运营年</th><th>阶段</th><th class="num">租金及联营</th><th class="num">物业费</th><th class="num">商管费</th><th class="num">空调费</th><th class="num">三项合计</th><th class="num">对应服务成本</th><th class="num">三项结余</th><th class="num">营业收入</th><th class="num">运营成本</th><th class="num">税费</th><th class="num">NOI</th><th class="num">累计项目现金流</th></tr></thead><tbody>${ledger.yearly.map(row => `<tr><td>第${row.opYear}年</td><td>${escapeHtml(row.phase || '运营期')}</td><td class="num">${fmt(row.rent, 2)}</td><td class="num">${fmt(row.propertyFee, 2)}</td><td class="num">${fmt(row.commercialFee, 2)}</td><td class="num">${fmt(row.centralAcFee, 2)}</td><td class="num"><strong>${fmt(row.feeIncome, 2)}</strong></td><td class="num">${fmt(row.serviceCost, 2)}</td><td class="num ${row.feeBalance < 0 ? 'neg' : 'pos'}">${fmt(row.feeBalance, 2)}</td><td class="num">${fmt(row.revenue, 2)}</td><td class="num">${fmt(row.operatingCost, 2)}</td><td class="num">${fmt(row.taxes, 2)}</td><td class="num ${row.noi < 0 ? 'neg' : 'pos'}">${fmt(row.noi, 2)}</td><td class="num ${row.cumulativeCash < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeCash, 2)}</td></tr>`).join('')}</tbody></table></div></div></details>
+    <div class="field-help">口径说明：“人员及物业服务成本”已包含第三方物业服务管理费、保安、保洁、物业工程及自营招聘培训；“第三方物业服务管理费”仅作明细展示，不重复加总。三项费用结余按三项费用收入减去物业工程、保安、保洁及公共能耗成本计算，不含商管团队办公、营销、招商和业主租金。</div>
+  </div>`;
 }
 
 function analyzeInvestmentOutcome(result = state.result) {
@@ -6341,6 +6498,9 @@ function renderOperatingResultCards() {
   const propertyServices = result.propertyServiceBreakdown || [];
   const marketing = result.marketingAllocation || [];
   const openingMarketing = result.openingMarketingAllocation || [];
+  const ledger = buildOperatingLedger(result);
+  const ledgerReason = key => ledger.rows.find(row => row.key === key)?.note || '';
+  const reasonLine = (key, value) => Math.abs(Number(value || 0)) < 0.005 ? `<small class="metric-zero-reason">${escapeHtml(ledgerReason(key))}</small>` : '';
   return `<div class="dashboard-grid operating-result-grid">
     <div class="card operating-cost-card">
       <h3>年度运营成本构成</h3>
@@ -6349,10 +6509,10 @@ function renderOperatingResultCards() {
         <div><span>企业人员成本</span><strong>${fmt(s.stableStaffCost, 2)} 万/年</strong></div>
         <div><span>办公行政</span><strong>${fmt(s.stableOfficeCost, 1)} 万/年</strong></div>
         <div><span>招商费用</span><strong>${fmt(s.stableLeasingCost, 1)} 万/年</strong></div>
-        <div><span>物业管理费收入</span><strong>${fmt(s.stablePropertyManagementIncome, 1)} 万/年</strong></div>
-        <div><span>商业管理费收入</span><strong>${fmt(s.stableCommercialManagementIncome, 1)} 万/年</strong></div>
-        <div><span>中央空调费收入</span><strong>${fmt(s.stableCentralAcIncome, 1)} 万/年</strong></div>
-        <div><span>三项费用合计</span><strong>${fmt(s.stablePropertyFeeIncome, 1)} 万/年</strong></div>
+        <div><span>物业管理费收入</span><strong>${fmt(s.stablePropertyManagementIncome, 1)} 万/年</strong>${reasonLine('propertyManagementRevenue', s.stablePropertyManagementIncome)}</div>
+        <div><span>商业管理费收入</span><strong>${fmt(s.stableCommercialManagementIncome, 1)} 万/年</strong>${reasonLine('commercialManagementRevenue', s.stableCommercialManagementIncome)}</div>
+        <div><span>中央空调使用费收入</span><strong>${fmt(s.stableCentralAcIncome, 1)} 万/年</strong>${reasonLine('centralAcRevenue', s.stableCentralAcIncome)}</div>
+        <div><span>三项经营性费用收入合计</span><strong>${fmt(s.stablePropertyFeeIncome, 1)} 万/年</strong>${reasonLine('propertyRevenue', s.stablePropertyFeeIncome)}</div>
         <div><span>营销费用</span><strong>${fmt(s.stableMarketingCost, 1)} 万/年</strong></div>
         <div><span>维保费用</span><strong>${fmt(s.stableMaintenanceCost, 1)} 万/年</strong></div>
       </div>

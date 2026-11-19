@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-share1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-ledger1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2721,6 +2721,59 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   return { organization, propertyService, projectFields, officeBudget, leasingBudget, marketingBudget, maintenanceBudget, operations, warnings };
 }
 
+function buildOperatingLedgerExportRows(result) {
+  const model = result?.model || {};
+  const annual = (result?.annual || []).filter(row => Number(row.opYear) > 0);
+  const stableYear = Math.max(1, Number(model.operations?.stableYear || 3));
+  const stable = annual.find(row => Number(row.opYear) === stableYear) || annual.at(-1) || {};
+  const sum = key => annual.reduce((total, row) => total + Number(row[key] || 0), 0);
+  const rentArea = Array.isArray(result?.shops)
+    ? result.shops.reduce((total, shop) => total + Number(shop.rentArea || 0), 0)
+    : (result?.floors || []).reduce((total, floor) => total + Number(floor.rentArea || 0), 0);
+  const centralConfigs = Array.isArray(model.revenues?.centralAcBuildings) ? model.revenues.centralAcBuildings : [];
+  const enabledCentral = centralConfigs.filter(item => item?.enabled && Number(item?.fee || model.revenues?.centralAcFee || 0) > 0).length;
+  const reason = key => {
+    if (key === 'propertyManagementRevenue' && Number(model.revenues?.propertyFee || 0) <= 0) return '项目默认物业管理费单价为0，且没有铺位覆盖价';
+    if (key === 'commercialManagementRevenue' && Number(model.revenues?.commercialManagementFee || 0) <= 0) return '项目默认商业管理费单价为0，且没有铺位覆盖价';
+    if (key === 'centralAcRevenue' && !centralConfigs.length) return '没有设置楼栋中央空调收费';
+    if (key === 'centralAcRevenue' && !enabledCentral) return '所有楼栋中央空调收费开关关闭，或启用楼栋单价为0';
+    if (key === 'staffCost') return '组织架构编制人数为0或岗位未配置';
+    if (key === 'marketingCost') return '年度营销预算为0';
+    if (key === 'ownerRent') return '业主租金未启用，或租赁基数/单价为0';
+    if (key === 'outsourcedManagementFee') return '物业服务均为自营模式，或岗位成本为0';
+    if (key === 'rentRevenue' && rentArea <= 0) return '商户计租面积为0';
+    if (key === 'otherRevenue') return '停车位、停车月租及其他收入比例未设置';
+    return '对应输入参数为0或当前年度未形成有效数据';
+  };
+  const definitions = [
+    ['收入', '租金及联营收入（不含税）', 'rentRevenue', '保底租金 + 联营扣点', false],
+    ['收入', '物业管理费收入', 'propertyManagementRevenue', '计租面积 × 物业费单价 × 12 × 出租率 × 递增因子', false],
+    ['收入', '商业管理费收入', 'commercialManagementRevenue', '计租面积 × 商管费单价 × 12 × 出租率 × 递增因子', false],
+    ['收入', '中央空调使用费收入', 'centralAcRevenue', '启用楼栋计租面积 × 空调单价 × 12 × 出租率 × 递增因子', false],
+    ['收入小计', '三项经营性费用收入合计', 'propertyRevenue', '物业费 + 商管费 + 空调费', true],
+    ['收入', '其他收入', 'otherRevenue', '停车收入 + 其他收入比例', false],
+    ['收入合计', '营业收入合计（不含税）', 'revenue', '租金及联营 + 三项费用 + 其他收入', true],
+    ['成本', '人员及物业服务成本', 'staffCost', '组织架构工资社保 + 物业服务岗位 + 第三方管理费 + 招聘培训', false],
+    ['成本', '公共能耗', 'energyCost', '面积 × 能耗单价 × 12 × 出租率', false],
+    ['成本', '物业基础运营', 'propertyOpsCost', '面积 × 物业运营单价', false],
+    ['成本', '办公行政', 'officeCost', '行政预算或面积参考单价', false],
+    ['成本', '招商费用', 'leasingCost', '年度招商预算 + 续租佣金', false],
+    ['成本', '年度营销推广', 'marketingCost', '常规营销 + 开业首年专项', false],
+    ['成本', '日常及专项维保', 'maintenanceCost', '固定维保 + 工程投资 × 维保比例', false],
+    ['成本', '业主租金支出', 'ownerRent', '土地租赁 + 物业租赁', false],
+    ['成本', '其他运营费用', 'otherOpexCost', '营业收入 × 其他运营费率', false],
+    ['成本', '经营税费', 'taxes', '房产税 + 土地使用税 + 印花税 + 附加税 + 地方基金', true],
+    ['成本合计', '运营成本合计（不含税）', 'operatingCost', '成本项目合计 - 可抵扣进项税', true],
+    ['经营结果', 'NOI', 'noi', '营业收入 - 运营成本 - 经营税费', true],
+    ['备注口径', '其中：第三方物业服务管理费', 'outsourcedManagementFee', '已包含在人员及物业服务成本中，不重复汇总', false],
+  ];
+  return definitions.map(([section, name, key, formula, total]) => {
+    const stableValue = Number(stable[key] || 0);
+    const cumulative = sum(key);
+    return [section, name, formula, stableValue / 12, stableValue, cumulative, stableValue === 0 ? reason(key) : '已形成有效数据', total ? '合计' : '明细'];
+  });
+}
+
 async function exportExcel(result) {
   const model = result.model;
   const s = result.summary;
@@ -3187,7 +3240,12 @@ async function exportExcel(result) {
     ...(result.leasingMilestoneAnalysis || []).map(x => [x.date, x.occupancy, x.monthlyRentPotential, x.annualRentPotential, x.note]),
   ], [18, 18, 24, 24, 60]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
-  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '招商调整阶段', '阶段租金调整因子', '基础租金递增因子', '最终租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '租金收入', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '阶段招商成本', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...(result.annual || []).map(x => [x.opYear, x.phase || '运营期', x.calendarYear, x.leasingStageName || '', x.leasingStageRentFactor || 1, x.baseRentGrowthFactor || x.rentGrowthFactor, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.rentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.projectIncomeTax, x.taxCashOutflow, x.equityIncomeTax || x.incomeTax || 0, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.leasingStageCost || 0, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - (x.leasingStageCost || 0) - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow])], [10,16,10,14,16,16,16,16,20,20,20,18,16,14,14,16,14,14,14,14,14,16,16,18,18,22,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
+  const annualExportRows = (result.annual || []).map(x => {
+    const feeServiceCost = Number(x.propertyTeamCost || 0) + Number(x.securityCost || 0) + Number(x.cleaningCost || 0) + Number(x.energyCost || 0);
+    return [x.opYear, x.phase || '运营期', x.calendarYear, x.leasingStageName || '', x.leasingStageRentFactor || 1, x.baseRentGrowthFactor || x.rentGrowthFactor, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.rentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, feeServiceCost, x.propertyRevenue - feeServiceCost, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.projectIncomeTax, x.taxCashOutflow, x.equityIncomeTax || x.incomeTax || 0, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.leasingStageCost || 0, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - (x.leasingStageCost || 0) - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow];
+  });
+  addSheet(wb, '经营归集与为0原因', [['归类', '项目', '计算口径与数据出处', '稳定月均（万元）', '稳定年（万元）', '运营期累计（万元）', '为0原因 / 数据状态', '汇总属性'], ...buildOperatingLedgerExportRows(result)], [14, 32, 64, 18, 18, 20, 54, 12]);
+  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '招商调整阶段', '阶段租金调整因子', '基础租金递增因子', '最终租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '租金收入', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '三项费用对应物业服务成本', '三项费用结余', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '阶段招商成本', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...annualExportRows], [10,16,10,14,16,16,16,16,20,20,20,18,16,14,14,22,18,16,14,14,14,14,14,16,16,18,18,22,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
 
   addSheet(wb, '敏感性分析', [['租金变化 ↓ / 投资变化 →', ...(result.sensitivity.capexSteps || []).map(v => (v * 100).toFixed(0) + '%')], ...(result.sensitivity.rentSteps || []).map((rent, i) => [(rent * 100).toFixed(0) + '%', ...(result.sensitivity.npvMatrix[i] || [])])], [24, 14, 14, 14, 14, 14]);
   addSheet(wb, '分析结论', [['类型', '内容'], ...(result.analysis.bullets || []).map(x => ['分析结论', x]), ...(result.analysis.recommendations || []).map(x => ['建议', x]), ...(result.diagnostics || []).map(x => [x.level, `${x.title}：${x.detail}`])], [18, 100]);
