@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-admin3';
+import './backend.js?v=20261119-nickname1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.8';
+const APP_VERSION = '1.27.9';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -2131,15 +2131,20 @@ async function pollShareTopic(topic) {
 async function pollShareInbox(userId = state.user?.id) {
   if (!userId || state.user?.id !== userId) return;
   const usernameTopic = await shareUsernameTopic(state.user?.username);
+  const displayNameTopic = await shareUsernameTopic(state.user?.displayName);
   await Promise.all([
     pollShareTopic(shareInboxTopic(userId)),
     pollShareTopic(usernameTopic),
+    pollShareTopic(displayNameTopic),
   ]);
 }
 
 async function receiveRealtimeProjectShare(data) {
+  const recipientKey = String(data?.recipientUsername || '').trim().toLowerCase();
+  const usernameKey = String(state.user?.username || '').trim().toLowerCase();
+  const displayNameKey = String(state.user?.displayName || '').trim().toLowerCase();
   const recipientMatches = data?.recipientId === state.user?.id
-    || (data?.recipientUsername && String(data.recipientUsername).toLowerCase() === String(state.user?.username || '').toLowerCase());
+    || (recipientKey && (recipientKey === usernameKey || recipientKey === displayNameKey));
   if (!data?.shareCode || !recipientMatches || processedShareIds.has(data.shareId)) return;
   const receive = async () => {
     const processedKey = `duoduo_share_received_${state.user.id}_${data.shareId || data.shareCode.slice(-24)}`;
@@ -2349,13 +2354,13 @@ async function openShareProjectModal(projectId) {
             <div class="share-option-card">
               <div class="share-option-head"><strong>直接发送到伙伴项目工作台</strong><span>对方会直接看到独立项目副本，并在项目卡片上标注“由你发送”。</span></div>
               <div class="share-simple-form">
-                <label for="share-recipient-account"><strong>对方登录用户名</strong><small>不是姓名，是伙伴注册和登录时使用的账号，例如 partner01</small></label>
-                <input class="input" id="share-recipient-account" list="share-recipient-options" autocomplete="off" placeholder="输入对方登录用户名，可带或不带 @">
+                <label for="share-recipient-account"><strong>对方用户名或昵称</strong><small>两种都可以，例如 强哥 或 ypprincer8</small></label>
+                <input class="input" id="share-recipient-account" list="share-recipient-options" autocomplete="off" placeholder="输入对方用户名或昵称，例如 强哥 / ypprincer8">
                 <datalist id="share-recipient-options">${users.map(user => `<option value="${escapeHtml(user.username)}">${escapeHtml(user.displayName || user.username)} · @${escapeHtml(user.username)}</option>`).join('')}</datalist>
                 <input class="input" id="share-note" placeholder="给对方的说明，可选">
                 <button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>直接发送</span></button>
               </div>
-              <div class="field-help">你的登录账号是 <strong>@${escapeHtml(state.user?.username || '')}</strong>。如不确定对方账号，请让对方在登录页或项目工作台顶部确认。${users.length ? '' : ' 当前用户目录未开放，但仍可直接输入准确用户名发送。'}</div>
+              <div class="field-help">你的登录账号是 <strong>@${escapeHtml(state.user?.username || '')}</strong>。支持登录用户名或显示昵称；带不带 @ 都可以。${users.length ? '' : ' 当前用户目录未开放，但仍可直接输入准确用户名发送。'}</div>
               <div id="share-direct-status" class="share-direct-status"></div>
             </div>
             <div class="share-divider"><span>或使用跨账号项目分享码</span></div>
@@ -2398,21 +2403,22 @@ async function openShareProjectModal(projectId) {
       );
       const recipientUsername = knownUser?.username || rawRecipient;
       const recipientName = knownUser?.displayName || recipientUsername;
+      const recipientLabel = knownUser?.username ? `@${knownUser.username}` : recipientUsername;
       if (!recipientUsername) {
         status.className = 'share-direct-status warning';
-        status.textContent = '请输入对方的登录用户名，例如 partner01。';
+        status.textContent = '请输入对方的用户名或昵称，例如 强哥 或 ypprincer8。';
         shareRecipientInput.focus();
         return;
       }
-      if (recipientUsername === String(state.user?.username || '').toLowerCase()) {
+      if (rawRecipient === String(state.user?.username || '').toLowerCase() || rawRecipient === String(state.user?.displayName || '').trim().toLowerCase()) {
         status.className = 'share-direct-status warning';
-        status.textContent = '这里填写的是对方登录用户名，不能发送给自己。';
+        status.textContent = '这里填写的是对方用户名或昵称，不能发送给自己。';
         return;
       }
       localStorage.setItem('duoduo_last_share_recipient', recipientUsername);
       button.disabled = true;
       status.className = 'share-direct-status';
-      status.textContent = `正在发送给 @${recipientUsername} 的项目工作台…`;
+      status.textContent = `正在发送给 ${recipientLabel} 的项目工作台…`;
       let directError = null;
       if (knownUser?.id) {
         try {
@@ -2421,7 +2427,7 @@ async function openShareProjectModal(projectId) {
             body: { recipientId: knownUser.id, recipientUsername, note },
           });
           status.classList.add('success');
-          status.textContent = `已直接发送给 @${recipientUsername}，对方打开项目工作台即可看到，并会标注由你发送。`;
+          status.textContent = `已直接发送给 ${recipientLabel}，对方打开项目工作台即可看到，并会标注由你发送。`;
           return;
         } catch (error) {
           directError = error;
@@ -2437,8 +2443,8 @@ async function openShareProjectModal(projectId) {
         });
         status.classList.add('success');
         status.textContent = delivery.persisted
-          ? `已发送给 @${recipientUsername}。对方登录后会直接看到“${projectName}”，并标注由你发送。`
-          : `已发出给 @${recipientUsername}。若对方未及时看到，请让其重新登录，或改用下方分享文件。`;
+          ? `已发送给 ${recipientLabel}。对方登录后会直接看到“${projectName}”，并标注由你发送。`
+          : `已发出给 ${recipientLabel}。若对方未及时看到，请让其重新登录，或改用下方分享文件。`;
       } catch (error) {
         status.classList.add('warning');
         status.textContent = `${error.message}${directError ? `（直接投递：${directError.message}）` : ''} 也可改用下方分享文件。`;
