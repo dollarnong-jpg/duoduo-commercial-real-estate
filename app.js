@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-noexit1';
+import './backend.js?v=20261120-profitlabel1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.30';
+const APP_VERSION = '1.28.31';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6684,11 +6684,11 @@ function renderNaturalYearReportCard() {
   const totalIncome = rows.reduce((sum, row) => sum + Number(row.totalIncome || 0), 0);
   const totalExpense = rows.reduce((sum, row) => sum + Number(row.totalExpense || 0), 0);
   const totalNet = rows.reduce((sum, row) => sum + Number(row.adjustedProjectCashFlow || 0), 0);
-  const totalAdjustment = rows.reduce((sum, row) => sum + Number(row.revenueAdjustment || 0) + Number(row.operatingCostAdjustment || 0) + Number(row.taxAdjustment || 0) + Number(row.capexAdjustment || 0), 0);
+  const projectProfitTotal = Number(result?.summary?.projectProfitTotal ?? result?.summary?.projectNetCashProfit ?? 0);
   const feeTotal = row => Number(row.propertyManagementRevenue || 0) + Number(row.commercialManagementRevenue || 0) + Number(row.centralAcRevenue || 0);
   return `<div class="card natural-year-report-card">
     <div class="natural-year-head"><div><span class="eyebrow">Natural-year report</span><h3>自然年运营收入与支出报表</h3><p>项目设定运营周期 <strong>${fmt(years, 0)}年</strong>，按开业日期拆分到自然年；首尾不足一年按实际日期和有效月数核算。共形成 <strong>${rows.length}个自然年度</strong>。</p></div><div class="natural-year-actions"><button class="btn btn-secondary btn-sm" id="natural-template-download">${ICONS.download}<span>下载调整模板</span></button><button class="btn btn-secondary btn-sm" id="natural-report-export">${ICONS.excel}<span>导出自然年报表</span></button><button class="btn btn-secondary btn-sm" id="natural-adjustment-import">${ICONS.upload}<span>导入调整</span></button><input type="file" id="natural-adjustment-file" accept=".xlsx,.xlsm" hidden></div></div>
-    <div class="natural-year-kpis"><div><span>自然年总收入</span><strong>${fmt(totalIncome, 2)}</strong><em>万元</em></div><div><span>自然年总支出</span><strong>${fmt(totalExpense, 2)}</strong><em>万元</em></div><div class="${totalNet < 0 ? 'danger' : 'positive'}"><span>自然年净现金流</span><strong>${fmt(totalNet, 2)}</strong><em>万元</em></div><div><span>调整合计</span><strong>${fmt(totalAdjustment, 2)}</strong><em>万元</em></div></div>
+    <div class="natural-year-kpis"><div><span>自然年总收入</span><strong>${fmt(totalIncome, 2)}</strong><em>万元</em></div><div><span>自然年总支出</span><strong>${fmt(totalExpense, 2)}</strong><em>万元</em></div><div class="${totalNet < 0 ? 'danger' : 'positive'}"><span>自然年经营净现金流</span><strong>${fmt(totalNet, 2)}</strong><em>万元</em></div><div class="${projectProfitTotal < 0 ? 'danger' : 'positive'}"><span>项目盈利合计</span><strong>${fmt(projectProfitTotal, 2)}</strong><em>万元 · 已扣除建设投资、商管启动成本、运营成本、业主租金及税费</em></div></div>
 
     <div class="subsection-heading natural-year-subsection-heading"><div><strong>逐年经营收入明细</strong><span>单位：万元；按每个自然年实际计费区间拆分</span></div></div>
     <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table natural-year-income-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">有效月数</th><th class="num">招商率</th><th class="num">收租率</th><th class="num">应收租金</th><th class="num">未收租金</th><th class="num">实收租金</th><th class="num">物业管理费收入</th><th class="num">商业管理费收入</th><th class="num">中央空调费收入</th><th class="num">三项费用合计</th><th class="num">其他收入</th><th class="num">总收入</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(row.activeMonths, 0)}</td><td class="num">${fmtPct(row.occupancy)}</td><td class="num">${fmtPct(row.rentCollectionRate)}</td><td class="num">${fmt(row.scheduledRentRevenue, 2)}</td><td class="num neg">${fmt(row.uncollectedRentRevenue, 2)}</td><td class="num"><strong>${fmt(row.rentRevenue, 2)}</strong></td><td class="num">${fmt(row.propertyManagementRevenue, 2)}</td><td class="num">${fmt(row.commercialManagementRevenue, 2)}</td><td class="num">${fmt(row.centralAcRevenue, 2)}</td><td class="num"><strong>${fmt(feeTotal(row), 2)}</strong></td><td class="num">${fmt(row.otherRevenue, 2)}</td><td class="num"><strong>${fmt(row.totalIncome, 2)}</strong></td></tr>`).join('')}</tbody></table></div>

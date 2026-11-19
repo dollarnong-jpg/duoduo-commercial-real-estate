@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-noexit1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-profitlabel1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2884,7 +2884,7 @@ async function exportExcel(result) {
     ['总建筑面积（㎡）', s.grossFloorArea], ['可租赁面积（㎡）', s.leasableArea], ['商铺/楼层数量', s.calculationMode === 'preliminary' ? s.floorCount : s.shopsCount],
     ['项目立项 / 进场日期', s.investmentDate || ''], ['建设开工日期', s.constructionStartDate || ''], ['计划竣工日期', s.constructionEndDate || ''], ['项目接管 / 进场日期', s.handoverDate || ''], ['招商启动日期', s.leasingStartDate || ''], ['计划开业日期', s.openingDate || ''], ['运营结束日期', s.operationEndDate || ''],
     ['项目总投资（万元）', s.totalInvestment], ['稳定期营业收入（万元/年）', s.stableRevenue], ['稳定期物业管理费收入（万元/年）', s.stablePropertyManagementIncome || 0], ['稳定期商业管理费收入（万元/年）', s.stableCommercialManagementIncome || 0], ['稳定期中央空调费收入（万元/年）', s.stableCentralAcIncome || 0], ['稳定期三项费用收入合计（万元/年）', s.stablePropertyFeeIncome || 0], ['业主租金支出（万元/年）', s.stableOwnerRentCost || 0], ['稳定期NOI（万元/年）', s.stableNoi],
-    ['NOI回报率', s.noiYield], ['周期净利润（万元）', s.periodNetProfit || 0], ['周期净利率', s.periodProfitMargin || 0], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback], ['期末退出价值（万元）', s.exitValueIncluded ? (s.exitValue || 0) : 0], ['期末退出价值口径', s.exitValueIncluded ? '已计入最后一年现金流' : (s.exitValueBlockedReason || '不计入')],
+    ['NOI回报率', s.noiYield], ['周期净利润（万元）', s.periodNetProfit || 0], ['周期净利率', s.periodProfitMargin || 0], ['项目盈利合计（万元）', s.projectProfitTotal ?? s.projectNetCashProfit ?? 0], ['项目IRR', s.projectIrr], ['项目NPV（万元）', s.projectNpv], ['静态回收期（年）', s.staticPayback], ['期末退出价值（万元）', s.exitValueIncluded ? (s.exitValue || 0) : 0], ['期末退出价值口径', s.exitValueIncluded ? '已计入最后一年现金流' : (s.exitValueBlockedReason || '不计入')],
     [''], ['说明', '本表由浏览器版多多·商业地产自动生成，用于投资初筛与方案比较，不替代可研、审计、评估或税务鉴证。'],
   ], [26, 32, 22, 22]);
   addSheet(wb, '核心参数', [
@@ -3173,6 +3173,7 @@ async function exportExcel(result) {
     ['债务融资（万元）', s.loanAmount || 0],
     ['杠杆倍数', s.leverageMultiple || 0],
     ['项目净现金收益（万元）', s.projectNetCashProfit || 0],
+    ['项目盈利合计（全周期现金流，万元）', s.projectProfitTotal ?? s.projectNetCashProfit ?? 0],
     ['资本金净收益（万元）', s.equityNetCashProfit || 0],
     ['周期净利润（万元）', s.periodNetProfit || 0],
     ['周期净利率', s.periodProfitMargin || 0],
@@ -3219,7 +3220,7 @@ async function exportExcel(result) {
     ['收入', '商业管理费收入', 'Σ铺位计租面积×商业管理费单价×12×出租率×商管费递增因子÷10000', ['SUM','POWER','INT','IF'], '逐铺读取商业管理费覆盖值，没有覆盖值时使用项目默认单价；按商管费独立递增模式逐年调整。', '按商业管理委托合同设置单价与递增周期；如项目不收商管费则填0。', 'formulas.commercialManagementGrowthMode', formulas.commercialManagementGrowthMode, '商管费独立增加服务性收入，并单独计算增值税。'],
     ['收入', '中央空调使用费收入', 'Σ开启楼栋的铺位计租面积×楼栋空调单价×12×出租率×空调费递增因子÷10000', ['SUM','POWER','INT','IF'], '按楼栋开关判断是否收费，逐铺读取空调费覆盖值；未开启楼栋按0核算。', '先梳理哪些楼栋实际提供中央空调并收费，再按能源、运维成本和合同调整楼栋单价及递增率。', 'formulas.centralAcGrowthMode', formulas.centralAcGrowthMode, '空调费为独立收入来源，不计入物业费或商业管理费。'],
     ['收入', '多经与停车收入', '租金×多经比例+车位数×月租×12×出租率÷10000', ['SUM'], '多经收入按租金比例计算，停车收入按车位数量和月租计算，两者相加进入营业收入。', '按广告、场地、临时点位和停车收费方案调整；没有数据时可保守设置为0。', 'revenues.otherIncomeRatio', model.revenues.otherIncomeRatio, '属于其他收入，需单独计算增值税。'],
-    ['运营', '运营成本', '物业+能耗+商管+行政+营销+维修+保险+坏账+其他+业主租金', ['SUM','MIN'], '各成本分项按面积、收入或资产原值计算，汇总后扣减可抵扣进项税，形成不含税运营成本。', '按运营预算和物业合同调整。先核对人员编制、能耗和维保，再调营销、其他费用和业主租金。', 'operations.propertyOpsCost', model.operations.propertyOpsCost, '运营成本直接扣减NOI。'],
+    ['运营', '运营成本与业主租金', '运营成本（不含业主租金）=物业+能耗+商管+行政+营销+维修+保险+坏账+其他；运营成本合计=运营成本（不含业主租金）+业主租金', ['SUM','MIN'], '各成本分项按面积、收入或资产原值计算，汇总后扣减可抵扣进项税；业主租金单列后共同进入NOI。', '按运营预算和物业合同调整。先核对人员编制、能耗和维保，再调营销、其他费用和业主租金。', 'operations.propertyOpsCost', model.operations.propertyOpsCost, '运营成本和业主租金均直接扣减NOI。'],
     ['运营', '年度招商及运营成本调整', '当年招商费用=基准×招商系数+额外额；常规运营成本=基准×运营系数+年度额外成本', ['IF','SUM'], '系统按运营年度读取设置，对招商费用和常规运营成本分别应用系数，并叠加额外成本。', '在年度调整表中按年份填写；100%表示不调整，超过100%表示增加，低于100%表示压缩。', 'operations.annualCostAdjustments', '按年设置', '用于体现开业爬坡、招商计划、团队扩编或成本优化。'],
     ['成本', '业主租金（土地及物业）', '按面积：面积×元/㎡/月÷10000；按总额：直接取月租金；再乘支付月数并按合同递增', ['SUM','IF','POWER'], '土地和物业分别选择按面积单价或月度总额计价，形成月度租金后乘以支付月数，再按所选递增方式逐年计算。', '分别核对土地合同和物业合同的计价方式、面积、单价或月租金总额、支付月数、递增方式和递增率，并检查免租期和解约条款。', 'ownerRent.propertyMonthlyRent', model.ownerRent?.propertyMonthlyRent || 0, '业主租金作为独立成本项，与运营成本分列，但同样扣减NOI并进入现金流。'],
     ['税费', '销项税与进项税', '销项=Σ[含税收入÷(1+税率)×税率]；进项=MIN(销项,可抵扣成本×比例×税率÷(1+税率))', ['SUM','MIN'], '先按租金、物业、其他收入和联营扣点分别计算销项税，再估算可抵扣进项税，差额形成增值税净额。', '税率和抵扣比例按项目属地、合同类型和税务认定设置；不能直接套用全国统一值。', 'taxes.vatRent', model.taxes.vatRent, '增值税净额影响附加税和现金流。'],
@@ -3232,6 +3233,7 @@ async function exportExcel(result) {
     ['退出', 'NOI资本化率法', '期末NOI÷退出资本化率×(1-退出税费率)', ['MAX','IF'], '用期末稳定NOI除以资本化率得到毛退出价值，再扣退出税费。', '资本化率按同类资产成交和估值判断；资本化率上升会降低退出价值。', 'valuation.exitCapRate', model.valuation.exitCapRate, '影响最后一年现金流、NPV和IRR。'],
     ['退出', '收入倍数法', '期末营业收入×退出收入倍数×(1-退出税费率)', ['SUM','IF'], '用期末营业收入乘退出倍数得到退出价值，再扣退出税费。', '收入倍数应保守，并与NOI资本化率法交叉验证；不要只用较高方法支撑投资结论。', 'formulas.exitRevenueMultiple', formulas.exitRevenueMultiple, '影响期末退出价值和项目NPV。'],
     ['收益', 'NPV', 'Σ[CFt÷(1+r)^t]', ['NPV','POWER','SUM'], '把每年项目现金流按折现率折到当前时点后相加；建设期现金流出也纳入。', '折现率采用企业投资门槛或同类项目资本成本；NPV大于0才表示达到门槛。', 'valuation.discountRate', model.valuation.discountRate, 'NPV是项目可行性判断的核心指标。'],
+    ['收益', '项目盈利合计', '项目盈利合计=Σ[全周期项目收入+期末退出价值-建设投资-商业管理启动成本-运营成本-业主租金-税费-项目所得税]', ['SUM','IF'], '项目盈利合计采用全周期现金口径，已扣除项目原始建设投入、商管启动成本和运营期成本税费。', '非自有产权项目期末退出价值为0；项目盈利合计与周期净利润并行查看，前者看现金盈利，后者看会计利润。', 'valuation.includeExit', model.valuation.includeExit, '项目盈利合计直接反映项目全周期最终盈利。'],
     ['收益', 'IRR', '求使NPV(IRR)=0的折现率', ['IRR','二分法'], '系统在合理区间内反复二分，寻找让NPV等于0的折现率。', 'IRR高于企业门槛才通过初筛；现金流异常时IRR可能无解，应结合NPV。', 'valuation.discountRate', model.valuation.discountRate, '用于比较项目自身收益能力。'],
     ['收益', '静态回收期', '累计现金流由负转正的插值年份', ['LOOKUP','IF'], '逐年累计现金流，找到由负转正的年份，并按当年现金流比例插值。', '回收期越短，资金占用风险越低；可与融资期限和退出计划对照。', 'project.operationYears', model.project.operationYears, '用于判断投资回收速度。'],
     ['人员', '税前年度工资与社保', '税前年度工资=Σ(人数×税前应发月薪×年度薪资月数)；个人社保=Σ(税前月薪×12×个人比例)；单位社保=Σ(税前月薪×12×单位比例)', ['SUM'], '岗位月薪按税前应发口径录入。年度多薪增加税前工资；社保公积金按每月缴费基数缴纳12个月，不随13/15薪重复增加缴费月数。', '按定编定岗方案填写人数和税前应发月薪；年度薪资月数可填12、13、14或15薪。单位和个人社保公积金比例必须按项目属地险种、基数和年度政策调整，不能直接套用默认值。', 'organization.employeeSocialInsuranceRate', model.organization?.employeeSocialInsuranceRate, '决定税前工资、员工实发和企业人员成本。'],

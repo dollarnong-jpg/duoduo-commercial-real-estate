@@ -3039,6 +3039,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "equityCapital": equity_investment,
             "leverageMultiple": leverage_multiple,
             "projectNetCashProfit": project_net_cash_profit,
+            "projectProfitTotal": project_net_cash_profit,
             "equityNetCashProfit": equity_net_cash_profit,
             "periodNetProfit": period_net_profit,
             "periodOperatingNoi": period_operating_noi,
