@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-exactsync1';
+import './backend.js?v=20261119-exactdisplay1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.12';
+const APP_VERSION = '1.28.13';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3659,7 +3659,7 @@ function renderShopsStep() {
     ${renderFloorEditor(m, mode, preview)}
     <div class="stats-row">
       <div class="mini-stat"><strong data-live="investment">${preview ? fmt(preview.summary.totalInvestment) : '待计算'}</strong><span>项目总投资/万元</span></div>
-      <div class="mini-stat"><strong data-live="monthlyRent">${fmt(totalMonthly)}</strong><span>满租月收益/元</span></div>
+      <div class="mini-stat"><strong data-live="monthlyRent">${fmt(totalMonthly, 2)}</strong><span>满租月收益/元</span></div>
       <div class="mini-stat"><strong data-live="avgRent">${fmt(totalRentArea ? totalMonthly / totalRentArea : 0, 2)}</strong><span>平均月收益/计租㎡</span></div>
       <div class="mini-stat status-advice-stat"><strong data-live="status">${escapeHtml(statusAdvice.title)}</strong><span>实时测算判断</span><small data-live="statusAdvice">${escapeHtml(statusAdvice.short)}</small></div>
     </div>
@@ -7586,7 +7586,7 @@ function updateQuickRentEstimateFromModel() {
     if (monthlyCell) monthlyCell.textContent = fmt(monthly);
   });
   const averageRent = totalArea > 0 ? totalMonthly / totalArea : 0;
-  document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(totalMonthly); });
+  document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(totalMonthly, 2); });
   document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(totalMonthly * 3); });
   document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(totalMonthly * 12 / 10000, 1); });
   document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(averageRent, 2); });
@@ -7628,7 +7628,7 @@ function updateLiveStats() {
   const displayedMonthlyRent = quickMonthlyRent > 0 ? quickMonthlyRent : Number(summary.totalMonthlyRent || 0);
   const displayedAverageRent = quickRentArea > 0 ? displayedMonthlyRent / quickRentArea : Number(summary.averageRent || 0);
   document.querySelectorAll('[data-live="investment"], #cost-estimate').forEach(el => { el.textContent = fmt(summary.totalInvestment); });
-  document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent); });
+  document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent, 2); });
   document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 3); });
   document.querySelectorAll('[data-live="annualRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 12 / 10000, 1); });
   const operationRentRevenue = Number(state.preview?.summary?.operationPeriodCollectedRentRevenue ?? (state.preview?.annual || []).filter(row => Number(row.opYear) > 0).reduce((sum, row) => sum + Number(row.collectedRentRevenue || 0), 0));

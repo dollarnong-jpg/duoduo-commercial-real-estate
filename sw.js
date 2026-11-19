@@ -1,7 +1,7 @@
-const CACHE_NAME = 'duoduo-cre-v148-20261119';
+const CACHE_NAME = 'duoduo-cre-v149-20261119';
 const CORE = [
-  './', './index.html', './styles.css?v=20261119-exactsync1', './app.js?v=20261119-exactsync1',
-  './backend.js?v=20261119-exactsync1', './cloud-config.js?v=20261119-exactsync1', './pyodide-loader.js?v=20261119-exactsync1', './engine.py?v=20261119-exactsync1',
+  './', './index.html', './styles.css?v=20261119-exactdisplay1', './app.js?v=20261119-exactdisplay1',
+  './backend.js?v=20261119-exactdisplay1', './cloud-config.js?v=20261119-exactdisplay1', './pyodide-loader.js?v=20261119-exactdisplay1', './engine.py?v=20261119-exactdisplay1',
   './pyodide/pyodide.mjs', './pyodide/pyodide.asm.js', './pyodide/pyodide-lock.json', './pyodide/chunk-manifest.json',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'
 ];
