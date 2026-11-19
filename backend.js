@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-live1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261119-natural1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2775,6 +2775,56 @@ function buildOperatingLedgerExportRows(result) {
   });
 }
 
+function naturalYearReportSheetRows(result) {
+  return [
+    ['自然年', '实际开始日期', '实际结束日期', '有效月数', '是否不足一年', '招商率', '收租率', '应收租金（万元）', '未收租金（万元）', '实收租金（万元）', '物业费收入（万元）', '商管费收入（万元）', '空调费收入（万元）', '总收入（万元）', '运营成本（万元）', '税费（万元）', '项目所得税（万元）', '资本支出（万元）', '总支出（万元）', '调整额（万元）', '调整后净现金流（万元）', '累计运营现金流（万元）', '调整说明'],
+    ...(result.naturalYearReport || []).map(row => [row.calendarYear, row.periodStart || '', row.periodEndExclusive || '', row.activeMonths || 0, row.isPartialYear ? '是' : '否', row.occupancy || 0, row.rentCollectionRate || 0, row.scheduledRentRevenue || 0, row.uncollectedRentRevenue || 0, row.collectedRentRevenue || row.rentRevenue || 0, row.propertyManagementRevenue || 0, row.commercialManagementRevenue || 0, row.centralAcRevenue || 0, row.totalIncome || 0, row.cashOperatingCost || row.operatingCost || 0, row.taxes || 0, row.projectIncomeTax || 0, row.projectCapex || 0, row.totalExpense || 0, (row.revenueAdjustment || 0) + (row.operatingCostAdjustment || 0) + (row.taxAdjustment || 0) + (row.capexAdjustment || 0), row.adjustedProjectCashFlow || 0, row.cumulativeOperationCashFlow || 0, row.adjustmentNote || ''])
+  ];
+}
+
+function naturalYearAdjustmentWorkbook(result) {
+  const wb = XLSX.utils.book_new();
+  const rows = [
+    ['自然年调整模板'],
+    ['按项目设定运营年限生成自然年区间；请只修改“调整额”和备注，不要改自然年和原始数据。调整额单位为万元，可为正数或负数。'],
+    [],
+    ['自然年', '实际开始日期', '实际结束日期', '有效月数', '原收入（万元）', '原运营成本（万元）', '原税费（万元）', '原资本支出（万元）', '收入调整额（万元）', '运营成本调整额（万元）', '税费调整额（万元）', '资本支出调整额（万元）', '备注'],
+    ...(result.naturalYearReport || []).map(row => [row.calendarYear, row.periodStart || '', row.periodEndExclusive || '', row.activeMonths || 0, row.totalIncome || 0, row.cashOperatingCost || 0, row.taxes || 0, row.projectCapex || 0, row.revenueAdjustment || 0, row.operatingCostAdjustment || 0, row.taxAdjustment || 0, row.capexAdjustment || 0, row.adjustmentNote || ''])
+  ];
+  addSheet(wb, '自然年调整模板', rows, [12, 18, 18, 10, 18, 20, 16, 18, 20, 22, 18, 22, 40]);
+  return wb;
+}
+
+function parseNaturalYearAdjustments(base64, filename = '') {
+  const wb = XLSX.read(base64, { type: 'base64' });
+  const sheetName = wb.SheetNames.find(name => name.includes('自然年')) || wb.SheetNames[0];
+  if (!sheetName || !wb.Sheets[sheetName]) throw new Error('未找到自然年调整工作表');
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: false, defval: '' });
+  const headerIndex = rows.findIndex(row => String(row[0] || '').includes('自然年') && String(row[8] || '').includes('收入调整'));
+  if (headerIndex < 0) throw new Error('表头不完整，请使用系统下载的自然年调整模板');
+  const headers = rows[headerIndex].map(value => String(value || '').replace(/[（(].*?[）)]/g, '').trim());
+  const indexOf = aliases => headers.findIndex(header => aliases.some(alias => header.includes(alias)));
+  const indexes = {
+    year: indexOf(['自然年']), revenue: indexOf(['收入调整额']), operatingCost: indexOf(['运营成本调整额']),
+    tax: indexOf(['税费调整额']), capex: indexOf(['资本支出调整额']), note: indexOf(['备注'])
+  };
+  if (indexes.year < 0 || indexes.revenue < 0) throw new Error('缺少自然年或调整额列');
+  const adjustments = [];
+  for (const row of rows.slice(headerIndex + 1)) {
+    const year = Number(row[indexes.year]);
+    if (!Number.isFinite(year) || year <= 0) continue;
+    adjustments.push({
+      calendarYear: year,
+      revenueAdjustment: Number(row[indexes.revenue] || 0) || 0,
+      operatingCostAdjustment: Number(row[indexes.operatingCost] || 0) || 0,
+      taxAdjustment: Number(row[indexes.tax] || 0) || 0,
+      capexAdjustment: Number(row[indexes.capex] || 0) || 0,
+      note: String(row[indexes.note] || '').trim(),
+    });
+  }
+  return { adjustments, warnings: adjustments.length ? [] : ['没有识别到有效自然年调整行'] };
+}
+
 async function exportExcel(result) {
   const model = result.model;
   const s = result.summary;
@@ -3240,13 +3290,14 @@ async function exportExcel(result) {
     ['日期', '目标招商率', '可实现月租金（元）', '年化租金（万元）', '说明'],
     ...(result.leasingMilestoneAnalysis || []).map(x => [x.date, x.occupancy, x.monthlyRentPotential, x.annualRentPotential, x.note]),
   ], [18, 18, 24, 24, 60]);
+  addSheet(wb, '自然年运营报表', naturalYearReportSheetRows(result), [12, 18, 18, 10, 12, 12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 14, 16, 16, 16, 16, 20, 22, 40]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
   const annualExportRows = (result.annual || []).map(x => {
     const feeServiceCost = Number(x.propertyTeamCost || 0) + Number(x.securityCost || 0) + Number(x.cleaningCost || 0) + Number(x.energyCost || 0);
-    return [x.opYear, x.phase || '运营期', x.calendarYear, x.leasingStageName || '', x.leasingStageRentFactor || 1, x.baseRentGrowthFactor || x.rentGrowthFactor, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.rentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, feeServiceCost, x.propertyRevenue - feeServiceCost, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.projectIncomeTax, x.taxCashOutflow, x.equityIncomeTax || x.incomeTax || 0, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.leasingStageCost || 0, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - (x.leasingStageCost || 0) - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow];
+    return [x.opYear, x.phase || '运营期', x.calendarYear, x.leasingStageName || '', x.leasingStageRentFactor || 1, x.baseRentGrowthFactor || x.rentGrowthFactor, x.rentGrowthFactor, x.propertyFeeGrowthFactor, x.commercialManagementGrowthFactor, x.centralAcGrowthFactor, x.occupancy, x.rentCollectionRate, x.scheduledRentRevenue, x.uncollectedRentRevenue, x.collectedRentRevenue, x.propertyManagementRevenue, x.commercialManagementRevenue, x.centralAcRevenue, x.propertyRevenue, feeServiceCost, x.propertyRevenue - feeServiceCost, x.revenue, x.outputVat, x.inputVat, x.vatPayable, x.propertyTax, x.landUseTax, x.stampDuty, x.vatSurcharge, x.localFund, x.taxes, x.projectIncomeTax, x.taxCashOutflow, x.equityIncomeTax || x.incomeTax || 0, x.staffCost, x.outsourcedManagementFee || 0, x.officeCost, x.leasingAdjustmentFactor, x.leasingCost, x.leasingStageCost || 0, x.operationsAdjustmentFactor, x.extraOperatingCost, x.marketingCost, x.maintenanceCost, x.ownerLandRent, x.ownerPropertyRent, x.ownerRent, x.operatingCost - x.staffCost - x.officeCost - x.leasingCost - (x.leasingStageCost || 0) - x.marketingCost - x.maintenanceCost - (x.ownerRent || 0) - (x.extraOperatingCost || 0), x.operatingCost, x.noi, x.projectCashFlow, x.cumulativeProjectCashFlow];
   });
   addSheet(wb, '经营归集与为0原因', [['归类', '项目', '计算口径与数据出处', '稳定月均（万元）', '稳定年（万元）', '运营期累计（万元）', '为0原因 / 数据状态', '汇总属性'], ...buildOperatingLedgerExportRows(result)], [14, 32, 64, 18, 18, 20, 54, 12]);
-  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '招商调整阶段', '阶段租金调整因子', '基础租金递增因子', '最终租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '租金收入', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '三项费用对应物业服务成本', '三项费用结余', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '阶段招商成本', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...annualExportRows], [10,16,10,14,16,16,16,16,20,20,20,18,16,14,14,22,18,16,14,14,14,14,14,16,16,18,18,22,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
+  addSheet(wb, `年度收益${annualYears}年`, [['运营年', '阶段', '日历年', '招商调整阶段', '阶段租金调整因子', '基础租金递增因子', '最终租金递增因子', '物业费递增因子', '商管费递增因子', '空调费递增因子', '招商率', '收租率', '应收租金', '未收租金', '实收租金', '物业管理费收入', '商业管理费收入', '中央空调费收入', '三项费用合计', '三项费用对应物业服务成本', '三项费用结余', '营业收入', '销项税', '进项税', '应纳增值税', '房产税', '土地使用税', '印花税', '附加税', '地方基金', '经营税费', '融资前项目所得税', '项目税费现金支出', '融资后股权所得税', '人员及服务成本', '第三方物业服务管理费', '办公行政', '招商费用系数', '招商费用', '阶段招商成本', '运营成本系数', '额外成本', '营销费用', '维保费用', '土地租赁支出', '物业租赁支出', '租赁支出合计', '其他运营及税费', '运营成本', 'NOI', '项目现金流', '累计项目现金流'], ...annualExportRows], [10,16,10,14,16,16,16,16,20,20,20,12,12,18,18,18,18,16,14,14,22,18,16,14,14,14,14,14,16,16,18,18,22,18,18,22,16,16,16,16,14,16,16,16,16,16,22,16,14,16,18,22]);
 
   addSheet(wb, '敏感性分析', [['租金变化 ↓ / 投资变化 →', ...(result.sensitivity.capexSteps || []).map(v => (v * 100).toFixed(0) + '%')], ...(result.sensitivity.rentSteps || []).map((rent, i) => [(rent * 100).toFixed(0) + '%', ...(result.sensitivity.npvMatrix[i] || [])])], [24, 14, 14, 14, 14, 14]);
   addSheet(wb, '分析结论', [['类型', '内容'], ...(result.analysis.bullets || []).map(x => ['分析结论', x]), ...(result.analysis.recommendations || []).map(x => ['建议', x]), ...(result.diagnostics || []).map(x => [x.level, `${x.title}：${x.detail}`])], [18, 100]);
@@ -4213,6 +4264,29 @@ async function handleApi(path, init) {
     return fileResponse(await workbookBlob(operatingBudgetTemplate()), '商业地产运营成本预算导入模板.xlsx', XLSX_MIME);
   }
 
+  if (pathname.endsWith('/api/templates/natural-year-adjustments') && method === 'POST') {
+    const body = await requestJSON(init);
+    const model = await normalizeModel(body.model || body);
+    const result = await calculate(model, false);
+    return fileResponse(await workbookBlob(naturalYearAdjustmentWorkbook(result)), '商业地产自然年调整模板.xlsx', XLSX_MIME);
+  }
+
+  if (pathname.endsWith('/api/export/natural-year') && method === 'POST') {
+    const body = await requestJSON(init);
+    const model = await normalizeModel(body.model || body);
+    const result = await calculate(model, false);
+    const wb = XLSX.utils.book_new();
+    addSheet(wb, '自然年运营报表', naturalYearReportSheetRows(result), [12, 18, 18, 10, 12, 12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 14, 16, 16, 16, 16, 20, 22, 40]);
+    return fileResponse(await workbookBlob(wb), `${result.summary?.projectName || '项目'}_自然年运营报表.xlsx`, XLSX_MIME);
+  }
+
+  if (pathname.endsWith('/api/import-natural-year-adjustments') && method === 'POST') {
+    const body = await requestJSON(init);
+    if (!body.contentBase64) return jsonResponse({ error: '请选择自然年调整文件' }, 400);
+    try { return jsonResponse(parseNaturalYearAdjustments(body.contentBase64, String(body.filename || ''))); }
+    catch (error) { return jsonResponse({ error: error.message }, 400); }
+  }
+
   if (pathname.endsWith('/api/templates/preopening-budget') && method === 'GET') {
     return fileResponse(await workbookBlob(preopeningBudgetTemplate()), '商业地产筹备期成本明细导入模板.xlsx', XLSX_MIME);
   }
@@ -4466,7 +4540,7 @@ window.fetch = async function duoduoFetch(input, init = {}) {
     const method = String(init?.method || 'GET').toUpperCase();
     const projectMetaRequest = method === 'GET' && url.pathname.endsWith('/api/projects') && url.searchParams.get('meta') === '1';
     const fastRequest = projectMetaRequest || fastEndpoints.some(path => url.pathname.endsWith(path)) || /\/api\/admin\/users\/[0-9a-f-]+\/status$/i.test(url.pathname);
-    const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|preopening-budget|market-comps)$/.test(url.pathname) || /\/export\/(xlsx|shop-audit|preopening-budget-detail|operating-budget-detail)$/.test(url.pathname);
+    const needsXlsx = /\/api\/templates\//.test(url.pathname) || /\/api\/import-(shops|operating-budget|preopening-budget|market-comps|natural-year-adjustments)$/.test(url.pathname) || /\/export\/(xlsx|natural-year|shop-audit|preopening-budget-detail|operating-budget-detail)$/.test(url.pathname);
     const needsPptx = /\/export\/pptx$/.test(url.pathname);
     if (needsXlsx) await ensureXlsxLibrary();
     if (needsPptx) await ensurePptxLibrary();
