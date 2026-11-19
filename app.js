@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-acoptions1';
+import './backend.js?v=20261119-rentsync1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.17';
+const APP_VERSION = '1.28.18';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -676,6 +676,9 @@ const state = {
   current: null,
   result: null,
   preview: null,
+  calculating: false,
+  calculationError: '',
+  lastCalculatedAt: 0,
   marketAnalysis: null,
   marketWarnings: [],
   marketBusy: false,
@@ -1356,6 +1359,8 @@ function clearSession() {
   state.current = null;
   state.result = null;
   state.preview = null;
+  state.calculating = false;
+  state.calculationError = '';
   state.previewRefreshPending = false;
   state.marketAnalysis = null;
   state.marketError = null;
@@ -3012,6 +3017,9 @@ async function openProject(projectId) {
     const benchmarkInitialized = ensureSettlementBenchmarks(state.current.model);
     state.result = payload.result;
     state.preview = benchmarkInitialized ? null : payload.result;
+    state.calculating = false;
+    state.calculationError = '';
+    state.lastCalculatedAt = payload.result ? Date.now() : 0;
     state.marketAnalysis = null;
     state.marketError = null;
     state.step = 0;
@@ -3634,19 +3642,22 @@ function renderShopsStep() {
   const mode = m.calculationMode || 'preliminary';
   const floors = m.floors || [];
   const shops = m.shops || [];
-  const preview = state.preview || state.result;
+  const preview = state.preview || (state.dirty ? null : state.result);
   const totalBuilding = floors.reduce((sum, floor) => sum + Number(floor.buildingArea || 0), 0);
   const totalLease = floors.reduce((sum, floor) => sum + Number(floor.leasableArea || 0), 0);
   const rentAreaRecords = mode === 'detailed' && shops.length ? shops : floors;
   const totalRentArea = rentAreaRecords.reduce((sum, record) => sum + rentAreaFor(record, m), 0);
   const revenueMode = m.project?.revenueModel || 'rent';
   const statusAdvice = buildStatusAdvice(preview);
-  const totalMonthly = floors.reduce((sum, floor) => {
+  const floorMonthly = floors.reduce((sum, floor) => {
     const area = rentAreaFor(floor, m);
     const guarantee = area * Number(floor.avgRent || 0);
     const concession = area * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
     return sum + (revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee);
   }, 0);
+  const totalMonthly = mode === 'detailed' && shops.length && preview?.summary
+    ? Number(preview.summary.totalMonthlyRent || 0)
+    : floorMonthly;
   return `
     <div class="callout">${ICONS.info}<div>初期没有铺位明细时，可按楼层填写可租赁面积和平均月租金快速测算；招商方案明确后，再切换为一铺一价测算。</div></div>
     ${shops.length && mode === 'preliminary' ? `<div class="callout soft shop-detail-notice">${ICONS.info}<div>系统检测到 <strong>${shops.length}</strong> 个铺位明细，但当前仍在“初步测算”。可立即切换为“一铺一价”，让面积、租金收入和投资分摊都按铺位明细核算。</div><button class="btn btn-secondary btn-sm" type="button" id="view-detailed-shops">按一铺一价重新核算</button></div>` : ''}
@@ -3835,15 +3846,17 @@ function renderDetailedPricing(m, shops, preview) {
   const quickFloorSummary = currentFloorRentSummary(m);
   const quickMonthlyRevenue = quickFloorSummary.reduce((sum, floor) => sum + Number(floor.monthlyRevenue || 0), 0);
   const quickRentArea = quickFloorSummary.reduce((sum, floor) => sum + Number(floor.rentArea || 0), 0);
-  const totalRentArea = quickRentArea || shops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
+  const detailedRentArea = shops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
+  const hasPreviewSummary = Boolean(preview?.summary);
+  const totalRentArea = hasPreviewSummary ? Number(preview.summary.rentBasisArea || detailedRentArea) : (detailedRentArea || quickRentArea);
   const overrideRentArea = rentOverrideShops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
   const overrideRentNumerator = rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0) * rentAreaFor(shop, m), 0);
   const weightedOverrideRent = overrideRentArea > 0 ? overrideRentNumerator / overrideRentArea : 0;
   const simpleOverrideRent = rentOverrideShops.length ? rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0), 0) / rentOverrideShops.length : 0;
-  const monthlyRentPreview = quickMonthlyRevenue || Number(preview?.summary?.totalMonthlyRent || 0);
+  const monthlyRentPreview = hasPreviewSummary ? Number(preview.summary.totalMonthlyRent || 0) : (quickMonthlyRevenue || 0);
   const quarterlyRentPreview = monthlyRentPreview * 3;
   const annualFullRentPreview = monthlyRentPreview * 12;
-  const revenueImpliedAverageRent = totalRentArea > 0 ? monthlyRentPreview / totalRentArea : 0;
+  const revenueImpliedAverageRent = hasPreviewSummary ? Number(preview.summary.averageRent || 0) : (totalRentArea > 0 ? monthlyRentPreview / totalRentArea : 0);
   const rentAnnualRows = (preview?.annual || []).filter(row => Number(row.opYear) > 0);
   const stableYear = Math.max(1, Number(m.operations?.stableYear || 3));
   const stableRentRow = rentAnnualRows.find(row => Number(row.opYear) === stableYear) || rentAnnualRows.at(-1) || {};
@@ -3852,7 +3865,8 @@ function renderDetailedPricing(m, shops, preview) {
   const operationPeriodRentRevenue = Number(preview?.summary?.operationPeriodCollectedRentRevenue ?? rentAnnualRows.reduce((sum, row) => sum + Number(row.collectedRentRevenue ?? Number(row.rentRevenue || 0) * rentCollectionRate), 0));
   const operationPeriodScheduledRent = Number(preview?.summary?.operationPeriodScheduledRentRevenue ?? rentAnnualRows.reduce((sum, row) => sum + Number(row.scheduledRentRevenue ?? row.rentRevenue ?? 0), 0));
   const operationPeriodUncollectedRent = Number(preview?.summary?.operationPeriodUncollectedRentRevenue ?? Math.max(0, operationPeriodScheduledRent - operationPeriodRentRevenue));
-  const floorAverageRows = quickFloorSummary.filter(floor => Number(floor.rentArea || 0) > 0 || Number(floor.monthlyRevenue || 0) > 0);
+  const previewFloorRows = (preview?.floors || []).filter(floor => Number(floor.rentArea || 0) > 0 || Number(floor.monthlyRevenue || 0) > 0);
+  const floorAverageRows = previewFloorRows.length ? previewFloorRows : quickFloorSummary.filter(floor => Number(floor.rentArea || 0) > 0 || Number(floor.monthlyRevenue || 0) > 0);
   const floorAverageTotal = floorAverageRows.reduce((acc, floor) => {
     acc.rentArea += Number(floor.rentArea || 0);
     acc.monthlyRevenue += Number(floor.monthlyRevenue || 0);
@@ -7137,9 +7151,23 @@ function bindFormulaToolbar() {
 function updateSaveState() {
   const el = document.getElementById('save-state');
   if (!el) return;
-  el.classList.toggle('dirty', state.dirty);
-  el.classList.toggle('saved', !state.dirty);
-  el.querySelector('span:last-child').textContent = state.dirty ? '有未保存修改' : '已保存';
+  el.classList.toggle('dirty', state.dirty || state.calculating || Boolean(state.calculationError));
+  el.classList.toggle('saved', !state.dirty && !state.calculating && !state.calculationError);
+  el.querySelector('span:last-child').textContent = state.calculating
+    ? '正在同步计算…'
+    : state.calculationError
+      ? '同步计算失败，保留上次结果'
+      : state.dirty
+        ? '已同步计算，待保存'
+        : '已保存';
+}
+
+function applyCalculationResult(result) {
+  if (!result) return;
+  state.preview = result;
+  state.result = result;
+  state.lastCalculatedAt = Date.now();
+  state.calculationError = '';
 }
 
 function bindCostPresets() {
@@ -7594,6 +7622,9 @@ class TileMap {
 function scheduleLivePreview() {
   if (!state.current) return;
   previewRequestSeq += 1;
+  state.calculating = true;
+  state.calculationError = '';
+  updateSaveState();
   clearTimeout(previewTimer);
   previewTimer = setTimeout(() => { runLivePreview(); }, 650);
 }
@@ -7622,7 +7653,7 @@ async function runLivePreview() {
     }
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
     if (requestSeq !== previewRequestSeq || !state.current) return null;
-    state.preview = result;
+    applyCalculationResult(result);
     updateLiveStats();
     updateOperatingPreviewDom(result);
     updateTaxStatisticsDom(result);
@@ -7630,12 +7661,17 @@ async function runLivePreview() {
     if (state.previewRefreshPending && !activePathInput) {
       state.previewRefreshPending = false;
       renderWorkspace();
-    } else if (shopBaselineChanged) {
+    } else if (shopBaselineChanged || state.step === 6) {
       renderWorkspace();
     }
+    state.calculating = false;
+    updateSaveState();
     return result;
   } catch (error) {
     console.warn('实时测算失败', error);
+    state.calculating = false;
+    state.calculationError = error?.message || '实时测算失败';
+    updateSaveState();
     return null;
   }
 }
@@ -7645,6 +7681,13 @@ function updateQuickRentEstimateFromModel() {
   const model = state.current.model;
   const floors = Array.isArray(model.floors) ? model.floors : [];
   if (!floors.length) return;
+  const detailedMode = model.calculationMode === 'detailed' && Array.isArray(model.shops) && model.shops.length > 0;
+  if (detailedMode) {
+    document.querySelectorAll('[data-live="monthlyRent"], [data-live="quarterlyRent"], [data-live="annualRent"], [data-live="avgRent"], [data-project-rent-monthly], [data-project-rent-quarterly], [data-project-rent-annual], [data-project-rent-avg]').forEach(el => { el.textContent = '计算中…'; });
+    document.querySelectorAll('[data-project-rent-formula], [data-live="rentFormula"]').forEach(el => { el.textContent = '正在按铺位实际租金重算'; });
+    document.querySelectorAll('[data-live="statusAdvice"]').forEach(el => { el.textContent = '正在按铺位实际租金重算项目均价…'; });
+    return;
+  }
   const revenueMode = model.project?.revenueModel || 'rent';
   let totalMonthly = 0;
   let totalArea = 0;
@@ -7695,11 +7738,13 @@ function updateQuickRentEstimateFromModel() {
 function updateLiveStats() {
   if (!state.preview) return;
   const summary = state.preview.summary;
+  const detailedMode = state.current?.model?.calculationMode === 'detailed' && (state.current?.model?.shops || []).length > 0;
   const quickFloors = currentFloorRentSummary(state.current?.model);
   const quickMonthlyRent = quickFloors.reduce((sum, floor) => sum + Number(floor.monthlyRevenue || 0), 0);
   const quickRentArea = quickFloors.reduce((sum, floor) => sum + Number(floor.rentArea || 0), 0);
-  const displayedMonthlyRent = quickMonthlyRent > 0 ? quickMonthlyRent : Number(summary.totalMonthlyRent || 0);
-  const displayedAverageRent = quickRentArea > 0 ? displayedMonthlyRent / quickRentArea : Number(summary.averageRent || 0);
+  const displayedMonthlyRent = detailedMode ? Number(summary.totalMonthlyRent || 0) : (quickMonthlyRent > 0 ? quickMonthlyRent : Number(summary.totalMonthlyRent || 0));
+  const displayedRentArea = detailedMode ? Number(summary.rentBasisArea || 0) : (quickRentArea || Number(summary.rentBasisArea || 0));
+  const displayedAverageRent = detailedMode ? Number(summary.averageRent || 0) : (displayedRentArea > 0 ? displayedMonthlyRent / displayedRentArea : Number(summary.averageRent || 0));
   document.querySelectorAll('[data-live="investment"], #cost-estimate').forEach(el => { el.textContent = fmt(summary.totalInvestment); });
   document.querySelectorAll('[data-live="monthlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent, 2); });
   document.querySelectorAll('[data-live="quarterlyRent"]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 3); });
@@ -7707,6 +7752,13 @@ function updateLiveStats() {
   const operationRentRevenue = Number(state.preview?.summary?.operationPeriodCollectedRentRevenue ?? (state.preview?.annual || []).filter(row => Number(row.opYear) > 0).reduce((sum, row) => sum + Number(row.collectedRentRevenue || 0), 0));
   document.querySelectorAll('[data-live="operationRent"]').forEach(el => { el.textContent = fmt(operationRentRevenue, 1); });
   document.querySelectorAll('[data-live="avgRent"]').forEach(el => { el.textContent = fmt(displayedAverageRent, 2); });
+  document.querySelectorAll('[data-project-rent-area]').forEach(el => { el.textContent = fmtArea(displayedRentArea); });
+  document.querySelectorAll('[data-project-rent-monthly]').forEach(el => { el.textContent = fmt(displayedMonthlyRent, 2); });
+  document.querySelectorAll('[data-project-rent-quarterly]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 3 / 10000, 2); });
+  document.querySelectorAll('[data-project-rent-annual]').forEach(el => { el.textContent = fmt(displayedMonthlyRent * 12 / 10000, 2); });
+  document.querySelectorAll('[data-project-rent-avg]').forEach(el => { el.textContent = fmt(displayedAverageRent, 2); });
+  document.querySelectorAll('[data-project-rent-formula]').forEach(el => { el.textContent = `${fmt(displayedMonthlyRent, 2)} ÷ ${fmtArea(displayedRentArea)}`; });
+  document.querySelectorAll('[data-live="rentFormula"]').forEach(el => { el.textContent = `${fmt(displayedMonthlyRent, 2)} 元/月 ÷ ${fmtArea(displayedRentArea)}㎡ = ${fmt(displayedAverageRent, 2)} 元/㎡/月`; });
   const statusAdvice = buildStatusAdvice(state.preview || state.result);
   document.querySelectorAll('[data-live="status"]').forEach(el => { el.textContent = statusAdvice.title; });
   document.querySelectorAll('[data-live="statusAdvice"]').forEach(el => { el.textContent = statusAdvice.short; });
@@ -7728,6 +7780,17 @@ function updateLiveStats() {
   const previewMonthlyTotal = Number(summary.totalMonthlyRent || 0);
   document.querySelectorAll('[data-floor-avg-row]').forEach(rowEl => {
     const floor = floors.get(rowEl.dataset.floorAvgRow);
+    if (floor) {
+      const area = Number(floor.rentArea || 0);
+      const monthly = Number(floor.monthlyRevenue || 0);
+      const setText = (selector, value) => { const node = rowEl.querySelector(selector); if (node) node.textContent = value; };
+      setText('[data-floor-avg-area]', fmtArea(area));
+      setText('[data-floor-avg-monthly]', fmt(monthly, 2));
+      setText('[data-floor-avg-quarterly]', fmt(monthly * 3 / 10000, 2));
+      setText('[data-floor-avg-annual]', fmt(monthly * 12 / 10000, 2));
+      setText('[data-floor-avg-rent]', fmt(area ? monthly / area : 0, 2));
+      setText('[data-floor-avg-formula]', `${fmt(monthly, 2)} ÷ ${fmtArea(area)}`);
+    }
     const allocated = rowEl.querySelector('[data-floor-avg-allocated]');
     if (floor && allocated && previewMonthlyTotal > 0) allocated.textContent = fmt(operationCollectedRent * Number(floor.monthlyRevenue || 0) / previewMonthlyTotal, 2);
   });
@@ -8182,6 +8245,8 @@ function openProjectConflictModal(error) {
     state.current = remoteProject;
     state.result = remoteResult || null;
     state.preview = remoteResult || null;
+    state.calculating = false;
+    state.calculationError = '';
     state.dirty = false;
     close();
     renderWorkspace();
@@ -8196,6 +8261,10 @@ function openProjectConflictModal(error) {
 
 async function saveProject({ force = false } = {}) {
   if (!state.current) return;
+  // Cancel any queued live preview so a late response cannot overwrite the saved snapshot.
+  clearTimeout(previewTimer);
+  previewRequestSeq += 1;
+  state.calculating = false;
   setBusy(true);
   try {
     const payload = await api(`/api/projects/${state.current.id}`, {
@@ -8207,8 +8276,8 @@ async function saveProject({ force = false } = {}) {
       },
     });
     state.current = { ...payload.project, model: payload.result?.model || payload.project.model };
-    state.result = payload.result;
-    state.preview = payload.result;
+    applyCalculationResult(payload.result);
+    state.calculating = false;
     state.dirty = false;
     state.step = 6;
     await loadProjects();
