@@ -1216,3 +1216,5 @@ details.advanced .advanced-body { padding: 0 16px 16px; }
 .rent-average-metrics em { display:block; margin-top:2px; color:#88938e; font-size:var(--fs-8); font-style:normal; }
 .rent-average-check p { margin:10px 0 0; color:#697570; font-size:var(--fs-8); line-height:1.55; }
 @media (max-width:760px) { .rent-average-metrics { grid-template-columns:1fr; } .rent-average-formula code { margin-left:0; } }
+.floor-average-check { margin-top:13px; padding-top:12px; border-top:1px dashed #d7e2dd; }
+.floor-average-check .section-title { margin-bottom:8px; }
