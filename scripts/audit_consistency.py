@@ -115,6 +115,9 @@ def audit_defaults_and_units() -> None:
     require_text(app, "三项费用结余", "three-fee surplus")
     require_text(backend, "经营归集与为0原因", "Excel operating ledger")
     require_text(backend, "三项费用对应物业服务成本", "Excel three-fee service cost")
+    require_text(app, "直接发送到对方项目工作台", "direct project delivery wording")
+    require_text(app, "由 ${escapeHtml(sharedFrom)} 发送，已直接加入工作台", "project sender attribution")
+    assert "站内收件箱" not in app
     require_text(app, "budget.monthsVersion = 2", "preopening month migration")
     require_text(app, "data-sync-preopening-months", "preopening month sync action")
     require_text(app, "add-office-budget-item", "office budget add action")

@@ -1,7 +1,7 @@
-import './backend.js?v=20261119-ledger1';
+import './backend.js?v=20261119-direct1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.27.5';
+const APP_VERSION = '1.27.6';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -2118,11 +2118,11 @@ async function pollShareTopic(topic) {
         };
         await receiveRealtimeProjectShare(data);
       } catch (error) {
-        console.warn('站内收件箱消息处理失败', error);
+        console.warn('项目直接发送消息处理失败', error);
       }
     }
   } catch (error) {
-    console.warn('站内收件箱暂不可用', error);
+    console.warn('项目直接发送通道暂不可用', error);
   }
 }
 
@@ -2150,14 +2150,14 @@ async function receiveRealtimeProjectShare(data) {
       importedFromName: payload.sourceDisplayName || data.senderName || '',
       importedAt: new Date().toISOString(),
       note: data.note || '',
-      delivery: 'realtime',
+      delivery: 'direct-to-workspace',
     };
-    model.project.name = `${payload.project.name || model.project.name || '未命名项目'} · ${payload.sourceDisplayName || data.senderName || '用户'}分享`;
+    model.project.name = payload.project.name || model.project.name || '未命名项目';
     const result = await api('/api/projects', { method: 'POST', body: { name: model.project.name, model } });
     await loadProjects();
     localStorage.setItem(processedKey, new Date().toISOString());
     if (!state.current) renderProjectList();
-    toast(`收到 ${data.senderName || payload.sourceDisplayName || '用户'} 分享的项目：${result.project?.model?.project?.name || model.project.name}`, 'success');
+    toast(`已将 ${data.senderName || payload.sourceDisplayName || '用户'} 发送的项目加入你的项目工作台：${result.project?.model?.project?.name || model.project.name}`, 'success');
   };
   const lockKey = `duoduo-share-${state.user.id}-${data.shareId || data.shareCode.slice(-24)}`;
   if (navigator.locks?.request) return navigator.locks.request(lockKey, receive);
@@ -2210,13 +2210,13 @@ function startShareInbox() {
   pollShareInbox(userId);
   shareInboxPollTimer = setInterval(() => {
     if (!document.hidden && state.user?.id === userId) pollShareInbox(userId);
-  }, 30000);
+  }, 10000);
 }
 
 async function sendProjectToInbox({ recipientId, recipientUsername, recipientName, shareCode, note }) {
   const config = cloudRealtimeConfig();
-  if (!config) throw new Error('当前为本地模式，无法使用在线站内投递');
-  if (state.user?.localMode) throw new Error('当前是离线兼容账号，请先重新登录并同步到云端后再使用站内发送');
+  if (!config) throw new Error('当前为本地模式，无法直接发送到对方工作台');
+  if (state.user?.localMode) throw new Error('当前是离线兼容账号，请先重新登录并同步到云端后再直接发送');
   const shareId = crypto.randomUUID();
   const topic = recipientId ? shareInboxTopic(recipientId) : await shareUsernameTopic(recipientUsername);
   if (!topic) throw new Error('请输入接收方的云端用户名');
@@ -2264,13 +2264,13 @@ async function sendProjectToInbox({ recipientId, recipientUsername, recipientNam
   }
   let realtimeSent = false;
   if (persisted) {
-    publishRealtimeBroadcast(config, topic, 'project_share', payload).catch(error => console.warn('实时提醒发送失败，已保存到站内收件箱', error));
+    publishRealtimeBroadcast(config, topic, 'project_share', payload).catch(error => console.warn('实时提醒发送失败，项目仍会在对方登录后自动加入工作台', error));
   } else {
     try {
       await publishRealtimeBroadcast(config, topic, 'project_share', payload);
       realtimeSent = true;
     } catch (error) {
-      throw new Error(`站内收件箱不可用（${persistenceError?.message || '持久化失败'}；${error.message}）`);
+      throw new Error(`直接发送通道不可用（${persistenceError?.message || '持久化失败'}；${error.message}）`);
     }
   }
   return { shareId, recipientName, persisted, realtimeSent, expiresAt };
@@ -2345,8 +2345,8 @@ async function openShareProjectModal(projectId) {
           <div class="modal-head"><div><span class="eyebrow">Project transfer</span><h2>发送项目</h2><p>${escapeHtml(projectName)} · 完整发送测算参数和铺位数据</p></div><button class="modal-close" id="share-project-close">×</button></div>
           <div class="modal-body share-project-body">
             <div class="share-option-card">
-              <div class="share-option-head"><strong>发送给系统内已审核用户</strong><span>对方收到的是独立副本，不会修改您的原项目。</span></div>
-              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}" data-name="${escapeHtml(user.displayName || user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>站内发送</span></button></div><div class="field-help">发送后进入对方站内收件箱，对方登录后会自动收到项目副本。</div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前无法显示完整用户目录。可直接在下方输入对方的云端用户名发送。')}</div>`}
+              <div class="share-option-head"><strong>直接发送到对方项目工作台</strong><span>对方收到的是独立副本，不会修改您的原项目。</span></div>
+              ${users.length ? `<div class="share-direct-row"><select class="select" id="share-recipient">${users.map(user => `<option value="${escapeHtml(user.id)}" data-username="${escapeHtml(user.username)}" data-name="${escapeHtml(user.displayName || user.username)}">${escapeHtml(user.displayName || user.username)} @${escapeHtml(user.username)}</option>`).join('')}</select><input class="input" id="share-note" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-direct">${ICONS.share}<span>直接发送</span></button></div><div class="field-help">发送后直接进入对方项目工作台，并标注来源用户。</div>` : `<div class="share-warning">${escapeHtml(userPayload.warning || '当前无法显示完整用户目录。可直接在下方输入对方的云端用户名发送。')}</div>`}
               <div class="share-manual-send">
                 <div class="share-option-head"><strong>手动输入对方用户名发送</strong><span>无需依赖用户下拉目录。请输入对方登录用的云端用户名；对方下次登录后会自动接收。</span></div>
                 <div class="share-direct-row"><input class="input" id="share-recipient-username" placeholder="对方用户名，例如 partner01"><input class="input" id="share-note-manual" placeholder="给对方的说明，可选"><button class="btn btn-primary" id="send-project-username">${ICONS.share}<span>按用户名发送</span></button></div>
@@ -2402,7 +2402,7 @@ async function openShareProjectModal(projectId) {
       } catch (error) {
         if (error.code === 'SHARE_REQUIRES_CODE' || /云端项目权限未开放/.test(error.message)) {
           try {
-            status.textContent = `正在发送到 ${option?.dataset.name || '接收用户'} 的站内收件箱…`;
+            status.textContent = `正在发送到 ${option?.dataset.name || '接收用户'} 的项目工作台…`;
             const delivery = await sendProjectToInbox({
               recipientId: select.value,
               recipientUsername: option?.dataset.username || '',
@@ -2413,8 +2413,8 @@ async function openShareProjectModal(projectId) {
             status.classList.add('success');
             const retentionHours = delivery.expiresAt ? Math.max(1, Math.round((delivery.expiresAt - Date.now() / 1000) / 3600)) : 12;
             status.textContent = delivery.persisted
-              ? `已发送到 ${option?.dataset.name || '接收用户'} 的站内收件箱，对方约${retentionHours}小时内登录会自动收到项目副本。`
-              : `已完成在线投递；若对方未立即收到，请稍后重试或使用分享码。`;
+              ? `已发送给 ${option?.dataset.name || '接收用户'}。对方登录后项目会自动出现在其工作台，并标注由你发送。`
+              : `已发出直接发送；若对方未及时看到，请让其重新登录，或改用下方分享文件。`;
           } catch (broadcastError) {
             status.classList.add('warning');
             status.textContent = `${broadcastError.message} 可复制分享码或下载分享文件发送。`;
@@ -2443,7 +2443,7 @@ async function openShareProjectModal(projectId) {
       }
       button.disabled = true;
       status.className = 'share-direct-status';
-      status.textContent = `正在向 @${recipientUsername} 的站内收件箱发送…`;
+      status.textContent = `正在向 @${recipientUsername} 的项目工作台发送…`;
       try {
         const delivery = await sendProjectToInbox({
           recipientId: '',
@@ -2455,8 +2455,8 @@ async function openShareProjectModal(projectId) {
         const retentionHours = delivery.expiresAt ? Math.max(1, Math.round((delivery.expiresAt - Date.now() / 1000) / 3600)) : 12;
         status.classList.add('success');
         status.textContent = delivery.persisted
-          ? `已发送给 @${recipientUsername}。对方约${retentionHours}小时内登录会自动收到项目副本。`
-          : `已向 @${recipientUsername} 发出在线投递；若未收到，可改用下方分享文件。`;
+          ? `已发送给 @${recipientUsername}。对方登录后项目会自动出现在其工作台，并标注由你发送。`
+          : `已向 @${recipientUsername} 发出直接发送；若未及时看到，请让其重新登录，或改用下方分享文件。`;
       } catch (error) {
         status.classList.add('warning');
         status.textContent = error.message;
@@ -2504,12 +2504,12 @@ function openImportShareModal() {
       status.textContent = '正在生成项目副本…';
       const model = payload.project.model;
       model.shareMeta = { importedFrom: payload.sourceUsername || '', importedFromName: payload.sourceDisplayName || '', importedAt: new Date().toISOString() };
-      model.project.name = `${payload.project.name || model.project.name || '未命名项目'} · ${payload.sourceDisplayName || payload.sourceUsername || '用户'}分享`;
+      model.project.name = payload.project.name || model.project.name || '未命名项目';
       const result = await api('/api/projects', { method: 'POST', body: { name: model.project.name, model } });
       await loadProjects();
       close();
       renderProjectList();
-      toast(`已接收项目：${result.project?.model?.project?.name || model.project.name}`, 'success');
+      toast(`已加入项目工作台：${result.project?.model?.project?.name || model.project.name}｜来源 @${payload.sourceUsername || '未知用户'}`, 'success');
     } catch (error) {
       status.className = 'share-direct-status warning';
       status.textContent = error.message;
@@ -2634,12 +2634,14 @@ function projectCard(project) {
   const status = s.status || '待完善';
   const developmentLabel = DEVELOPMENT_TYPE_LABELS[s.developmentType] || '';
   const shareMeta = project.model?.shareMeta || {};
-  const sharedFrom = shareMeta.sourceDisplayName || shareMeta.importedFromName || shareMeta.sourceUsername || shareMeta.importedFrom;
+  const sharedUsername = shareMeta.sourceUsername || shareMeta.importedFrom || '';
+  const sharedName = shareMeta.sourceDisplayName || shareMeta.importedFromName || '';
+  const sharedFrom = sharedName && sharedUsername ? `${sharedName} @${sharedUsername}` : (sharedName || (sharedUsername ? `@${sharedUsername}` : ''));
   return `<article class="project-card" data-project-id="${project.id}">
     <div class="project-card-status"><span>●</span>${escapeHtml(status)}</div>
     <h3>${escapeHtml(s.projectName || project.model?.project?.name || '未命名项目')}</h3>
     <div class="project-location">${escapeHtml(s.location || project.model?.project?.location || '')}${developmentLabel ? ` · ${escapeHtml(developmentLabel)}` : ''}</div>
-    ${sharedFrom ? `<div class="project-share-meta">${ICONS.share}<span>来自 ${escapeHtml(sharedFrom)} 分享的参考项目</span></div>` : ''}
+    ${sharedFrom ? `<div class="project-share-meta">${ICONS.share}<span>由 ${escapeHtml(sharedFrom)} 发送，已直接加入工作台</span></div>` : ''}
     <div class="project-metrics">
       <div class="project-metric"><strong>${fmt(s.totalInvestment)}</strong><span>投资总额/万元</span></div>
       <div class="project-metric"><strong>${s.projectIrr == null ? '—' : fmtPct(s.projectIrr)}</strong><span>项目IRR</span></div>
