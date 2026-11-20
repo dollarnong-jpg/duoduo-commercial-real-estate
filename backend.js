@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-uniformrate1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-uniformlabels1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3253,7 +3253,7 @@ async function exportExcel(result) {
     ['物业', '物业服务模式与第三方管理费', '自营=岗位基础成本+自营招聘培训；第三方常驻=岗位基础成本×(1+综合管理费率)；第三方非常驻=岗位基础成本×非驻场折算比例×(1+综合管理费率)', ['IF','SUM','MIN'], '系统先按部门/岗位自动归集物业工程、保安、保洁岗位，以岗位工资和单位社保成本为基础，再按服务模式增加招聘培训费或第三方综合管理费。', '自营适合直接管理团队；第三方常驻适合稳定驻场服务；非常驻适合巡检和专项服务。第三方综合管理费率应按合同覆盖管理费、利润、保险、装备、培训及税费。', 'propertyService.security.managementFeeRate', model.propertyService?.security?.managementFeeRate, '服务模式直接影响人员与服务成本、NOI、NPV和IRR。'],
     ['人员', '人员成本来源', '按组织架构=Σ企业人员成本+招聘培训费；按面积=总建筑面积×人员成本单价×12', ['IF','SUM'], '选择组织架构模式后，管理团队及物业人员成本由HR薪资明细倒推。', '前期可用面积快速估算，招商运营阶段应使用组织架构薪资成本。', 'operations.staffCostMode', model.operations?.staffCostMode || 'organization', '决定管理团队人员成本采用薪资倒推还是面积估算。'],
     ['成本录入', '年度与月度金额换算', '按年录入：月度金额=录入金额÷12；年度金额=录入金额。按月录入：年度金额=录入金额×12；月度金额=录入金额', ['IF','SUM'], '办公预算和招商预算可逐项选择年度或月度录入，系统统一转成年化金额参与NOI和现金流。', '同一张表可混合年度和月度录入。切换周期只换算显示口径，不改变年化金额；重新输入金额后才会改变年化值。', 'officeBudget.inputPeriods', '逐项设置', '影响运营成本、NOI、NPV和IRR。'],
-    ['招商', '渠道面积与首年月租金佣金', '渠道招商面积=项目总建筑面积×渠道面积比例；渠道及代理费=渠道招商面积×渠道租金单价×月租金倍数÷10000', ['IF','SUM'], '例如项目总建筑面积2,000㎡、渠道比例50%，渠道面积为1,000㎡；再乘渠道租金单价和佣金月数。', '渠道面积比例按实际招商委托范围设置；渠道租金单价默认带出项目当前平均租金，可人工改写或恢复均价。首开招商佣金已在投资中单列，如为同一合同避免重复计入。', 'leasingBudget.channelCalculationMode', model.leasingBudget?.channelCalculationMode, '渠道佣金会直接增加年度招商费用和运营成本。'],
+    ['招商', '渠道面积与首年月租金佣金', '渠道招商面积=项目总建筑面积×渠道面积比例；渠道及代理费=渠道招商面积×渠道租金单价×月租金倍数÷10000', ['IF','SUM'], '例如项目总建筑面积2,000㎡、渠道比例50%，渠道面积为1,000㎡；再乘渠道租金单价和佣金月数。', '渠道面积比例按实际招商委托范围设置；渠道租金单价默认带出项目当前租金单价，可人工改写或恢复默认。首开招商佣金已在投资中单列，如为同一合同避免重复计入。', 'leasingBudget.channelCalculationMode', model.leasingBudget?.channelCalculationMode, '渠道佣金会直接增加年度招商费用和运营成本。'],
     ['办公', '年度办公行政成本', '租金+水电通讯+IT软件+办公用品+差旅招待+其他', ['SUM'], '逐项汇总年度办公行政预算。', '按行政预算和已签合同调整；办公室租金、IT服务和差旅标准应与团队规模匹配。', 'officeBudget.officeRentAnnual', model.officeBudget?.officeRentAnnual, '办公成本直接扣减NOI。'],
     ['招商', '年度招商费用', '渠道代理+活动+物料+差旅+平台+其他；续租佣金按周期另计', ['SUM','MOD','IF'], '年度固定招商预算与续租佣金分开计算，避免重复。', '按招商策略和渠道政策填写；首开佣金、年度招商费用和续租佣金分别管理。', 'leasingBudget.channelFeeAnnual', model.leasingBudget?.channelFeeAnnual, '招商费用直接扣减运营现金流。'],
     ['营销', '年度营销金额与自动权重', '常规年度=营销推广+商业美陈+媒体宣传+会员营销；首年=常规年度+导视导览+开业美陈；自动权重=单项金额÷对应合计', ['SUM','IF'], '营销费用全部由用户按金额录入，系统不再按权重倒推预算。常规四项每年发生，开业两项只在运营第1年计入。', '直接按年度推广计划、合同和报价填写金额。权重用于检查结构，不需要手工调整；某项金额变化后，合计、占比、NOI和现金流会自动重算。', 'marketingBudget.annualItems', '按金额录入', '营销费用直接扣减NOI；开业专项只影响首年现金流。'],
@@ -3316,7 +3316,7 @@ async function exportExcel(result) {
   const settlementRuleWs = wb.Sheets['租赁联营规则'];
   setSheetColumnNumberFormat(settlementRuleWs, [2, 4, 6, 8, 9, 12], '0.00');
   setSheetColumnNumberFormat(settlementRuleWs, [7], '0.00%');
-  addSheet(wb, '周边市场分析', [['指标', '结果'], ['项目平均租金（元/㎡/月）', result.marketSummary.projectAverageRent], ['市场加权均价（元/㎡/月）', result.marketSummary.weightedAverageRent], ['市场中位数（元/㎡/月）', result.marketSummary.medianRent], ['市场25分位（元/㎡/月）', result.marketSummary.p25Rent], ['市场75分位（元/㎡/月）', result.marketSummary.p75Rent], ['项目定价位置', result.marketSummary.position], ...(result.marketSummary.conclusions || []).map((x, i) => [`结论${i + 1}`, x])], [30, 80]);
+  addSheet(wb, '周边市场分析', [['指标', '结果'], ['项目租金单价（元/㎡/月）', result.marketSummary.projectAverageRent], ['市场租金参考均价（元/㎡/月）', result.marketSummary.weightedAverageRent], ['市场中位数（元/㎡/月）', result.marketSummary.medianRent], ['市场25分位（元/㎡/月）', result.marketSummary.p25Rent], ['市场75分位（元/㎡/月）', result.marketSummary.p75Rent], ['项目定价位置', result.marketSummary.position], ...(result.marketSummary.conclusions || []).map((x, i) => [`结论${i + 1}`, x])], [30, 80]);
   const detection = model.market?.lastAnalysis || {};
   addSheet(wb, '3-5公里商业侦测', [
     ['指标','结果','说明'],
@@ -3464,7 +3464,7 @@ async function exportPPT(result) {
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '楼栋与楼层面积及租金汇总', `商户计租口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}｜业主支付口径：${result.model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'}｜表内面积为铺位/楼层明细面积，不含公区｜项目总建筑面积 ${Number(s.grossFloorArea || 0).toFixed(2)}㎡`);
-  const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','平均租金','年租金(万元)','占比'], ...(result.floors || []).slice(0, 12).map(x => [x.building || '1号楼', x.name, Number(x.buildingArea || 0).toFixed(2), Number(x.leasableArea || 0).toFixed(2), Number(x.rentArea || 0).toFixed(2), Number(x.weightedRent || x.avgRent || 0).toFixed(2), (Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000).toFixed(2), `${(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1) * 100).toFixed(2)}%`])];
+  const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','租金单价','年租金(万元)','占比'], ...(result.floors || []).slice(0, 12).map(x => [x.building || '1号楼', x.name, Number(x.buildingArea || 0).toFixed(2), Number(x.leasableArea || 0).toFixed(2), Number(x.rentArea || 0).toFixed(2), Number(x.weightedRent || x.avgRent || 0).toFixed(2), (Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000).toFixed(2), `${(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1) * 100).toFixed(2)}%`])];
   slide.addTable(floorSummaryRows, { x: 0.55, y: 1.4, w: 12.3, colW: [1.25, 0.9, 1.35, 1.35, 1.35, 1.55, 1.9, 1.2], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: 'Microsoft YaHei', fontSize: 7.5, margin: 0.03, rowH: 0.28, autoFit: false });
   if ((result.floors || []).length > 12) slide.addText(`仅展示前12个楼层，完整数据见Excel。`, { x: 0.7, y: 6.65, w: 5, h: 0.25, fontFace: 'Microsoft YaHei', fontSize: 8, color: '66736F' });
 
@@ -3533,7 +3533,7 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
   slide = pptx.addSlide();
   addSlideTitle(slide, '项目租金与市场位置', '竞品租金样本用于校准项目一铺一价');
   const ms = result.marketSummary;
-  slide.addText(`项目平均租金\n${ms.projectAverageRent.toFixed(2)} 元/㎡/月`, { x: 0.75, y: 1.65, w: 3.4, h: 1.1, fontFace: 'Microsoft YaHei', fontSize: 16, bold: true, color: '103B33', fill: { color: 'E5F0EB' }, margin: 0.16, breakLine: false });
+  slide.addText(`项目租金单价\n${ms.projectAverageRent.toFixed(2)} 元/㎡/月`, { x: 0.75, y: 1.65, w: 3.4, h: 1.1, fontFace: 'Microsoft YaHei', fontSize: 16, bold: true, color: '103B33', fill: { color: 'E5F0EB' }, margin: 0.16, breakLine: false });
   slide.addText(`市场加权均价\n${ms.weightedAverageRent.toFixed(2)} 元/㎡/月`, { x: 4.45, y: 1.65, w: 3.4, h: 1.1, fontFace: 'Microsoft YaHei', fontSize: 16, bold: true, color: '103B33', fill: { color: 'F7ECD4' }, margin: 0.16 });
   slide.addText(`市场中位数\n${ms.medianRent.toFixed(2)} 元/㎡/月`, { x: 8.15, y: 1.65, w: 3.4, h: 1.1, fontFace: 'Microsoft YaHei', fontSize: 16, bold: true, color: '103B33', fill: { color: 'FBF8F1' }, margin: 0.16 });
   slide.addText((ms.conclusions || []).map((x, i) => `${i + 1}. ${x}`).join('\n\n'), { x: 0.8, y: 3.15, w: 11.7, h: 2.7, fontFace: 'Microsoft YaHei', fontSize: 12, color: '17211E', breakLine: false, valign: 'top', margin: 0.05 });

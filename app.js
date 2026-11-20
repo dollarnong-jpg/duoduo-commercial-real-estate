@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-uniformrate1';
+import './backend.js?v=20261120-uniformlabels1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.39';
+const APP_VERSION = '1.28.40';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -319,7 +319,7 @@ const FORMULA_GUIDES = {
   },
   leasing: {
     how: '招商费用支持按年或按月录入。渠道及代理费可直接填金额，也可按“项目总建筑面积×渠道面积比例×首年月租金单价×月租金倍数”计算；其他招商项目按年化金额汇总，权重自动反算。',
-    adjust: '渠道面积比例按项目总建筑面积设置；租金单价默认取项目当前平均租金，并允许人工改写。首开招商佣金已在投资中单列，如本表为同一笔渠道合同，应避免重复计入。'
+    adjust: '渠道面积比例按项目总建筑面积设置；租金单价默认取项目当前租金单价，并允许人工改写。首开招商佣金已在投资中单列，如本表为同一笔渠道合同，应避免重复计入。'
   },
   marketing: {
     how: '常规年度直接按金额录入营销推广、商业美陈、媒体宣传、会员营销四项，系统汇总年度营销总额；每项自动权重=单项金额÷四项合计。开业第1年再额外加入导视导览和开业美陈两项专项金额。',
@@ -3760,28 +3760,19 @@ function renderFloorEditor(m, mode, preview) {
   const floors = m.floors || [];
   const revenueMode = m.project?.revenueModel || 'rent';
   const concessionEnabled = revenueMode !== 'rent';
-  const previewFloors = new Map((preview?.floors || []).map(floor => [buildingFloorKey(floor), floor]));
   const buildingOptions = [...new Set([...(floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])];
-  const detailedOverrideCount = mode === 'detailed'
-    ? (m.shops || []).filter(shop => shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0).length
-    : 0;
   return `<div class="form-section">
-    <div class="section-title">楼层均价与面积</div>
-    <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层均价将作为一铺一价的基础：再乘业态系数并叠加铺位条件溢价。'}</div>
-    ${detailedOverrideCount ? `<div class="callout soft"><div>当前有 <strong>${detailedOverrideCount}</strong> 个铺位设置了“租金单价覆盖”。系统会自动把该层铺位覆盖价的加权平均同步到楼层基准租金，无需手动操作。</div></div>` : ''}
-    ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层基准满租月收益 = 商户计租面积 × 楼层基准租金\n实际楼层平均租金 = 该层实际月租金收入 ÷ 该层商户计租面积\n项目平均租金 = 项目实际月租金收入 ÷ 项目商户计租面积', ['SUM', 'MAX', 'IF'], '一铺一价下，铺位租金覆盖价优先；修改楼层基准租金时，系统会同步铺位覆盖价，使该层实际加权平均租金回到楼层值。')}
+    <div class="section-title">楼层租金单价与面积</div>
+    <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层租金单价是执行单价：再乘业态系数并叠加铺位条件溢价。'}</div>
+    ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层租金单价\n项目租金单价 = 各楼层满租月租金收入合计 ÷ 项目商户计租面积合计', ['SUM', 'MAX', 'IF'], '租金单价就是执行单价；未开启铺位覆盖时，所有铺位统一按楼层租金单价和业态、位置规则核算。')}
     <div class="data-table-wrap floor-table-wrap">
-      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">${mode === 'detailed' ? '楼层基准租金（元/㎡/月）' : '楼层平均租金（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">${mode === 'detailed' ? '基准满租月收益（元）' : '满租月收益（元）'}</th><th class="num">${mode === 'detailed' ? '实际平均租金（元/㎡/月）' : '实际加权收益'}</th><th></th></tr></thead><tbody>
+      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">${mode === 'detailed' ? '租金单价（元/㎡/月）' : '楼层租金单价（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
           const ratio = Number(floor.buildingArea) ? Number(floor.leasableArea) / Number(floor.buildingArea) : 0;
           const area = rentAreaFor(floor, m);
           const guarantee = area * Number(floor.avgRent || 0);
           const concession = area * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
           const monthly = revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee;
-          const calculated = previewFloors.get(buildingFloorKey(floor));
-          const floorOverrideCount = mode === 'detailed'
-            ? (m.shops || []).filter(shop => buildingFloorKey(shop) === buildingFloorKey(floor) && shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0).length
-            : 0;
           return `<tr>
             <td><input class="table-input floor-name-input" data-path="floors.${i}.building" data-type="text" list="building-options" value="${escapeHtml(floor.building || '1号楼')}"></td>
             <td><input class="table-input floor-name-input" data-path="floors.${i}.name" data-type="text" value="${escapeHtml(floor.name || '')}"></td>
@@ -3792,16 +3783,15 @@ function renderFloorEditor(m, mode, preview) {
             <td class="num"><input class="table-input highlight-input" data-path="floors.${i}.avgRent" data-type="number" type="number" step="any" value="${floor.avgRent ?? 0}"></td>
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
             <td class="num" data-floor-monthly="${escapeHtml(buildingFloorKey(floor))}">${fmt(monthly)}</td>
-            <td class="num"><span data-floor-actual="${escapeHtml(buildingFloorKey(floor))}">${calculated ? fmt(calculated.weightedRent || calculated.avgRent, 2) : '待计算'}</span>${floorOverrideCount ? `<small class="rent-source">铺位覆盖价 ${floorOverrideCount} 个</small>` : ''}</td>
             <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
           </tr>`;
-        }).join('') : `<tr><td colspan="${concessionEnabled ? 12 : 10}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
+        }).join('') : `<tr><td colspan="${concessionEnabled ? 11 : 9}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
       </tbody></table>
     </div>
     <datalist id="building-options">${buildingOptions.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
       <button type="button" class="btn btn-secondary btn-sm" id="add-floor">${ICONS.plus}<span>新增楼层</span></button>
-      <span class="live-hint">调整楼层均价后系统自动核算</span>
+      <span class="live-hint">调整楼层租金单价后系统自动核算</span>
     </div>
   </div>`;
 }
@@ -3821,7 +3811,7 @@ function renderPreliminarySummary(shops, floors, totalBuilding, totalLease, tota
 
 function renderFloorRentSummary(preview) {
   const floors = preview?.floors || [];
-  if (!floors.length) return '<div class="form-section floor-summary-section"><div class="section-title">楼栋及楼层面积与租金均价汇总</div><div class="admin-empty">完成楼层或铺位数据后，系统将自动生成统一汇总。</div></div>';
+  if (!floors.length) return '<div class="form-section floor-summary-section"><div class="section-title">楼栋及楼层面积与租金单价汇总</div><div class="admin-empty">完成楼层或铺位数据后，系统将自动生成统一汇总。</div></div>';
   const total = floors.reduce((acc, floor) => {
     acc.buildingArea += Number(floor.buildingArea || 0);
     acc.leasableArea += Number(floor.leasableArea || 0);
@@ -3833,11 +3823,11 @@ function renderFloorRentSummary(preview) {
     return acc;
   }, { buildingArea: 0, leasableArea: 0, rentArea: 0, monthly: 0, property: 0, commercial: 0, central: 0 });
   return `<div class="form-section floor-summary-section">
-    <div class="section-title">楼栋及楼层面积与租金均价汇总</div>
-    <div class="section-note">按“楼栋 → 楼层”统一汇总面积与租金收入。楼层均价 = 该层满租月租金收入 ÷ 该层商户计租面积，年租金按满租月租金 × 12 展示。</div>
+    <div class="section-title">楼栋及楼层面积与租金单价汇总</div>
+    <div class="section-note">按“楼栋 → 楼层”统一汇总面积与租金收入。租金单价按录入的楼层执行单价核算，年租金按满租月租金 × 12 展示。</div>
     <div class="data-table-wrap">
       <table class="data-table floor-summary-table">
-        <thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用面积（㎡）</th><th class="num">商户计租面积（㎡）</th><th class="num">平均租金（元/㎡/月）</th><th class="num">月租金收入（元）</th><th class="num">月物业费（元）</th><th class="num">月商管费（元）</th><th class="num">月空调费（元）</th><th class="num">三费合计（元/月）</th><th class="num">年租金收入（万元）</th><th class="num">租金占比</th></tr></thead>
+        <thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用面积（㎡）</th><th class="num">商户计租面积（㎡）</th><th class="num">租金单价（元/㎡/月）</th><th class="num">月租金收入（元）</th><th class="num">月物业费（元）</th><th class="num">月商管费（元）</th><th class="num">月空调费（元）</th><th class="num">三费合计（元/月）</th><th class="num">年租金收入（万元）</th><th class="num">租金占比</th></tr></thead>
         <tbody>
           ${floors.map(floor => {
             const basisLabel = floor.rentAreaBasis === 'building' ? '建筑面积' : floor.rentAreaBasis === 'leasable' ? '实用面积' : '混合口径';
@@ -3927,14 +3917,14 @@ function renderDetailedPricing(m, shops, preview) {
     ${state.importWarnings.length ? `<div class="warning-list">${state.importWarnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}</div>` : ''}
     <div class="shop-rent-recognition">
       <div><span>已识别租金单价</span><strong>${rentOverrideShops.length} / ${shops.length}</strong><em>个铺位${importedStats?.rentColumn ? `｜列：${escapeHtml(importedStats.rentColumn)}` : ''}</em></div>
-      <div><span>项目租金均价</span><strong data-live="avgRent">${fmt(revenueImpliedAverageRent, 2)}</strong><em>月租金总收入 ÷ 计租总面积</em></div>
+      <div><span>项目租金单价</span><strong data-live="avgRent">${fmt(revenueImpliedAverageRent, 2)}</strong><em>月租金总收入 ÷ 计租总面积</em></div>
       <div><span>满租月租金收入</span><strong data-live="monthlyRent">${fmt(monthlyRentPreview)}</strong><em>元/月 · 全部铺位满租口径</em></div>
       <div><span>满租季度租金收入</span><strong data-live="quarterlyRent">${fmt(quarterlyRentPreview)}</strong><em>元/季度 · 月租金 × 3</em></div>
       <div><span>满租年租金收入</span><strong data-live="annualRent">${fmt(annualFullRentPreview / 10000, 2)}</strong><em>万元/年 · 月租金 × 12</em></div>
       <div><span>运营周期实收租金</span><strong data-live="operationRent">${fmt(operationPeriodRentRevenue, 2)}</strong><em>万元 · 应收 ${fmt(operationPeriodScheduledRent, 2)}，未收 ${fmt(operationPeriodUncollectedRent, 2)}；收租率 ${fmtPct(rentCollectionRate)}</em></div>
     </div>
     <div class="rent-average-check">
-      <div class="rent-average-formula"><strong>项目租金均价核算</strong><span>项目租金均价 = 满租月租金总收入 ÷ 商户计租面积合计</span><code data-live="rentFormula">${fmt(monthlyRentPreview, 2)} 元/月 ÷ ${fmtArea(totalRentArea)}㎡ = ${fmt(revenueImpliedAverageRent, 2)} 元/㎡/月</code></div>
+      <div class="rent-average-formula"><strong>项目租金单价核算</strong><span>项目租金单价 = 满租月租金总收入 ÷ 商户计租面积合计</span><code data-live="rentFormula">${fmt(monthlyRentPreview, 2)} 元/月 ÷ ${fmtArea(totalRentArea)}㎡ = ${fmt(revenueImpliedAverageRent, 2)} 元/㎡/月</code></div>
       <div class="rent-average-metrics">
         <div><span>导入单价面积加权值</span><strong>${fmt(weightedOverrideRent, 2)}</strong><em>仅作导入单价核对</em></div>
         <div><span>简单算术均价</span><strong>${fmt(simpleOverrideRent, 2)}</strong><em>铺位单价直接平均，仅作参考</em></div>
@@ -3942,8 +3932,8 @@ function renderDetailedPricing(m, shops, preview) {
         <div><span>稳定年实收租金</span><strong>${fmt(stableAnnualRentRevenue, 2)}</strong><em>万元 · 第${stableYear}年，已考虑招商率、递增和收租率</em></div>
       </div>
       <div class="floor-average-check">
-        <div class="section-title">分楼层租金均价核算</div>
-        <div class="data-table-wrap"><table class="data-table"><thead><tr><th>楼栋</th><th>楼层</th><th class="num">计租总面积（㎡）</th><th class="num">满租月租金（元）</th><th class="num">满租季度租金（万元）</th><th class="num">满租年租金（万元）</th><th class="num">楼层均价（元/㎡/月）</th><th class="num">运营期分摊租金（万元）</th><th>楼层均价计算式</th></tr></thead><tbody>
+        <div class="section-title">分楼层租金单价核算</div>
+        <div class="data-table-wrap"><table class="data-table"><thead><tr><th>楼栋</th><th>楼层</th><th class="num">计租总面积（㎡）</th><th class="num">满租月租金（元）</th><th class="num">满租季度租金（万元）</th><th class="num">满租年租金（万元）</th><th class="num">租金单价（元/㎡/月）</th><th class="num">运营期分摊租金（万元）</th><th>租金收入 ÷ 计租面积</th></tr></thead><tbody>
           ${floorAverageRows.map(floor => {
             const area = Number(floor.rentArea || 0);
             const monthly = Number(floor.monthlyRevenue || 0);
@@ -3953,13 +3943,13 @@ function renderDetailedPricing(m, shops, preview) {
           }).join('') || '<tr><td colspan="9" class="admin-empty">暂无楼层测算数据，请先导入铺位并完成实时测算。</td></tr>'}
         </tbody><tfoot><tr class="total-row"><td colspan="2"><strong>全项目合计</strong></td><td class="num"><strong data-project-rent-area>${fmtArea(floorAverageTotal.rentArea)}</strong></td><td class="num"><strong data-project-rent-monthly>${fmt(floorAverageTotal.monthlyRevenue, 2)}</strong></td><td class="num"><strong data-project-rent-quarterly>${fmt(floorAverageTotal.monthlyRevenue * 3 / 10000, 2)}</strong></td><td class="num"><strong data-project-rent-annual>${fmt(floorAverageTotal.monthlyRevenue * 12 / 10000, 2)}</strong></td><td class="num"><strong data-project-rent-avg>${fmt(floorAverageTotal.rentArea ? floorAverageTotal.monthlyRevenue / floorAverageTotal.rentArea : 0, 2)}</strong></td><td class="num"><strong data-project-rent-allocated>${fmt(operationPeriodRentRevenue, 2)}</strong></td><td data-project-rent-formula>${fmt(floorAverageTotal.monthlyRevenue, 2)} ÷ ${fmtArea(floorAverageTotal.rentArea)}</td></tr></tfoot></table></div>
       </div>
-      <p>项目均价和楼层均价均按“该层级满租月租金收入 ÷ 该层级商户计租面积合计”计算。季度租金按满租月租金 × 3，满租年租金按满租月租金 × 12；运营周期实收租金按各年度招商率、免租期、递增因子和收租率逐年汇总；应收租金与未收租金同时展示。分楼层运营期租金按各层稳定月租金占比分摊，仅用于结构分析。</p>
+      <p>项目租金单价和楼层租金单价均按“该层级满租月租金收入 ÷ 该层级商户计租面积合计”计算。季度租金按满租月租金 × 3，满租年租金按满租月租金 × 12；运营周期实收租金按各年度招商率、免租期、递增因子和收租率逐年汇总；应收租金与未收租金同时展示。分楼层运营期租金按各层稳定月租金占比分摊，仅用于结构分析。</p>
     </div>
     <div class="form-section compact-top">
       <div class="section-title">业态租金 / 联营扣点规则</div>
       <div class="section-note">每个业态可单独选择计租方式和支付方式。支付方式、保证金月数和预付租金月数会按照“招商里程碑”的日期和目标招商率逐节点进入现金流，不一次性提前计入全年招商率。当前结算方式为纯租金时，联营条件仅作参考，不进入收入。</div>
       ${renderSettlementBenchmarkPanel(m)}
-      ${formulaPanel('一铺一价与联营扣点公式', '保底月收入 = 租赁面积 × 楼层均价 × 业态系数 ×（1 + 位置条件溢价）\n联营扣点月收入 = 租赁面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '条件溢价合计最高40%；铺位填写租金覆盖值时，以覆盖值优先。')}
+      ${formulaPanel('一铺一价与联营扣点公式', '保底月收入 = 租赁面积 × 楼层租金单价 × 业态系数 ×（1 + 位置条件溢价）\n联营扣点月收入 = 租赁面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '默认统一按楼层租金单价和项目默认费用核算；只有明确开启铺位覆盖后才使用单铺覆盖值。')}
       <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金<br><small>元/㎡/月</small></th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}<br><small>当前 / 常规区间</small></th><th class="num">${termLabel('扣点率')}<br><small>当前 / 常规区间</small></th><th class="num">扣点收益<br><small>元/㎡/月</small></th><th class="num">业态系数</th><th>支付方式</th><th class="num">保证金<br><small>月</small></th><th class="num">预付租金<br><small>月</small></th></tr></thead><tbody>
         ${(m.categories || []).map((cat, i) => {
           const benchmark = benchmarkForCategory(m, cat.name);
@@ -5426,7 +5416,7 @@ function renderLeasingAdjustmentSection(model, preview) {
             <td class="num"><div class="input-affix compact"><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.rentAdjustmentRate" data-type="number" data-scale="0.01" type="number" step="0.1" value="${roundDisplayValue(Number(period.rentAdjustmentRate) * 100, 2)}"><span>%</span></div></td>
             <td class="num"><div class="input-affix compact"><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.targetOccupancy" data-type="number" data-scale="0.01" type="number" min="0" max="100" step="0.1" value="${roundDisplayValue(Number(period.targetOccupancy) * 100, 2)}"><span>%</span></div><small class="range-hint">0表示沿用原出租率</small></td>
             <td class="num"><input class="table-input" data-path="operations.leasingAdjustmentPeriods.${index}.oneOffLeasingCost" data-type="number" type="number" min="0" step="0.1" value="${roundDisplayValue(Number(period.oneOffLeasingCost), 2)}"></td>
-            <td class="num"><strong>${baseAverageRent > 0 ? `${fmt(referenceRent, 2)} 元/㎡/月` : '待计算'}</strong><small class="range-hint">按当前平均租金与递增规则估算</small></td>
+            <td class="num"><strong>${baseAverageRent > 0 ? `${fmt(referenceRent, 2)} 元/㎡/月` : '待计算'}</strong><small class="range-hint">按当前租金单价与递增规则估算</small></td>
             <td><input class="table-input text-left" data-path="operations.leasingAdjustmentPeriods.${index}.note" data-type="text" value="${escapeHtml(period.note || '')}" placeholder="例如：品牌升级、业态优化、到期换租"></td>
             <td><button class="btn btn-ghost btn-sm" type="button" data-remove-leasing-stage="${index}">${ICONS.trash}</button></td>
           </tr>`;
@@ -6203,7 +6193,7 @@ function renderMarketRentSummary(summary, comps) {
       <div class="mini-stat"><strong>${fmt(summary.count, 0)}</strong><span>有效样本</span></div>
       <div class="mini-stat"><strong>${fmt(summary.weightedAverageRent, 2)}</strong><span>市场加权均价/元/㎡/月</span></div>
       <div class="mini-stat"><strong>${fmt(summary.medianRent, 2)}</strong><span>市场中位数/元/㎡/月</span></div>
-      <div class="mini-stat"><strong>${fmt(summary.projectAverageRent, 2)}</strong><span>项目平均租金/元/㎡/月</span></div>
+      <div class="mini-stat"><strong>${fmt(summary.projectAverageRent, 2)}</strong><span>项目租金单价/元/㎡/月</span></div>
     </div>
     <div class="market-rent-band"><span>市场25分位 <strong>${fmt(summary.p25Rent, 2)}</strong></span><i></i><span>中位数 <strong>${fmt(summary.medianRent, 2)}</strong></span><i></i><span>75分位 <strong>${fmt(summary.p75Rent, 2)}</strong></span></div>
     <div class="dashboard-grid market-rent-grid">
@@ -6335,7 +6325,7 @@ function buildKpiNarratives(result = state.result) {
   const rentTargetAdvice = (target, label) => {
     if (target == null) return '需先补齐计租面积和稳定年租金收入，才能反算目标租金。';
     const tooHigh = Number(market.p75Rent || 0) > 0 && target > Number(market.p75Rent);
-    return `按其他成本不变估算，${label}需把平均租金从 ${fmt(averageRent, 2)} 提高到约 ${fmt(target, 2)} 元/㎡/月${tooHigh ? '；目标已高于市场75分位，不能只靠提租，必须同时压降投资或运营成本' : ''}。`;
+    return `按其他成本不变估算，${label}需把租金单价从 ${fmt(averageRent, 2)} 提高到约 ${fmt(target, 2)} 元/㎡/月${tooHigh ? '；目标已高于市场75分位，不能只靠提租，必须同时压降投资或运营成本' : ''}。`;
   };
   const totalMonthly = Number(s.totalMonthlyRent || 0);
   const cumulativeEnd = Number(annual.at(-1)?.cumulativeProjectCashFlow ?? s.projectNetCashProfit ?? 0);
@@ -6484,7 +6474,7 @@ function buildOperatingLedger(result = state.result) {
   const zeroReason = key => {
     if (key === 'rentRevenue') {
       if (rentArea <= 0) return '商户计租面积为 0，请先导入铺位或填写楼层面积。';
-      if (!shops.length && floors.every(floor => Number(floor.avgRent || 0) <= 0)) return '楼层平均租金为 0。';
+      if (!shops.length && floors.every(floor => Number(floor.avgRent || 0) <= 0)) return '楼层租金单价为 0。';
       if (shops.length && shops.every(shop => Number(shop.rent || shop.rentOverride || 0) <= 0)) return '所有铺位租金单价为 0。';
       return '出租率、免租期或收入结算方式导致稳定年租金收入为 0，请检查出租率和联营扣点设置。';
     }
@@ -7919,10 +7909,6 @@ function updateLiveStats() {
     adviceStrip.innerHTML = `<strong>建议：${escapeHtml(statusAdvice.title)}</strong><span>${escapeHtml(statusAdvice.detail)}</span><em>当前系统状态：${escapeHtml(statusAdvice.status)}</em>`;
   }
   const floors = new Map((state.preview.floors || []).map(floor => [buildingFloorKey(floor), floor]));
-  document.querySelectorAll('[data-floor-actual]').forEach(el => {
-    const floor = floors.get(el.dataset.floorActual);
-    if (floor) el.textContent = fmt(floor.weightedRent || floor.avgRent, 2);
-  });
   document.querySelectorAll('[data-floor-monthly]').forEach(el => {
     const floor = floors.get(el.dataset.floorMonthly);
     if (floor) el.textContent = fmt(floor.monthlyRevenue);
