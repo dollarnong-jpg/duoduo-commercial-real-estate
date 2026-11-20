@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptpolish3', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptpolish4', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3889,6 +3889,12 @@ async function exportPPT(result) {
       xml = xml.replace(/typeface="Arial"/g, `typeface="${PPT_FONT}"`).replace(/lang="en-US"/g, 'lang="zh-CN"');
       zip.file(name, xml);
     }
+  }
+  const contentTypesFile = zip.file('[Content_Types].xml');
+  if (contentTypesFile) {
+    let contentTypes = await contentTypesFile.async('string');
+    contentTypes = contentTypes.replace(/<Override PartName="\/ppt\/slideMasters\/slideMaster(?:[2-9]|1[0-6])\.xml" ContentType="[^"]+"\/>/g, '');
+    zip.file('[Content_Types].xml', contentTypes);
   }
   const patched = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', mimeType: PPTX_MIME });
   return patched;

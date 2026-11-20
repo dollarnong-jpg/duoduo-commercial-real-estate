@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-pptpolish3';
+import './backend.js?v=20261120-pptpolish4';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.65';
+const APP_VERSION = '1.28.66';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
