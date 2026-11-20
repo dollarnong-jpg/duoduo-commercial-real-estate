@@ -72,6 +72,7 @@ def audit_defaults_and_units() -> None:
 
     backend = read("backend.js")
     app = read("app.js")
+    styles = read("styles.css")
     engine_text = read("engine.py")
     require_text(engine_text, "constructionPeriodUnit", "construction duration unit")
     require_text(engine_text, "constructionMonthsInput", "construction duration months input")
@@ -96,6 +97,10 @@ def audit_defaults_and_units() -> None:
     require_text(backend, "addSheet(wb, '物业服务岗位'", "property service position template")
     require_text(backend, "['物业工程', '物业经理', 0, 13000,", "property manager template")
     require_text(app, "data-add-preop-property-position", "property position add action")
+    require_text(styles, ".data-table tbody tr:hover td", "system tables have hover styling")
+    require_text(styles, ".data-table tr.total-row td", "system tables have total-row styling")
+    require_text(styles, ".shop-detail-table td:first-child", "wide system tables freeze identifying column")
+    require_text(styles, ".admin-table tbody tr:hover td", "admin table matches system table styling")
     require_text(app, "data-remove-preop-property-position", "property position delete action")
     require_text(app, "org-delete-btn danger-text", "organization icon delete action")
     assert "<span>删除岗位</span>" not in app
