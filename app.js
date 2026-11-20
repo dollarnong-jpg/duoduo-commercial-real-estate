@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-netlifyrelay1';
+import './backend.js?v=20261120-floorarea1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.48';
+const APP_VERSION = '1.28.49';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3765,7 +3765,7 @@ function renderFloorEditor(m, mode, preview) {
     <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层租金单价是唯一执行单价，该楼层所有铺位直接按此单价核算，不再乘业态系数或位置溢价。'}</div>
     ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层租金单价\n项目租金单价 = 各楼层满租月租金收入合计 ÷ 项目商户计租面积合计', ['SUM', 'MAX', 'IF'], '租金单价就是执行单价；铺位租金自动跟随所属楼层，确保录入值与明细、结果页完全一致。')}
     <div class="data-table-wrap floor-table-wrap">
-      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">${mode === 'detailed' ? '租金单价（元/㎡/月）' : '楼层租金单价（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th></th></tr></thead><tbody>
+      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">商户计租面积（㎡）</th><th class="num">${mode === 'detailed' ? '租金单价（元/㎡/月）' : '楼层租金单价（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
           const ratio = Number(floor.buildingArea) ? Number(floor.leasableArea) / Number(floor.buildingArea) : 0;
           const area = rentAreaFor(floor, m);
@@ -3777,14 +3777,15 @@ function renderFloorEditor(m, mode, preview) {
             <td><input class="table-input floor-name-input" data-path="floors.${i}.name" data-type="text" value="${escapeHtml(floor.name || '')}"></td>
             <td><select class="table-select" data-path="floors.${i}.rentAreaBasis" data-type="text">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((floor.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
             <td class="num"><input class="table-input" data-path="floors.${i}.buildingArea" data-type="number" type="number" step="0.01" value="${Number(floor.buildingArea ?? 0).toFixed(2)}"></td>
-            <td class="num"><input class="table-input" data-path="floors.${i}.leasableArea" data-type="number" type="number" step="0.01" value="${Number(floor.leasableArea ?? 0).toFixed(2)}"></td>
-            <td class="num">${fmtPct(ratio)}</td>
+            <td class="num"><input class="table-input" data-path="floors.${i}.leasableArea" data-type="number" type="number" step="0.01" placeholder="未录入" value="${Number(floor.leasableArea) > 0 ? Number(floor.leasableArea).toFixed(2) : ''}"></td>
+            <td class="num">${Number(floor.leasableArea) > 0 ? fmtPct(ratio) : '—'}</td>
+            <td class="num"><strong>${fmtArea(area)}</strong><small class="rent-source">按${RENT_BASIS_LABELS[resolvedRentAreaBasis(floor, m)]}</small></td>
             <td class="num"><input class="table-input highlight-input" data-path="floors.${i}.avgRent" data-type="number" type="number" step="any" value="${floor.avgRent ?? 0}"></td>
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
             <td class="num" data-floor-monthly="${escapeHtml(buildingFloorKey(floor))}">${fmt(monthly)}</td>
             <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
           </tr>`;
-        }).join('') : `<tr><td colspan="${concessionEnabled ? 11 : 9}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
+        }).join('') : `<tr><td colspan="${concessionEnabled ? 12 : 10}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
       </tbody></table>
     </div>
     <datalist id="building-options">${buildingOptions.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
