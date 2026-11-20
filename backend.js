@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptstyle2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptstyle3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3702,11 +3702,13 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
 
   slide = pptx.addSlide();
   addSlideTitle(slide, '项目租金与市场位置', '竞品租金样本用于校准项目一铺一价');
-  const ms = result.marketSummary;
-  slide.addText(`项目租金单价\n${ms.projectAverageRent.toFixed(2)} 元/㎡/月`, { x: 0.75, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'E5F0EB' }, margin: 0.16, breakLine: false });
-  slide.addText(`市场加权均价\n${ms.weightedAverageRent.toFixed(2)} 元/㎡/月`, { x: 4.45, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'F7ECD4' }, margin: 0.16 });
-  slide.addText(`市场中位数\n${ms.medianRent.toFixed(2)} 元/㎡/月`, { x: 8.15, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'FBF8F1' }, margin: 0.16 });
-  slide.addText((ms.conclusions || []).map((x, i) => `${i + 1}. ${x}`).join('\n\n'), { x: 0.8, y: 3.15, w: 11.7, h: 2.7, fontFace: PPT_FONT, fontSize: 12, color: '17211E', breakLine: false, valign: 'top', margin: 0.05 });
+  const ms = result.marketSummary || {};
+  const marketRentText = value => Number.isFinite(Number(value)) ? `${Number(value).toFixed(2)} 元/㎡/月` : '暂无有效样本';
+  slide.addText(`项目租金单价\n${marketRentText(ms.projectAverageRent)}`, { x: 0.75, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'E5F0EB' }, margin: 0.16, breakLine: false });
+  slide.addText(`市场加权均价\n${marketRentText(ms.weightedAverageRent)}`, { x: 4.45, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'F7ECD4' }, margin: 0.16 });
+  slide.addText(`市场中位数\n${marketRentText(ms.medianRent)}`, { x: 8.15, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'FBF8F1' }, margin: 0.16 });
+  const marketConclusions = Array.isArray(ms.conclusions) && ms.conclusions.length ? ms.conclusions : ['尚未导入竞品租金样本，当前以项目自身租金和行业基准进行校验。'];
+  slide.addText(marketConclusions.map((x, i) => `${i + 1}. ${x}`).join('\n\n'), { x: 0.8, y: 3.15, w: 11.7, h: 2.7, fontFace: PPT_FONT, fontSize: 12, color: '17211E', breakLine: false, valign: 'top', margin: 0.05 });
 
   slide = pptx.addSlide();
   addSlideTitle(slide, 'NPV敏感性分析', '租金与投资同时变动时的项目NPV（万元）');

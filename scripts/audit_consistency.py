@@ -121,6 +121,7 @@ def audit_defaults_and_units() -> None:
     require_text(backend, "const EXCEL_FONT = 'Arial';", "export uses cross-platform font")
     require_text(backend, "const PPT_FONT = 'Arial';", "PPT uses cross-platform font")
     require_text(function_segment(backend, "exportPPT"), "const settlementPresetLabels", "PPT defines its own benchmark labels")
+    require_text(function_segment(backend, "exportPPT"), "const marketRentText = value =>", "PPT handles empty market samples")
     require_text(backend, "function pptTable(slide, rows, options = {})", "PPT tables share one styled component")
     require_text(backend, "slide.background = { color: PPT_THEME.paper };", "PPT content slides share a unified background")
     assert backend.count("pptTable(slide,") >= 10, "PPT tables should use the shared styled table helper"
