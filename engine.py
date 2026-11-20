@@ -1100,6 +1100,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             return {
                 "propertyFee": max(0.0, as_float(record.get("propertyFeeOverride"), property_fee_unit)),
                 "commercialManagementFee": max(0.0, as_float(record.get("commercialManagementFeeOverride"), commercial_management_fee_unit)),
+                "propertyFeeSource": "override" if record.get("propertyFeeOverride") is not None else "project",
+                "commercialManagementFeeSource": "override" if record.get("commercialManagementFeeOverride") is not None else "project",
                 "centralAcFee": 0.0,
                 "centralAcEnabled": False,
             }
@@ -1113,6 +1115,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         return {
             "propertyFee": property_rate,
             "commercialManagementFee": commercial_rate,
+            "propertyFeeSource": "override" if record.get("propertyFeeOverride") is not None else "project",
+            "commercialManagementFeeSource": "override" if record.get("commercialManagementFeeOverride") is not None else "project",
             "centralAcFee": central_rate if central_enabled else 0.0,
             "centralAcEnabled": bool(central_enabled and central_rate > 0),
         }

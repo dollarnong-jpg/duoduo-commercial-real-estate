@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-toptotals1';
+import './backend.js?v=20261120-rateaudit1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.36';
+const APP_VERSION = '1.28.37';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3642,6 +3642,22 @@ function syncFloorRentToShops(path, previousRent, nextRent) {
   return changed;
 }
 
+function syncProjectServiceFeeOverrides(model, field, previousValue, nextValue) {
+  if (!model || !Array.isArray(model.shops) || previousValue == null || nextValue == null) return false;
+  const previous = Number(previousValue);
+  const next = Number(nextValue);
+  if (!Number.isFinite(previous) || !Number.isFinite(next) || Math.abs(previous - next) < 0.005) return false;
+  let changed = false;
+  model.shops.forEach(shop => {
+    const override = shop[field];
+    if (override !== null && override !== undefined && Math.abs(Number(override) - previous) < 0.01) {
+      shop[field] = next;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
 function reconcileFloorRentOverrides(model) {
   const floors = Array.isArray(model?.floors) ? model.floors : [];
   return floors.reduce((count, floor) => count + (syncFloorOverrideAverage(model, floor, floor.avgRent) ? 1 : 0), 0);
@@ -3975,7 +3991,14 @@ function renderDetailedPricing(m, shops, preview) {
           const modeLabels = { rent:'纯租金', concession:'纯扣点', guarantee_or_concession:'保底/扣点取高' };
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
           const rentSource = shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0 ? '导入/指定' : '自动分配';
-          const feeText = calc ? `物业 ${fmt(calc.propertyFee, 2)} / 商管 ${fmt(calc.commercialManagementFee, 2)} / 空调 ${fmt(calc.centralAcFee, 2)}<small class="rent-source">合计 ${fmt(calc.monthlyServiceFee, 2)} 元/月</small>` : '待计算';
+          const defaultCommercialFee = Number(m.revenues?.commercialManagementFee || 0);
+          const commercialFeeLabel = calc?.commercialManagementFeeSource === 'override'
+            ? `商管 ${fmt(calc.commercialManagementFee, 2)}（铺位覆盖，项目默认 ${fmt(defaultCommercialFee, 2)}）`
+            : `商管 ${fmt(calc?.commercialManagementFee, 2)}（项目默认）`;
+          const commercialReset = calc?.commercialManagementFeeSource === 'override'
+            ? `<button class="btn btn-ghost btn-sm" type="button" data-clear-commercial-fee="${escapeHtml(key)}">按项目默认</button>`
+            : '';
+          const feeText = calc ? `物业 ${fmt(calc.propertyFee, 2)} / ${commercialFeeLabel} / 空调 ${fmt(calc.centralAcFee, 2)}${commercialReset}<small class="rent-source">合计 ${fmt(calc.monthlyServiceFee, 2)} 元/月</small>` : '待计算';
           const shopBasisLabel = `${RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)]}${shop.rentAreaBasisOverride ? '（铺位例外）' : ''}`;
           const includedGuarantee = calc ? Number(calc.includedGuaranteeRevenue ?? calc.guaranteeRevenue ?? 0) : 0;
           const includedConcession = calc ? Number(calc.includedConcessionRevenue ?? calc.concessionRevenue ?? 0) : 0;
@@ -7003,9 +7026,17 @@ function bindStepInputs() {
         if (value === 'false') value = false;
       }
       const previousCentralAcFee = path === 'revenues.centralAcFee' ? Number(getPath(state.current.model, path) || 0) : null;
+      const previousCommercialManagementFee = path === 'revenues.commercialManagementFee' ? Number(getPath(state.current.model, path) || 0) : null;
+      const previousPropertyFee = path === 'revenues.propertyFee' ? Number(getPath(state.current.model, path) || 0) : null;
       const previousLeasingPeriodMonths = path === 'project.leasingPeriodMonths' ? Number(getPath(state.current.model, path) || 0) : null;
       const previousFloorRent = /^floors\.\d+\.avgRent$/.test(path) ? Number(getPath(state.current.model, path) || 0) : null;
       setPath(state.current.model, path, value);
+      if (path === 'revenues.commercialManagementFee') {
+        syncProjectServiceFeeOverrides(state.current.model, 'commercialManagementFeeOverride', previousCommercialManagementFee, value);
+      }
+      if (path === 'revenues.propertyFee') {
+        syncProjectServiceFeeOverrides(state.current.model, 'propertyFeeOverride', previousPropertyFee, value);
+      }
       if (/^floors\.\d+\.avgRent$/.test(path)) {
         syncFloorRentToShops(path, previousFloorRent, Number(value || 0));
       }
@@ -8170,6 +8201,15 @@ function bindShopsStep() {
   document.querySelectorAll('[data-delete-shop]').forEach(btn => btn.addEventListener('click', () => {
     state.current.model.shops = state.current.model.shops.filter(shop => shopRecordKey(shop) !== btn.dataset.deleteShop);
     state.dirty = true; state.preview = null; renderWorkspace(); scheduleLivePreview();
+  }));
+  document.querySelectorAll('[data-clear-commercial-fee]').forEach(btn => btn.addEventListener('click', () => {
+    const shop = state.current.model.shops.find(item => shopRecordKey(item) === btn.dataset.clearCommercialFee);
+    if (!shop) return;
+    shop.commercialManagementFeeOverride = null;
+    state.dirty = true;
+    state.preview = null;
+    renderWorkspace();
+    scheduleLivePreview();
   }));
   const shopSearch = document.getElementById('shop-search');
   const applyShopSearch = () => {
