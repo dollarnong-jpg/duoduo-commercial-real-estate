@@ -133,8 +133,9 @@ def audit_defaults_and_units() -> None:
     require_text(app, "单靠压缩投资无法解决", "investment diagnosis action")
     require_text(app, "稳定年NOI需增加约", "quantified NOI improvement target")
     require_text(app, "项目租金单价", "project rent rate label")
-    require_text(app, "简单算术均价", "simple average comparison")
-    require_text(app, "导入单价面积加权值", "imported rent comparison")
+    assert "简单算术均价" not in app
+    assert "导入单价面积加权值" not in app
+    assert "实际平均租金" not in app
     require_text(app, "项目租金单价 = 满租月租金总收入 ÷ 商户计租面积合计", "project rent rate formula")
     require_text(app, "分楼层租金单价核算", "floor rent rate table")
     require_text(app, "楼层满租月收益 = 商户计租面积 × 楼层租金单价", "floor rent rate formula")
@@ -167,9 +168,9 @@ def audit_defaults_and_units() -> None:
     sync_floor_rent = function_segment(app, "syncFloorRentToShops")
     require_text(sync_floor_rent, "syncFloorOverrideAverage(model, floor, nextRent)", "floor rent edits resync shop overrides")
     require_text(app, "function reconcileFloorRentOverrides(model)", "automatic floor-rent reconciliation")
-    require_text(app, "已自动按楼层基准租金同步", "automatic floor-rent synchronization notice")
+    require_text(app, "已自动按楼层租金同步", "automatic floor-rent synchronization notice")
     ensure_floors = function_segment(app, "ensureFloorsFromShops")
-    require_text(ensure_floors, "floor.avgRent = Number(avg.toFixed(2));", "shop rent edits refresh floor actual average")
+    require_text(ensure_floors, "floor.avgRent = Number(avg.toFixed(2));", "shop import refreshes floor execution rent")
     require_text(app, "楼层满租月收益 = 商户计租面积 × 楼层租金单价", "floor rent rate formula")
     require_text(app, "项目租金单价 = 各楼层满租月租金收入合计 ÷ 项目商户计租面积合计", "project rent rate formula")
     require_text(app, "data-floor-avg-allocated", "floor allocated rent post-preview update")
@@ -275,6 +276,14 @@ def audit_function_annotations() -> None:
 def audit_engine_invariants() -> None:
     model = engine.default_model("完整一致性回归")
     model["calculationMode"] = "detailed"
+    model["floors"] = [{
+        "building": "1号楼",
+        "name": "1F",
+        "buildingArea": 1800,
+        "leasableArea": 1440,
+        "avgRent": 1000,
+        "rentAreaBasis": "leasable",
+    }]
     model["shops"] = [
         {
             "id": f"X{i:02d}",
@@ -336,7 +345,14 @@ def audit_engine_invariants() -> None:
 
     basis_model = engine.default_model("双面积口径审计")
     basis_model["calculationMode"] = "detailed"
-    basis_model["project"]["allowShopOverrides"] = True
+    basis_model["floors"] = [{
+        "building": "1号楼",
+        "name": "1F",
+        "rentAreaBasis": "inherit",
+        "buildingArea": 100,
+        "leasableArea": 80,
+        "avgRent": 100,
+    }]
     basis_model["shops"] = [{
         "id": "A-101",
         "building": "1号楼",
@@ -344,7 +360,7 @@ def audit_engine_invariants() -> None:
         "buildingArea": 100,
         "leasableArea": 80,
         "category": "零售",
-        "rentOverride": 100,
+        "rentOverride": 999,
     }]
     basis_model["project"]["rentAreaBasis"] = "building"
     building_basis = engine.calculate_model(basis_model, False)
@@ -356,6 +372,7 @@ def audit_engine_invariants() -> None:
     assert close(leasable_basis["shops"][0]["includedGuaranteeRevenue"], 8000)
     assert close(leasable_basis["summary"]["grossFloorArea"], 120)
     assert leasable_basis["summary"]["rentAreaBasis"] == "leasable"
+    assert all(close(shop["rent"], 100) for shop in leasable_basis["shops"])
     basis_model["shops"][0]["rentAreaBasis"] = "leasable"
     basis_model["shops"][0]["rentAreaBasisOverride"] = False
     basis_model["floors"] = [{"building": "1号楼", "name": "1F", "rentAreaBasis": "building", "buildingArea": 100, "leasableArea": 80, "avgRent": 100}]
@@ -428,7 +445,10 @@ def audit_engine_invariants() -> None:
 
     central_ac_model = engine.default_model("中央空调楼栋总控")
     central_ac_model["calculationMode"] = "detailed"
-    central_ac_model["project"]["allowShopOverrides"] = True
+    central_ac_model["floors"] = [{
+        "building": "1号楼", "name": "1F", "buildingArea": 100,
+        "leasableArea": 80, "avgRent": 100, "rentAreaBasis": "leasable",
+    }]
     central_ac_model["shops"] = [{
         "id": "AC-01", "building": "1号楼", "floor": "1F",
         "buildingArea": 100, "leasableArea": 80, "category": "零售",
@@ -441,8 +461,8 @@ def audit_engine_invariants() -> None:
     assert close(disabled_ac["monthlyCentralAcFee"], 0)
     central_ac_model["revenues"]["centralAcBuildings"][0]["enabled"] = True
     enabled_ac = engine.calculate_model(central_ac_model, False)["shops"][0]
-    assert close(enabled_ac["centralAcFee"], 9)
-    assert close(enabled_ac["monthlyCentralAcFee"], 720)
+    assert close(enabled_ac["centralAcFee"], 8)
+    assert close(enabled_ac["monthlyCentralAcFee"], 640)
 
 
 def audit_monthly_cash_flow() -> None:
@@ -474,6 +494,10 @@ def audit_monthly_cash_flow() -> None:
         "otherEngineeringRate": 80,
     })
     model["calculationMode"] = "detailed"
+    model["floors"] = [{
+        "building": "1号楼", "name": "1F", "buildingArea": 6000,
+        "leasableArea": 4800, "avgRent": 80, "rentAreaBasis": "leasable",
+    }]
     model["shops"] = [
         {"id": f"CF{i:02d}", "building": "1号楼", "floor": "1F", "buildingArea": 500, "leasableArea": 400, "category": "零售", "rentOverride": 80}
         for i in range(12)
@@ -544,18 +568,40 @@ def audit_unified_rate_policy() -> None:
         {"building": "1号楼", "name": "2F", "buildingArea": 5000, "leasableArea": 5000, "avgRent": 30, "rentAreaBasis": "building"},
     ]
     model["shops"] = [
-        {"id": "A", "building": "1号楼", "floor": "1F", "buildingArea": 35000, "leasableArea": 0, "category": "零售", "rentOverride": 30, "commercialManagementFeeOverride": 15},
+        {"id": "A", "building": "1号楼", "floor": "1F", "buildingArea": 35000, "leasableArea": 0, "category": "零售", "rentOverride": 30, "commercialManagementFeeOverride": 15, "conditions": ["电梯口", "转角铺"]},
         {"id": "B", "building": "1号楼", "floor": "2F", "buildingArea": 5000, "leasableArea": 0, "category": "零售", "rentOverride": 30, "commercialManagementFeeOverride": 15},
     ]
+    model["categories"][0]["factor"] = 1.08
     model["revenues"]["commercialManagementFee"] = 20
     result = engine.calculate_model(model, False)
+    assert close(result["summary"]["totalMonthlyRent"], 1830000)
+    assert close(result["summary"]["averageRent"], 45.75)
     assert close(result["shops"][0]["rent"], 48)
     assert close(result["shops"][1]["rent"], 30)
+    assert close(result["floors"][0]["monthlyRevenue"], 1680000)
+    assert close(result["floors"][1]["monthlyRevenue"], 150000)
     assert all(close(shop["commercialManagementFee"], 20) for shop in result["shops"])
+    assert all(shop["rentSource"] == "floor" for shop in result["shops"])
+    assert all(shop["commercialManagementFeeSource"] == "project" for shop in result["shops"])
+    assert close(result["shops"][0]["monthlyCommercialManagementFee"], 700000)
+    assert close(result["shops"][1]["monthlyCommercialManagementFee"], 100000)
+
+    # The retained legacy switch and imported per-shop values are audit-only;
+    # they must never create a second execution rate in the live calculation.
     model["project"]["allowShopOverrides"] = True
     overridden = engine.calculate_model(model, False)
-    assert close(overridden["shops"][0]["rent"], 30)
-    assert close(overridden["shops"][0]["commercialManagementFee"], 15)
+    assert close(overridden["summary"]["totalMonthlyRent"], 1830000)
+    assert close(overridden["shops"][0]["rent"], 48)
+    assert close(overridden["shops"][1]["rent"], 30)
+    assert all(close(shop["commercialManagementFee"], 20) for shop in overridden["shops"])
+
+    app = read("app.js")
+    backend = read("backend.js")
+    for stale in ("楼层/项目默认", "商铺计价口径", "铺位覆盖规则", "租金单价覆盖"):
+        assert stale not in app, f"app.js still contains stale unified-rate label: {stale}"
+    assert "项目默认" not in backend
+    require_text(app, "铺位租金自动跟随所属楼层租金单价", "shop rent follows floor rate")
+    require_text(app, "全项目统一使用本页录入的商业管理费单价核算", "project-wide commercial fee rate")
 
 
 def main() -> None:

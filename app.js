@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-uniformlabels1';
+import './backend.js?v=20261120-strictuniform1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.40';
+const APP_VERSION = '1.28.41';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -72,7 +72,7 @@ const FIELD_FORMULAS = {
   'project.contingencyRate': { title: '预备费', formula: '预备费 = 直接工程费 × 预备费费率', functions: ['SUM', 'ROUND'], role: '直接工程费包括前期、建安、公共配套、装修、设备和其他工程。' },
   'project.constructionYears': { title: '建设期与贷款提款', formula: '总测算期 = 建设期 + 运营期；建设期按0.55、0.45比例提款', functions: ['SUM', 'INDEX'], role: '建设期影响首笔经营年度、利息资本化与现金流时点。' },
   'project.operationYears': { title: '运营期与NPV', formula: '总测算期 = 建设期 + 运营期；NPV = Σ[CFt ÷（1+r）^t]', functions: ['SUM', 'POWER', 'NPV'], role: '延长运营期会改变累计现金流和退出价值时点。' },
-  'project.revenueModel': { title: '项目计租方式', formula: '纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', functions: ['IF', 'MAX'], role: '该选择是项目默认结算方式，各业态可单独覆盖。' },
+  'project.revenueModel': { title: '项目计租方式', formula: '纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', functions: ['IF', 'MAX'], role: '该选择是项目统一结算方式，各业态可单独设置经营模式。' },
   'project.developmentType': { title: '项目开发状态', formula: '参考单价 = 城市系数 × 开发状态基准单价 × 商业类型系数', functions: ['ROUND'], role: '新建、旧改、运营中和轻资产项目会采用不同的建安、改造和装修参考基准。' },
   'project.ownerRentAreaBasis': { title: '业主租金支付面积口径', formula: '业主物业租金 = 合同计租面积 × 业主租金单价；合同面积填0时按本口径取项目总建筑面积或可租赁面积', functions: ['IF'], role: '仅用于测算向业主支付的物业租金，与向商户收取租金的口径相互独立。' },
   'project.rentAreaBasis': { title: '商户租金核算面积口径', formula: '按建筑面积：商户租金 = 商铺建筑面积 × 租金单价；按实用面积：商户租金 = 实用/租赁面积 × 租金单价', functions: ['IF'], role: '决定出租给商户时楼层和铺位的默认计租面积；楼层和铺位可单独覆盖。' },
@@ -111,9 +111,9 @@ const FIELD_FORMULAS = {
   'operations.renewalCommissionMonths': { title: '续租佣金', formula: '续租佣金 = 月租金 × 续租佣金月数 × 当年出租率', functions: ['MOD', 'IF'], role: '按续租周期进入运营期现金流。' },
   'operations.depositMonths': { title: '租赁保证金', formula: '租赁保证金 = 月租金 × 保证金月数', functions: ['SUM'], role: '作为招商期现金流入和期末退还的参考。' },
   'operations.rentFreeUntilDate': { title: '商户免租截止日期', formula: '首年可收租金月份 = 开业日至免租截止日之后的月份', functions: ['IF'], role: '用日期替代按固定免租月数估算，便于与实际租赁条款对齐。' },
-  'revenues.propertyFee': { title: '物业管理费单价', formula: '物业管理费收入 = Σ铺位计租面积 × 物业管理费单价（或铺位覆盖值）× 12 × 出租率 × 物业费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '物业管理费独立核算，不与商业管理费、中央空调费合并；可按楼栋或铺位覆盖单价。' },
-  'revenues.commercialManagementFee': { title: '商业管理费单价', formula: '商业管理费收入 = Σ铺位计租面积 × 商业管理费单价（或铺位覆盖值）× 12 × 出租率 × 商管费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '商业管理费独立核算，适用于商业运营管理服务；可与物业费设置不同单价和递增方式。' },
-  'revenues.centralAcFee': { title: '中央空调使用费单价', formula: '中央空调使用费收入 = Σ(收取楼栋铺位计租面积 × 楼栋空调单价) × 12 × 出租率 × 空调费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '只对已开启中央空调收费的楼栋或填写铺位覆盖单价的铺位计费，未开启楼栋按0核算。' },
+  'revenues.propertyFee': { title: '物业管理费单价', formula: '物业管理费收入 = Σ铺位计租面积 × 物业管理费单价 × 12 × 出租率 × 物业费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '全项目统一使用本页录入的物业管理费单价核算，不再按铺位使用第二套单价。' },
+  'revenues.commercialManagementFee': { title: '商业管理费单价', formula: '商业管理费收入 = Σ铺位计租面积 × 商业管理费单价 × 12 × 出租率 × 商管费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '全项目统一使用本页录入的商业管理费单价核算，录入20元就按20元计算。' },
+  'revenues.centralAcFee': { title: '中央空调使用费单价', formula: '中央空调使用费收入 = Σ(收取楼栋铺位计租面积 × 楼栋空调单价) × 12 × 出租率 × 空调费递增因子 ÷ 10000', functions: ['SUM', 'POWER', 'IF'], role: '只对已开启中央空调收费的楼栋计费；楼栋单价是唯一执行单价，未开启楼栋按0核算。' },
   'revenues.propertyFeeStartDate': { title: '物业费起收日期', formula: '首年物业费 = 年化物业费 × 当年实际可收月份 ÷ 12', functions: ['IF'], role: '用于开业后物业费起收和免收期的真实现金流。' },
   'revenues.commercialManagementFeeStartDate': { title: '商业管理费起收日期', formula: '首年商管费 = 年化商管费 × 当年实际可收月份 ÷ 12', functions: ['IF'], role: '适用于商管费晚于开业日或按合同分期起收的项目。' },
   'revenues.centralAcStartDate': { title: '中央空调费起收日期', formula: '首年空调费 = 年化空调费 × 当年实际可收月份 ÷ 12', functions: ['IF'], role: '用于按楼栋空调启用时间或合同收费周期调整现金流。' },
@@ -255,7 +255,7 @@ const FUNCTION_DEFINITIONS = {
   'IF': { syntax: 'IF(条件, 条件成立时的值, 条件不成立时的值)', meaning: '条件判断函数。系统先判断条件，再选择对应的计算结果。', example: 'IF(运营年=1, 首年出租率, 稳定期出租率)', note: '调整出租率、稳定年或计租方式时，首先会检查 IF 的条件和边界。' },
   'SUM': { syntax: 'SUM(数值1, 数值2, …) 或 Σ', meaning: '把多个分项金额或比率相加，形成合计。', example: '项目总投资 = SUM(土地, 工程, 装修, 预备费, 开办费, 流动资金)', note: '漏项会直接造成投资或收入低估；新增费用时应检查是否已纳入对应 SUM。' },
   'MAX': { syntax: 'MAX(数值1, 数值2, …)', meaning: '取多个数值中的最大值，常用于保底与扣点取高、零值下限。', example: '月收益 = MAX(保底月租金, 联营扣点月收入)', note: '如果希望保底条款优先，确保保底收入被正确录入；取高模式不会同时重复计算两项收入。' },
-  'MIN': { syntax: 'MIN(数值1, 数值2, …)', meaning: '取多个数值中的最小值，常用于进项税抵扣上限、条件溢价封顶。', example: '进项税 = MIN(销项税, 可抵扣进项税估算)', note: 'MIN 的上限值如果设得过低，会压低抵扣或溢价；应核对税法上限和项目招商政策。' },
+  'MIN': { syntax: 'MIN(数值1, 数值2, …)', meaning: '取多个数值中的最小值，常用于进项税抵扣上限、联营位置修正率封顶。', example: '进项税 = MIN(销项税, 可抵扣进项税估算)', note: 'MIN 的上限值如果设得过低，会压低抵扣或联营销售修正；应核对税法上限和项目招商政策。' },
   'POWER': { syntax: 'POWER(底数, 指数)', meaning: '乘幂函数，用于复利增长和折现计算。', example: '第n年租金 = 首年租金 × POWER(1+增长率, n)', note: '复利增长前低后高；如果项目租约采用固定递增额，应切换为单利或直接按租约录入。' },
   'INT': { syntax: 'INT(数值)', meaning: '向下取整，用于计算已经过去的完整递增周期。', example: 'INT((运营年-1)÷3)', note: '每N年阶梯递增时，未满一个完整周期不会提前上调。' },
   'ROUND': { syntax: 'ROUND(数值, 小数位数)', meaning: '按指定小数位四舍五入，通常用于金额、面积和比率展示。', example: 'ROUND(总投资, 2)', note: '显示取整不应改变底层计算；系统计算保留原始精度，表格展示时才取整。' },
@@ -278,7 +278,7 @@ const FORMULA_GUIDES = {
     adjust: '以造价咨询、工程量清单、已签合同或同类项目对标为依据。先调整建安和装修单价，再调整预备费和非必要公共投入，比较投资变化对NPV和IRR的影响。'
   },
   operations: {
-    how: '先确定出租率和基础租金增长，再按面积、业态系数、铺位条件计算租金；阶段性招商调整期可在此基础上叠加品牌升级、业态优化或换租后的租金提升和目标出租率。管理费单价按独立规则逐年计算，再叠加停车和多经收入。运营成本按面积、单价、出租率和爬坡系数计算，最后得到NOI和年度现金流。',
+    how: '先确定出租率和楼层租金单价，再按商户计租面积计算租金；阶段性招商调整期可叠加租金增长和目标出租率。联营位置条件只修正销售基数，不改变租金单价。管理费单价按独立规则逐年计算，再叠加停车和多经收入。运营成本按面积、单价、出租率和爬坡系数计算，最后得到NOI和年度现金流。',
     adjust: '出租率按招商计划，租金和管理费分别按合同递增条款设置。每年复利/单利适合逐年调整，每N年阶梯递增适合“每3年上调5%”之类的合同。每次只调整一个变量，并比较NPV敏感性结果。'
   },
   taxes: {
@@ -3035,7 +3035,7 @@ async function openProject(projectId) {
     renderWorkspace();
     if (benchmarkInitialized || floorRentSynced) {
       scheduleLivePreview();
-      setTimeout(() => toast(benchmarkInitialized ? '已按行业常规和项目地区补充联营销售/扣点基准，请核对后保存' : '已自动按楼层基准租金同步铺位覆盖价，请核对后保存', 'success'), 250);
+      setTimeout(() => toast(benchmarkInitialized ? '已按行业常规和项目地区补充联营销售/扣点基准，请核对后保存' : '已自动按楼层租金同步铺位单价，请核对后保存', 'success'), 250);
     }
   } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
 }
@@ -3438,7 +3438,7 @@ function renderProjectStep() {
   return `
     <div class="callout">${ICONS.info}<div>不确定“总建筑面积”时可以先留空：${preliminary ? '初步测算按楼层建筑面积合计计算' : '一铺一价按商铺建筑面积 ×（1 + 公共部位分摊系数）自动推算'}。</div></div>
     ${gbaBelowShopArea ? `<div class="callout soft" style="border-color:#d9a44e">${ICONS.info}<div><strong>面积口径冲突：</strong>手填项目总建筑面积 ${fmtArea(m.project.gbaOverride)}㎡，小于商铺建筑面积合计 ${fmtArea(shopBuilding)}㎡。请核对规划总建筑面积或铺位面积。</div></div>` : ''}
-    ${formulaPanel('面积、租金与投资基数公式', `总建筑面积 = IF(手动值为0, ${preliminary ? '楼层建筑面积合计' : '商铺建筑面积合计 ×（1 + 公区系数)'}, 手动值)\n有效租金 = 租赁面积 × 基准租金 × 业态系数 ×（1 + 条件溢价）\n项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金`, ['IF', 'SUM', 'MAX', 'POWER'], '每个参数下方的ƒ按钮会显示该参数在公式中的具体作用。')}
+    ${formulaPanel('面积、租金与投资基数公式', `总建筑面积 = IF(手动值为0, ${preliminary ? '楼层建筑面积合计' : '商铺建筑面积合计 ×（1 + 公区系数)'}, 手动值)\n铺位租金 = 铺位计租面积 × 所属楼层租金单价\n项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金`, ['IF', 'SUM', 'MAX', 'POWER'], '楼层租金单价是唯一执行单价；每个参数下方的ƒ按钮会显示该参数在公式中的具体作用。')}
     <div class="form-section">
       <div class="section-title">项目概况</div>
       <div class="form-grid">
@@ -3729,7 +3729,7 @@ function renderMerchantRentBasisControls(model, mode, totalRentArea) {
   const basis = model.project?.rentAreaBasis === 'building' ? 'building' : 'leasable';
   const floorOverrides = (model.floors || []).filter(item => item.rentAreaBasis === 'building' || item.rentAreaBasis === 'leasable').length;
   const shopOverrides = mode === 'detailed' ? (model.shops || []).filter(item => item.rentAreaBasis === 'building' || item.rentAreaBasis === 'leasable').length : 0;
-  const overrideNotes = [floorOverrides ? `${floorOverrides} 个楼层覆盖` : '', shopOverrides ? `${shopOverrides} 个铺位覆盖` : ''].filter(Boolean);
+  const overrideNotes = [floorOverrides ? `${floorOverrides} 个楼层单独口径` : '', shopOverrides ? `${shopOverrides} 个铺位单独口径` : ''].filter(Boolean);
   return `<div class="settlement-panel merchant-basis-panel">
     <div><span class="eyebrow">Merchant lease basis</span><strong>商户租金核算面积口径</strong><small>这里只决定向商户出租时的租金、物业费、商管费和空调费计费面积。业主租金支付口径在项目基本条件和业主租赁支出中单独设置。</small></div>
     <div class="settlement-actions merchant-basis-actions">
@@ -3763,8 +3763,8 @@ function renderFloorEditor(m, mode, preview) {
   const buildingOptions = [...new Set([...(floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])];
   return `<div class="form-section">
     <div class="section-title">楼层租金单价与面积</div>
-    <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层租金单价是执行单价：再乘业态系数并叠加铺位条件溢价。'}</div>
-    ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层租金单价\n项目租金单价 = 各楼层满租月租金收入合计 ÷ 项目商户计租面积合计', ['SUM', 'MAX', 'IF'], '租金单价就是执行单价；未开启铺位覆盖时，所有铺位统一按楼层租金单价和业态、位置规则核算。')}
+    <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层租金单价是唯一执行单价，该楼层所有铺位直接按此单价核算，不再乘业态系数或位置溢价。'}</div>
+    ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层租金单价\n项目租金单价 = 各楼层满租月租金收入合计 ÷ 项目商户计租面积合计', ['SUM', 'MAX', 'IF'], '租金单价就是执行单价；铺位租金自动跟随所属楼层，确保录入值与明细、结果页完全一致。')}
     <div class="data-table-wrap floor-table-wrap">
       <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">${mode === 'detailed' ? '租金单价（元/㎡/月）' : '楼层租金单价（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
@@ -3805,7 +3805,7 @@ function renderPreliminarySummary(shops, floors, totalBuilding, totalLease, tota
       <div class="insight-card"><span>可租赁面积</span><strong>${fmtArea(totalLease)}</strong><em>㎡</em></div>
       <div class="insight-card"><span>满租月收益</span><strong>${fmt(totalMonthly)}</strong><em>元/月</em></div>
     </div>
-    <div class="callout soft">${ICONS.spark}<div>初步测算适合项目拿地、定位和投资机会研判阶段。招商铺位明确后，切换到“一铺一价”，可按楼层均价、业态系数和电梯口、转角铺等条件自动分配单铺租金。</div></div>
+    <div class="callout soft">${ICONS.spark}<div>初步测算适合项目拿地、定位和投资机会研判阶段。招商铺位明确后，切换到“一铺一价”，同一楼层所有铺位统一按该楼层录入的租金单价核算。</div></div>
   </div>`;
 }
 
@@ -3884,10 +3884,6 @@ function renderDetailedPricing(m, shops, preview) {
   const detailedRentArea = shops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
   const hasPreviewSummary = Boolean(preview?.summary);
   const totalRentArea = hasPreviewSummary ? Number(preview.summary.rentBasisArea || detailedRentArea) : (detailedRentArea || quickRentArea);
-  const overrideRentArea = rentOverrideShops.reduce((sum, shop) => sum + rentAreaFor(shop, m), 0);
-  const overrideRentNumerator = rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0) * rentAreaFor(shop, m), 0);
-  const weightedOverrideRent = overrideRentArea > 0 ? overrideRentNumerator / overrideRentArea : 0;
-  const simpleOverrideRent = rentOverrideShops.length ? rentOverrideShops.reduce((sum, shop) => sum + Number(shop.rentOverride || 0), 0) / rentOverrideShops.length : 0;
   const monthlyRentPreview = hasPreviewSummary ? Number(preview.summary.totalMonthlyRent || 0) : (quickMonthlyRevenue || 0);
   const quarterlyRentPreview = monthlyRentPreview * 3;
   const annualFullRentPreview = monthlyRentPreview * 12;
@@ -3926,8 +3922,6 @@ function renderDetailedPricing(m, shops, preview) {
     <div class="rent-average-check">
       <div class="rent-average-formula"><strong>项目租金单价核算</strong><span>项目租金单价 = 满租月租金总收入 ÷ 商户计租面积合计</span><code data-live="rentFormula">${fmt(monthlyRentPreview, 2)} 元/月 ÷ ${fmtArea(totalRentArea)}㎡ = ${fmt(revenueImpliedAverageRent, 2)} 元/㎡/月</code></div>
       <div class="rent-average-metrics">
-        <div><span>导入单价面积加权值</span><strong>${fmt(weightedOverrideRent, 2)}</strong><em>仅作导入单价核对</em></div>
-        <div><span>简单算术均价</span><strong>${fmt(simpleOverrideRent, 2)}</strong><em>铺位单价直接平均，仅作参考</em></div>
         <div><span>商户计租面积合计</span><strong>${fmtArea(totalRentArea)}</strong><em>㎡ · 当前计租口径</em></div>
         <div><span>稳定年实收租金</span><strong>${fmt(stableAnnualRentRevenue, 2)}</strong><em>万元 · 第${stableYear}年，已考虑招商率、递增和收租率</em></div>
       </div>
@@ -3949,29 +3943,24 @@ function renderDetailedPricing(m, shops, preview) {
       <div class="section-title">业态租金 / 联营扣点规则</div>
       <div class="section-note">每个业态可单独选择计租方式和支付方式。支付方式、保证金月数和预付租金月数会按照“招商里程碑”的日期和目标招商率逐节点进入现金流，不一次性提前计入全年招商率。当前结算方式为纯租金时，联营条件仅作参考，不进入收入。</div>
       ${renderSettlementBenchmarkPanel(m)}
-      ${formulaPanel('一铺一价与联营扣点公式', '保底月收入 = 租赁面积 × 楼层租金单价 × 业态系数 ×（1 + 位置条件溢价）\n联营扣点月收入 = 租赁面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '默认统一按楼层租金单价和项目默认费用核算；只有明确开启铺位覆盖后才使用单铺覆盖值。')}
-      <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金<br><small>元/㎡/月</small></th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}<br><small>当前 / 常规区间</small></th><th class="num">${termLabel('扣点率')}<br><small>当前 / 常规区间</small></th><th class="num">扣点收益<br><small>元/㎡/月</small></th><th class="num">业态系数</th><th>支付方式</th><th class="num">保证金<br><small>月</small></th><th class="num">预付租金<br><small>月</small></th></tr></thead><tbody>
+      ${formulaPanel('铺位租金与联营扣点公式', '铺位保底月收入 = 铺位计租面积 × 所属楼层租金单价\n联营扣点月收入 = 铺位计租面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '铺位租金单价直接取所属楼层录入值；物业费、商管费和空调费统一取系统当前录入的执行单价。')}
+      <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金<br><small>元/㎡/月</small></th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}<br><small>当前 / 常规区间</small></th><th class="num">${termLabel('扣点率')}<br><small>当前 / 常规区间</small></th><th class="num">扣点收益<br><small>元/㎡/月</small></th><th>支付方式</th><th class="num">保证金<br><small>月</small></th><th class="num">预付租金<br><small>月</small></th></tr></thead><tbody>
         ${(m.categories || []).map((cat, i) => {
           const benchmark = benchmarkForCategory(m, cat.name);
           const commissionPerSqm = Number(cat.salesPerSqmMonth || 0) * Number(cat.concessionRate || 0);
           const paymentMode = cat.paymentMode || 'inherit';
-          return `<tr><td><strong>${escapeHtml(cat.name)}</strong><small class="benchmark-row-source">${escapeHtml(benchmark.context.preset.shortLabel)}基准</small></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.rentRange[0], 0)}–${fmt(benchmark.rentRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.salesRange[0], 0)}–${fmt(benchmark.salesRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"><small class="range-hint">常规 ${fmtPct(benchmark.concessionRange[0], 0)}–${fmtPct(benchmark.concessionRange[1], 0)}</small></td><td class="num"><strong>${fmt(commissionPerSqm, 2)}</strong><small class="range-hint">${cat.revenueMode === 'rent' ? '纯租金不参与' : '测算参考'}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.factor" data-type="number" type="number" step="any" value="${cat.factor ?? 1}"></td><td><select class="table-select" data-path="categories.${i}.paymentMode" data-type="text"><option value="inherit" ${paymentMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="deposit_and_prepaid" ${paymentMode === 'deposit_and_prepaid' ? 'selected' : ''}>押金+预付租金</option><option value="deposit_only" ${paymentMode === 'deposit_only' ? 'selected' : ''}>仅收押金</option><option value="prepaid_only" ${paymentMode === 'prepaid_only' ? 'selected' : ''}>仅收预付租金</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.depositMonths" data-type="number" type="number" step="0.5" placeholder="继承" value="${cat.depositMonths ?? ''}"></td><td class="num"><input class="table-input" data-path="categories.${i}.prepaidRentMonths" data-type="number" type="number" step="0.5" placeholder="继承" value="${cat.prepaidRentMonths ?? ''}"></td></tr>`;
+          return `<tr><td><strong>${escapeHtml(cat.name)}</strong><small class="benchmark-row-source">${escapeHtml(benchmark.context.preset.shortLabel)}基准</small></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.rentRange[0], 0)}–${fmt(benchmark.rentRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.salesRange[0], 0)}–${fmt(benchmark.salesRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"><small class="range-hint">常规 ${fmtPct(benchmark.concessionRange[0], 0)}–${fmtPct(benchmark.concessionRange[1], 0)}</small></td><td class="num"><strong>${fmt(commissionPerSqm, 2)}</strong><small class="range-hint">${cat.revenueMode === 'rent' ? '纯租金不参与' : '测算参考'}</small></td><td><select class="table-select" data-path="categories.${i}.paymentMode" data-type="text"><option value="inherit" ${paymentMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="deposit_and_prepaid" ${paymentMode === 'deposit_and_prepaid' ? 'selected' : ''}>押金+预付租金</option><option value="deposit_only" ${paymentMode === 'deposit_only' ? 'selected' : ''}>仅收押金</option><option value="prepaid_only" ${paymentMode === 'prepaid_only' ? 'selected' : ''}>仅收预付租金</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.depositMonths" data-type="number" type="number" step="0.5" placeholder="继承" value="${cat.depositMonths ?? ''}"></td><td class="num"><input class="table-input" data-path="categories.${i}.prepaidRentMonths" data-type="number" type="number" step="0.5" placeholder="继承" value="${cat.prepaidRentMonths ?? ''}"></td></tr>`;
         }).join('')}
       </tbody></table></div>
       ${(preview?.categoryPaymentAnalysis || []).length ? `<div class="subsection-heading" style="margin-top:18px"><div><strong>业态支付方式与招商期现金流入</strong><span>单位：万元；严格按招商里程碑的日期、目标招商率和新增出租面积分节点测算</span></div></div><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>业态</th><th class="num">已租月租金（万元/月）</th><th>收款方式</th><th class="num">保证金月数</th><th class="num">预付租金月数</th><th class="num">保证金流入（万元）</th><th class="num">预付租金流入（万元）</th><th>收款节点</th></tr></thead><tbody>${(preview.categoryPaymentAnalysis || []).map(item => { const timeline = (item.paymentEvents || []).map(event => `${event.date}：保证金 ${fmt(event.depositCashInflow, 2)} / 预付 ${fmt(event.prepaidRentCashInflow, 2)}`).join('<br>') || '无招商里程碑，按首年出租率计入'; return `<tr><td>${escapeHtml(item.category || '')}</td><td class="num">${fmt(Number(item.occupiedMonthlyRevenue || 0) / 10000, 2)}</td><td>${escapeHtml(item.paymentModeLabel || '')}</td><td class="num">${fmt(item.depositMonths, 2)}</td><td class="num">${fmt(item.prepaidRentMonths, 2)}</td><td class="num pos">${fmt(item.depositCashInflow, 2)}</td><td class="num pos">${fmt(item.prepaidRentCashInflow, 2)}</td><td>${timeline}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
     </div>
     <div class="form-section">
-      <div class="section-title">铺位位置条件溢价</div>
-      <div class="section-note">勾选启用后，同一铺位可叠加多个条件；条件溢价合计最高按40%封顶。</div>
-      ${formulaPanel('位置条件溢价公式', '条件溢价 = MIN(40%, SUM(已启用条件溢价))\n条件调整后租金 = 基准租金 ×（1 + 条件溢价）', ['MIN', 'SUM'], '位置越优，溢价越高；可按项目实际招商策略调整每一项比例。')}
+      <div class="section-title">联营位置修正</div>
+      <div class="section-note">位置条件只影响联营扣点测算中的销售基数修正，不改变租金单价；纯租金项目可忽略本段。</div>
+      ${formulaPanel('联营位置修正公式', '位置修正率 = MIN(40%, SUM(已启用条件修正率))\n联营扣点收入 = 面积 × 销售基数 ×（1 + 位置修正率）× 扣点率', ['MIN', 'SUM'], '位置条件不参与租金单价计算，只用于联营销售基数修正。')}
       <div class="condition-grid">
         ${(m.conditionPremiums || []).map((condition, i) => `<div class="condition-item ${condition.enabled ? 'active' : ''}"><label class="condition-toggle"><input type="checkbox" data-path="conditionPremiums.${i}.enabled" data-type="bool" ${condition.enabled ? 'checked' : ''}><span></span></label><input class="condition-name" data-path="conditionPremiums.${i}.name" data-type="text" value="${escapeHtml(condition.name)}"><div class="condition-rate"><input data-path="conditionPremiums.${i}.premium" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(condition.premium || 0) * 100).toFixed(1)}"><span>%</span></div></div>`).join('')}
       </div>
-    </div>
-    <div class="form-section compact-top">
-      <div class="section-title">商铺计价口径</div>
-      <div class="section-note">默认关闭“铺位覆盖”，所有铺位统一按楼层基准租金和项目默认物业费、商管费、空调费核算。只有确实需要单铺特价并明确开启后，系统才读取铺位的租金或费用覆盖值，避免同一项目出现多套口径。</div>
-      <div class="form-grid">${selectField('铺位覆盖规则', 'project.allowShopOverrides', [{ value: false, label: '统一按楼层/项目默认' }, { value: true, label: '允许铺位单独覆盖' }], { type: 'boolean', help: '默认应由楼层基准和项目默认费用统一控制；覆盖值只用于确有单铺合同特殊约定时。' })}</div>
     </div>
     <div class="table-toolbar">
       <div style="position:relative;flex:1;max-width:360px"><input class="input" id="shop-search" placeholder="搜索楼栋、铺位号、楼层、业态或位置条件" value="${escapeHtml(state.shopSearch)}"></div>
@@ -3985,21 +3974,11 @@ function renderDetailedPricing(m, shops, preview) {
           const base = calc?.baseRent ?? (categoryRent[shop.category] || 0);
           const modeLabels = { rent:'纯租金', concession:'纯扣点', guarantee_or_concession:'保底/扣点取高' };
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
-          const rentSource = calc?.rentSource === 'override'
-            ? '铺位覆盖（已启用）'
-            : '楼层/项目默认';
-          const defaultCommercialFee = Number(m.revenues?.commercialManagementFee || 0);
-          const commercialFeeLabel = calc?.commercialManagementFeeSource === 'override'
-            ? `商管 ${fmt(calc.commercialManagementFee, 2)}（铺位覆盖，项目默认 ${fmt(defaultCommercialFee, 2)}）`
-            : `商管 ${fmt(calc?.commercialManagementFee, 2)}（项目默认）`;
-          const commercialReset = calc?.commercialManagementFeeSource === 'override'
-            ? `<button class="btn btn-ghost btn-sm" type="button" data-clear-commercial-fee="${escapeHtml(key)}">按项目默认</button>`
-            : '';
-          const feeText = calc ? `物业 ${fmt(calc.propertyFee, 2)} / ${commercialFeeLabel} / 空调 ${fmt(calc.centralAcFee, 2)}${commercialReset}<small class="rent-source">合计 ${fmt(calc.monthlyServiceFee, 2)} 元/月</small>` : '待计算';
+          const feeText = calc ? `物业 ${fmt(calc.propertyFee, 2)} / 商管 ${fmt(calc.commercialManagementFee, 2)} / 空调 ${fmt(calc.centralAcFee, 2)}<small class="rent-source">合计 ${fmt(calc.monthlyServiceFee, 2)} 元/月</small>` : '待计算';
           const shopBasisLabel = `${RENT_BASIS_LABELS[resolvedRentAreaBasis(shop, m)]}${shop.rentAreaBasisOverride ? '（铺位例外）' : ''}`;
           const includedGuarantee = calc ? Number(calc.includedGuaranteeRevenue ?? calc.guaranteeRevenue ?? 0) : 0;
           const includedConcession = calc ? Number(calc.includedConcessionRevenue ?? calc.concessionRevenue ?? 0) : 0;
-          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(shopBasisLabel)}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag" data-shop-settlement="${escapeHtml(key)}">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${calc ? fmt(calc.rent, 2) : fmt(shop.rentOverride, 2)}</strong><small class="rent-source">${rentSource}</small></td><td class="num">${feeText}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}" title="实际计入的保底收入；保底测算参考值 ${calc ? fmt(calc.guaranteeRevenue) : '待计算'}">${calc ? fmt(includedGuarantee) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}" title="实际计入的联营收入；联营测算参考值 ${calc ? fmt(calc.concessionRevenue) : '待计算'}">${calc ? fmt(includedConcession) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
+          return `<tr><td>${escapeHtml(shop.building || '1号楼')}</td><td>${escapeHtml(shop.floor || '—')}</td><td><strong>${escapeHtml(shop.id)}</strong></td><td><span class="tag">${escapeHtml(shopBasisLabel)}</span></td><td>${escapeHtml(shop.category)}</td><td>${(shop.conditions || []).length ? shop.conditions.map(c => `<span class="tag condition-tag">${escapeHtml(c)}</span>`).join(' ') : '<span style="color:#a1a7a3">—</span>'}</td><td><span class="tag" data-shop-settlement="${escapeHtml(key)}">${modeLabels[mode] || mode}</span></td><td class="num">${fmtArea(shop.buildingArea)}</td><td class="num">${fmtArea(shop.leasableArea)}</td><td class="num"><strong data-shop-unit-rent="${escapeHtml(key)}">${fmt(calc?.rent ?? base, 2)}</strong></td><td class="num">${feeText}</td><td class="num" data-shop-guarantee="${escapeHtml(key)}" title="实际计入的保底收入；保底测算参考值 ${calc ? fmt(calc.guaranteeRevenue) : '待计算'}">${calc ? fmt(includedGuarantee) : '待计算'}</td><td class="num" data-shop-concession="${escapeHtml(key)}" title="实际计入的联营收入；联营测算参考值 ${calc ? fmt(calc.concessionRevenue) : '待计算'}">${calc ? fmt(includedConcession) : '待计算'}</td><td class="num"><strong data-shop-revenue="${escapeHtml(key)}">${calc ? fmt(calc.monthlyRevenue) : '待计算'}</strong></td><td><button class="btn btn-ghost btn-sm" data-edit-shop="${shops.indexOf(shop)}">编辑</button><button class="btn btn-ghost btn-sm" data-delete-shop="${escapeHtml(key)}">${ICONS.trash}</button></td></tr>`;
         }).join('') : `<tr><td colspan="15" style="text-align:center;padding:36px;color:var(--muted)">尚未导入铺位。点击上方“选择文件”或“新增铺位”。</td></tr>`}
       </tbody></table>
     </div>
@@ -4327,7 +4306,8 @@ function estimatedProjectAverageRent(model, preview) {
     shops.forEach(shop => {
       const basis = resolvedRentAreaBasis(shop, model);
       const shopArea = basis === 'building' ? Number(shop.buildingArea || 0) : Number(shop.leasableArea || 0);
-      const rent = shop.rentOverride != null && Number(shop.rentOverride) > 0 ? Number(shop.rentOverride) : Number(categoryRent.get(shop.category) || 0);
+      const floor = (model.floors || []).find(item => buildingFloorKey(item) === buildingFloorKey(shop));
+      const rent = Number(floor?.avgRent || 0) || Number(categoryRent.get(shop.category) || 0);
       area += shopArea;
       rentValue += shopArea * rent;
     });
@@ -5480,8 +5460,8 @@ function renderRevenueAssumptionsSection() {
   </div>
   <div class="form-section" id="central-ac-section">
     <div class="section-title">物业管理费、商业管理费与中央空调费（独立核算）</div>
-    <div class="section-note">三类费用分别计算收入、递增和导出明细。物业费与商业管理费默认适用于全部铺位；中央空调费只在下方开启的楼栋收取，也可在铺位明细中用覆盖单价单独调整。</div>
-    ${formulaPanel('三项费用收入公式', '物业管理费 = Σ铺位计租面积 × 物业费单价 × 12 × 出租率 × 物业费递增因子\n商业管理费 = Σ铺位计租面积 × 商管费单价 × 12 × 出租率 × 商管费递增因子\n中央空调费 = Σ开启楼栋的铺位计租面积 × 楼栋空调单价 × 12 × 出租率 × 空调费递增因子\n三项费用合计 = 物业管理费 + 商业管理费 + 中央空调费', ['SUM', 'POWER', 'INT', 'IF'], '计租面积与租金页同口径：初步测算按楼层、一铺一价按铺位逐条汇总；物业费和商管费可按铺位覆盖。中央空调费以楼栋开关为总控：楼栋关闭时所有铺位统一为0，楼栋开启后铺位覆盖价才生效。')}
+    <div class="section-note">三类费用分别计算收入、递增和导出明细。物业费与商业管理费按本页录入单价统一适用于全部铺位；中央空调费只在下方开启的楼栋按楼栋单价收取。</div>
+    ${formulaPanel('三项费用收入公式', '物业管理费 = Σ铺位计租面积 × 物业费单价 × 12 × 出租率 × 物业费递增因子\n商业管理费 = Σ铺位计租面积 × 商管费单价 × 12 × 出租率 × 商管费递增因子\n中央空调费 = Σ开启楼栋的铺位计租面积 × 楼栋空调单价 × 12 × 出租率 × 空调费递增因子\n三项费用合计 = 物业管理费 + 商业管理费 + 中央空调费', ['SUM', 'POWER', 'INT', 'IF'], '计租面积与租金页同口径：初步测算按楼层、一铺一价按铺位逐条汇总；物业费和商管费全项目只使用本页录入的一个执行单价。中央空调费以楼栋开关和楼栋单价为唯一执行口径。')}
     <div class="form-grid">
       ${textField('首年物业管理费单价', 'revenues.propertyFee', { type: 'number', unit: '元/㎡/月', help: '物业服务合同或租赁合同约定的物业管理费；默认适用于所有铺位' })}
       ${textField('物业费起收日期', 'revenues.propertyFeeStartDate', { type: 'date', optional: true, help: '可晚于开业日；首年收入按实际可收月份折算' })}
@@ -6480,12 +6460,12 @@ function buildOperatingLedger(result = state.result) {
     }
     if (key === 'propertyManagementRevenue') {
       if (rentArea <= 0) return '商户计租面积为 0，无法形成物业管理费收入。';
-      if (defaultPropertyFee <= 0 && propertyOverrides === 0) return '项目默认物业管理费单价为 0，且没有铺位设置正数覆盖价。';
+      if (defaultPropertyFee <= 0) return '物业管理费单价为 0，请先在收入假设中录入执行单价。';
       return '物业管理费单价已有设置，但出租率、起收日期或免收期导致稳定年收入为 0。';
     }
     if (key === 'commercialManagementRevenue') {
       if (rentArea <= 0) return '商户计租面积为 0，无法形成商业管理费收入。';
-      if (defaultCommercialFee <= 0 && commercialOverrides === 0) return '项目默认商业管理费单价为 0，且没有铺位设置正数覆盖价。';
+      if (defaultCommercialFee <= 0) return '商业管理费单价为 0，请先在收入假设中录入执行单价。';
       return '商业管理费单价已有设置，但出租率、起收日期或免收期导致稳定年收入为 0。';
     }
     if (key === 'centralAcRevenue') {
@@ -7789,7 +7769,7 @@ async function runLivePreview() {
       updateSaveState();
       if (!state.floorRentAutoSyncNoticeShown) {
         state.floorRentAutoSyncNoticeShown = true;
-        toast(`已自动按楼层基准租金同步 ${floorRentSynced} 个楼层的铺位覆盖价`, 'success');
+        toast(`已自动按楼层租金同步 ${floorRentSynced} 个楼层的铺位单价`, 'success');
       }
     }
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
@@ -8257,7 +8237,7 @@ async function handleShopImport(file) {
     }
     const importedCount = payload.shops?.length || 0;
     const recognizedRentCount = payload.rentRecognizedCount || 0;
-    const feeSummary = `物业费覆盖${payload.propertyFeeOverrideCount || 0}个、商管费覆盖${payload.commercialManagementFeeOverrideCount || 0}个、空调费覆盖${payload.centralAcFeeOverrideCount || 0}个`;
+    const feeSummary = `物业费、商管费和空调费均按系统当前录入单价统一核算`;
     toast(`已导入 ${importedCount} 个铺位，识别 ${recognizedRentCount} 个租金单价；${feeSummary}${importedCount && !recognizedRentCount ? '，请检查租金单价列' : ''}`, importedCount && recognizedRentCount ? 'success' : 'error');
   } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
 }
@@ -8303,7 +8283,7 @@ function openAddShopModal(editIndex = null) {
   modalRegion.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
       <div class="modal">
-        <div class="modal-head"><div><h2>${editing ? '编辑铺位与位置条件' : '新增铺位'}</h2><p>铺位条件会影响单铺租金分配，可多选。</p></div><button class="modal-close" id="modal-close">×</button></div>
+        <div class="modal-head"><div><h2>${editing ? '编辑铺位' : '新增铺位'}</h2><p>铺位租金自动跟随所属楼层租金单价；位置条件仅用于联营扣点测算。</p></div><button class="modal-close" id="modal-close">×</button></div>
         <form id="add-shop-form">
           <div class="modal-body">
             <div class="form-grid two">
@@ -8315,9 +8295,8 @@ function openAddShopModal(editIndex = null) {
               <div class="field"><label>实用面积（套内/租赁面积，㎡）</label><input class="input" name="leasableArea" type="number" step="0.01" required value="${editing ? Number(editing.leasableArea || 0).toFixed(2) : ''}"></div>
               <div class="field"><label>业态</label><select class="select" name="category">${(m.categories || []).map(c => `<option ${editing?.category === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
               <div class="field"><label>状态</label><select class="select" name="status">${['营业','未开业','停业'].map(status => `<option ${editing?.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div>
-              <div class="field"><label>租金单价覆盖 <small>可选</small></label><input class="input" name="rentOverride" type="number" step="any" placeholder="留空则自动定价" value="${editing?.rentOverride ?? ''}"></div>
             </div>
-            <div class="field"><label>铺位位置条件 <small>可多选</small></label><div class="condition-picker">${(m.conditionPremiums || []).filter(item => item.enabled).map(item => `<label><input type="checkbox" name="conditions" value="${escapeHtml(item.name)}" ${selectedConditions.has(item.name) ? 'checked' : ''}><span>${escapeHtml(item.name)} <em>+${fmtPct(item.premium, 2)}</em></span></label>`).join('')}</div></div>
+            <div class="field"><label>联营位置条件 <small>可多选，不减租金单价</small></label><div class="condition-picker">${(m.conditionPremiums || []).filter(item => item.enabled).map(item => `<label><input type="checkbox" name="conditions" value="${escapeHtml(item.name)}" ${selectedConditions.has(item.name) ? 'checked' : ''}><span>${escapeHtml(item.name)} <em>+${fmtPct(item.premium, 2)}</em></span></label>`).join('')}</div></div>
           </div>
           <div class="modal-foot"><button type="button" class="btn btn-secondary" id="modal-cancel">取消</button><button type="submit" class="btn btn-primary">${editing ? '保存修改' : '添加铺位'}</button></div>
         </form>
@@ -8331,7 +8310,7 @@ function openAddShopModal(editIndex = null) {
     const f = new FormData(event.currentTarget);
     const shopRentAreaBasis = String(f.get('rentAreaBasis') || 'inherit');
     const nextShop = {
-      id: String(f.get('id')).trim(), building: normalizeBuildingInput(f.get('building')), floor: normalizeFloorInput(f.get('floor')), rentAreaBasis: shopRentAreaBasis, rentAreaBasisOverride: ['building', 'leasable'].includes(shopRentAreaBasis), buildingArea: roundAreaValue(f.get('buildingArea')), leasableArea: roundAreaValue(f.get('leasableArea')), category: f.get('category'), status: f.get('status'), rentOverride: f.get('rentOverride') ? Number(f.get('rentOverride')) : null, note: '',
+      id: String(f.get('id')).trim(), building: normalizeBuildingInput(f.get('building')), floor: normalizeFloorInput(f.get('floor')), rentAreaBasis: shopRentAreaBasis, rentAreaBasisOverride: ['building', 'leasable'].includes(shopRentAreaBasis), buildingArea: roundAreaValue(f.get('buildingArea')), leasableArea: roundAreaValue(f.get('leasableArea')), category: f.get('category'), status: f.get('status'), note: '',
       conditions: f.getAll('conditions'),
     };
     if (editing) state.current.model.shops[editIndex] = { ...editing, ...nextShop };

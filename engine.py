@@ -1074,7 +1074,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     floors = model.get("floors", [])
     calculation_mode = str(model.get("calculationMode") or "preliminary")
     project_revenue_model = str(project.get("revenueModel") or "rent")
-    allow_shop_overrides = bool(project.get("allowShopOverrides", False))
+    # Commercial projects in this workspace use the floor rent rate and project
+    # fee defaults as the single execution basis. Historical per-shop values are
+    # retained for audit only and never override the current unified rates.
+    allow_shop_overrides = False
     gba_override = as_float(project.get("gbaOverride"))
     category_data = {str(c.get("name", "")).strip(): c for c in model.get("categories", [])}
     category_rent = {name: as_float(cat.get("rent")) for name, cat in category_data.items()}
@@ -1223,11 +1226,13 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                 rent = base_rent
                 condition_premium = 0.0
             elif floor_avg.get(key, 0) > 0:
-                base_rent = floor_avg[key] * category_factor.get(shop["category"], 1.0) / factor_avg
-                rent = base_rent * (1 + condition_premium)
+                base_rent = floor_avg[key]
+                rent = base_rent
+                condition_premium = 0.0
             else:
                 base_rent = category_rent.get(shop["category"], 0.0)
-                rent = base_rent * (1 + condition_premium)
+                rent = base_rent
+                condition_premium = 0.0
             sales_base = max(0.0, as_float(cat.get("salesPerSqmMonth")))
             concession_rate = max(0.0, as_float(cat.get("concessionRate")))
             guarantee_revenue = rent_area * rent
