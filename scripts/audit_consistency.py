@@ -112,6 +112,7 @@ def audit_defaults_and_units() -> None:
     require_text(backend, "const widthCap = numericColumn ? 24 : 52", "export widens long text columns without stretching numeric columns")
     require_text(backend, "zoomScale: wideTable ? 80 : 90", "export uses readable zoom for wide tables")
     require_text(backend, "fullCalcOnLoad: true", "exported formulas recalculate on open")
+    require_text(backend, "const calcPrXml = '<calcPr calcId=\"0\"", "workbook XML recalculates formulas on open")
     require_text(backend, "const EXCEL_FONT = 'Arial';", "export uses cross-platform font")
     require_text(app, "cloudShareBaseUrl", "share messages use cloud relay")
     require_text(app, "config.shareUrl", "share relay configuration")

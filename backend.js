@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rentformat2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rentformat3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1252,8 +1252,13 @@ async function postProcessWorkbookXlsx(bytes, wb) {
   const workbookFile = zip.file('xl/workbook.xml');
   const relsFile = zip.file('xl/_rels/workbook.xml.rels');
   if (!workbookFile || !relsFile) return new Blob([bytes], { type: XLSX_MIME });
-  const workbookXml = await workbookFile.async('string');
+  let workbookXml = await workbookFile.async('string');
   const relsXml = await relsFile.async('string');
+  const calcPrXml = '<calcPr calcId="0" calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1"/>';
+  workbookXml = /<calcPr\b[^>]*\/?\s*>/.test(workbookXml)
+    ? workbookXml.replace(/<calcPr\b[^>]*\/?\s*>/, calcPrXml)
+    : workbookXml.replace('</workbook>', `${calcPrXml}</workbook>`);
+  zip.file('xl/workbook.xml', workbookXml);
   const stylesFile = zip.file('xl/styles.xml');
   if (stylesFile) {
     const stylesXml = await stylesFile.async('string');
