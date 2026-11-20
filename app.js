@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-strictuniform1';
+import './backend.js?v=20261120-strictuniform2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.41';
+const APP_VERSION = '1.28.42';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -801,7 +801,17 @@ function normalizeFloorInput(value) {
 }
 
 function shopRecordKey(shop) {
-  return `${String(shop?.building || '1号楼').trim()}||${String(shop?.id || '').trim()}`;
+  const building = String(shop?.building || '1号楼').trim() || '1号楼';
+  const id = String(shop?.id || '').trim();
+  if (id) return `${building}||id:${id}`;
+  return [
+    building,
+    'row',
+    String(shop?.floor || '').trim(),
+    Number(shop?.buildingArea || 0).toFixed(2),
+    Number(shop?.leasableArea || 0).toFixed(2),
+    String(shop?.category || '').trim(),
+  ].join('||');
 }
 
 function roundAreaValue(value) {

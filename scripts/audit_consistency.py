@@ -165,6 +165,8 @@ def audit_defaults_and_units() -> None:
     require_text(app, "minimumFractionDigits: precision, maximumFractionDigits: precision", "fixed decimal display")
     require_text(app, "function fmtArea(value) {\n  return fmt(value, 2);", "two-decimal area display")
     require_text(app, "syncFloorRentToShops", "floor rent to shop rent synchronization")
+    require_text(app, "if (id) return `${building}||id:${id}`;", "unique shop id matching key")
+    require_text(app, "Number(shop?.buildingArea || 0).toFixed(2)", "fallback shop key includes floor area")
     sync_floor_rent = function_segment(app, "syncFloorRentToShops")
     require_text(sync_floor_rent, "syncFloorOverrideAverage(model, floor, nextRent)", "floor rent edits resync shop overrides")
     require_text(app, "function reconcileFloorRentOverrides(model)", "automatic floor-rent reconciliation")
