@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-floorarea1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-stableshare1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -757,7 +757,8 @@ const SHOP_ALIASES = {
   status: ['状态', '经营状态', 'status'],
   rentOverride: [
     '租金单价覆盖', '租金单价', '月租金单价', '合同租金单价', '合同租金', '租金标准', '租金水平',
-    '保底租金单价', '保底租金', '平均租金', '合同月租金单价', '基准租金', '最终租金单价', '最终租金', '租金元㎡月', 'rentoverride', 'rent'
+    '保底租金单价', '保底租金', '平均租金', '合同月租金单价', '基准租金', '最终租金单价', '最终租金', '租金元㎡月',
+    '租金元月㎡', '月租金元月㎡', '租赁单价', '成交租金单价', '成交租金', '合同月租金', '租金', '月租金', 'rentoverride', 'rent'
   ],
   conditions: ['铺位条件', '位置条件', '条件', 'conditions'],
   propertyFeeOverride: ['物业管理费单价覆盖', '物业管理费覆盖', '物业费单价覆盖', '物业管理费单价', '物业费单价'],
@@ -765,6 +766,15 @@ const SHOP_ALIASES = {
   centralAcFeeOverride: ['中央空调费单价覆盖', '中央空调使用费单价覆盖', '中央空调费覆盖', '中央空调单价', '中央空调费单价', '空调费单价'],
   note: ['备注', '说明', 'note'],
 };
+
+function isPotentialRentHeader(value) {
+  const raw = String(value || '').trim();
+  const normalized = normalizeHeader(raw);
+  if (!normalized) return false;
+  if (/物业|商管|商业管理|管理费|空调|面积|面积口径|覆盖|递增|比例|起收|免收|日期|状态|备注|收益|收入/.test(normalized)) return false;
+  if (/租金|月租|租赁单价/.test(normalized)) return true;
+  return /(?:元|¥|rmb).*(?:㎡|平方米|平米)|(?:㎡|平方米|平米).*月/i.test(raw);
+}
 
 function normalizeRentAreaBasis(value, fallback = 'inherit') {
   const text = String(value ?? '').trim();
@@ -975,6 +985,10 @@ function parseShopWorkbook(base64, filename) {
   if (!matchedSheet) throw new Error(`工作簿中未找到“铺位号、建筑面积、实际租赁面积”列。已检查工作表：${wb.SheetNames.join('、')}`);
   const { name, rows, headerIdx } = matchedSheet;
   const indexes = headerIndexes(rows[headerIdx], SHOP_ALIASES);
+  if (indexes.rentOverride === undefined) {
+    const fallbackRentIndex = (rows[headerIdx] || []).findIndex(cell => isPotentialRentHeader(cell));
+    if (fallbackRentIndex >= 0) indexes.rentOverride = fallbackRentIndex;
+  }
   const rentHeader = rowValue(rows[headerIdx], indexes, 'rentOverride');
   const shops = [];
   for (const row of rows.slice(headerIdx + 1)) {

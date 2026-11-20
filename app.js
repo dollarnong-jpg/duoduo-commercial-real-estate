@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-floorarea1';
+import './backend.js?v=20261120-stableshare1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.49';
+const APP_VERSION = '1.28.50';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -2082,6 +2082,13 @@ function shareInboxTopic(userId) {
   return `duoduo-share-${String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '')}`;
 }
 
+function cloudShareBaseUrl() {
+  const config = window.DUODUO_CLOUD_CONFIG || {};
+  if (config.shareUrl) return String(config.shareUrl).replace(/\/$/, '');
+  if (config.proxyUrl) return String(config.proxyUrl).replace(/\/api\/cloud\/?$/, '/api/share').replace(/\/$/, '');
+  return 'https://ntfy.sh';
+}
+
 async function shareUsernameTopic(username) {
   const normalized = String(username || '').trim().toLowerCase();
   if (!normalized) return '';
@@ -2093,7 +2100,7 @@ async function shareUsernameTopic(username) {
 async function pollShareTopic(topic) {
   if (!topic) return;
   try {
-    const response = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}/json?poll=1&since=12h`, { cache: 'no-store' });
+    const response = await fetch(`${cloudShareBaseUrl()}/${encodeURIComponent(topic)}/json?poll=1&since=12h`, { cache: 'no-store' });
     if (!response.ok) return;
     const body = await response.text();
     for (const line of body.split('\n')) {
@@ -2250,7 +2257,7 @@ async function sendProjectToInbox({ recipientId, recipientUsername, recipientNam
   let expiresAt = 0;
   let persistenceError = null;
   try {
-    const response = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
+    const response = await fetch(`${cloudShareBaseUrl()}/${encodeURIComponent(topic)}`, {
       method: 'POST',
       headers: {
         Title: 'Duoduo Project Share',

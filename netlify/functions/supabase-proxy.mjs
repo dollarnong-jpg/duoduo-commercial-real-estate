@@ -1,4 +1,5 @@
 const UPSTREAM = 'https://hqsrjxcujjqqekyvqrvy.supabase.co';
+const NTFY_UPSTREAM = 'https://ntfy.sh';
 const ALLOWED_ORIGIN = 'https://dollarnong-jpg.github.io';
 const ALLOWED_PATHS = ['/auth/v1/', '/rest/v1/', '/storage/v1/'];
 
@@ -25,6 +26,33 @@ export default async (request) => {
   }
 
   const requestUrl = new URL(request.url);
+  if (requestUrl.pathname.startsWith('/api/share/')) {
+    const topicPath = requestUrl.pathname.slice('/api/share/'.length);
+    if (!/^duoduo-share-[A-Za-z0-9_-]+(?:\/json)?$/.test(topicPath)) {
+      return new Response(JSON.stringify({ error: 'Share topic not allowed' }), {
+        status: 404,
+        headers: { 'content-type': 'application/json', ...corsHeaders(origin) },
+      });
+    }
+    const headers = new Headers();
+    for (const name of ['content-type', 'title', 'priority', 'tags', 'x-cache']) {
+      const value = request.headers.get(name);
+      if (value) headers.set(name, value);
+    }
+    const body = ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer();
+    const upstream = await fetch(`${NTFY_UPSTREAM}/${topicPath}${requestUrl.search}`, {
+      method: request.method,
+      headers,
+      body,
+    });
+    const responseHeaders = new Headers();
+    for (const name of ['content-type', 'cache-control']) {
+      const value = upstream.headers.get(name);
+      if (value) responseHeaders.set(name, value);
+    }
+    for (const [name, value] of Object.entries(corsHeaders(origin))) responseHeaders.set(name, value);
+    return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+  }
   const upstreamPath = requestUrl.pathname.replace(/^\/api\/cloud/, '') || '/';
   if (!ALLOWED_PATHS.some(prefix => upstreamPath.startsWith(prefix))) {
     return new Response(JSON.stringify({ error: 'Path not allowed' }), {
