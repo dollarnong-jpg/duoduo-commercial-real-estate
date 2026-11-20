@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-cloudonly1';
+import './backend.js?v=20261120-loginretry1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.45';
+const APP_VERSION = '1.28.46';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');

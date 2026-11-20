@@ -183,8 +183,8 @@ async function cloudRequest(path, options = {}) {
   headers.set('apikey', CLOUD_CONFIG.anonKey);
   headers.set('Authorization', `Bearer ${token}`);
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  const attempts = Math.max(1, Math.min(4, Number(options.retries) || 3));
-  const timeoutMs = Math.max(5000, Number(options.timeoutMs) || 22000);
+  const attempts = Math.max(1, Math.min(6, Number(options.retries) || 4));
+  const timeoutMs = Math.max(5000, Number(options.timeoutMs) || 30000);
   let lastError = null;
   let lastTimedOut = false;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -199,14 +199,14 @@ async function cloudRequest(path, options = {}) {
         signal: controller.signal,
       });
       if ([502, 503, 504].includes(response.status) && attempt < attempts) {
-        await new Promise(resolve => setTimeout(resolve, attempt * 700));
+        await new Promise(resolve => setTimeout(resolve, Math.min(8000, 800 * (2 ** (attempt - 1)))));
         continue;
       }
       return response;
     } catch (error) {
       lastError = error;
       lastTimedOut = error?.name === 'AbortError';
-      if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, attempt * 700));
+      if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, Math.min(8000, 800 * (2 ** (attempt - 1)))));
     } finally {
       clearTimeout(timer);
     }
@@ -469,7 +469,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-cloudonly1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-loginretry1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3861,8 +3861,8 @@ async function cloudLoginIdentity(username, password, options = {}) {
     method: 'POST',
     body: { email: await usernameEmail(username), password },
     token: CLOUD_CONFIG.anonKey,
-    timeoutMs: Number(options.timeoutMs || 12000),
-    retries: Number(options.retries || 1),
+    timeoutMs: Number(options.timeoutMs || 30000),
+    retries: Number(options.retries || 4),
   });
   if (!auth?.access_token || !auth?.user?.id) throw new Error('登录响应不完整，请稍后重试');
   const profile = await cloudProfileWithToken(auth.access_token, auth.user.id);
@@ -3873,8 +3873,8 @@ async function cloudLoginIdentity(username, password, options = {}) {
 async function cloudRegisterIdentity(username, password, displayName) {
   const health = await cloudRequest('/auth/v1/health', {
     token: CLOUD_CONFIG.anonKey,
-    timeoutMs: 12000,
-    retries: 1,
+      timeoutMs: 30000,
+      retries: 4,
   });
   if (!health.ok) throw Object.assign(new Error(`云端注册服务暂时不可用（HTTP ${health.status}）`), { status: 503, code: 'CLOUD_UNAVAILABLE' });
   const auth = await cloudJSON('/auth/v1/signup', {
@@ -3885,8 +3885,8 @@ async function cloudRegisterIdentity(username, password, displayName) {
       data: { username, display_name: displayName || username },
     },
     token: CLOUD_CONFIG.anonKey,
-    timeoutMs: 15000,
-    retries: 1,
+    timeoutMs: 30000,
+    retries: 4,
   });
   if (!auth?.access_token || !auth?.user?.id) return { pending: true, auth: null, profile: null };
   const profile = await cloudProfileWithToken(auth.access_token, auth.user.id);
@@ -3929,8 +3929,8 @@ async function handleApi(path, init) {
         method: 'POST',
         body: { email: await usernameEmail(username), password },
         token: CLOUD_CONFIG.anonKey,
-        timeoutMs: 15000,
-        retries: 2,
+        timeoutMs: 30000,
+        retries: 4,
       });
       if (!auth?.access_token || !auth?.user?.id) throw new Error('登录响应不完整，请稍后重试');
       const profile = await cloudProfileWithToken(auth.access_token, auth.user.id);
