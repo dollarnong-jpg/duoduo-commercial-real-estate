@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-milestonecash1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-uniformrate1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -577,6 +577,7 @@ function demoModel() {
       developmentType: 'new_build',
       ownerRentAreaBasis: 'building',
       rentAreaBasis: 'leasable',
+      allowShopOverrides: false,
       revenueModel: 'rent',
       startYear: 2027,
       constructionYears: 2,

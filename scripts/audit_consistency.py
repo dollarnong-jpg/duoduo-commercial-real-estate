@@ -336,6 +336,7 @@ def audit_engine_invariants() -> None:
 
     basis_model = engine.default_model("双面积口径审计")
     basis_model["calculationMode"] = "detailed"
+    basis_model["project"]["allowShopOverrides"] = True
     basis_model["shops"] = [{
         "id": "A-101",
         "building": "1号楼",
@@ -427,6 +428,7 @@ def audit_engine_invariants() -> None:
 
     central_ac_model = engine.default_model("中央空调楼栋总控")
     central_ac_model["calculationMode"] = "detailed"
+    central_ac_model["project"]["allowShopOverrides"] = True
     central_ac_model["shops"] = [{
         "id": "AC-01", "building": "1号楼", "floor": "1F",
         "buildingArea": 100, "leasableArea": 80, "category": "零售",
@@ -533,6 +535,29 @@ def audit_monthly_cash_flow() -> None:
     assert any(event["date"] == "2029-09-30" and event["amount"] == 300 for event in owner_deposit_events)
 
 
+def audit_unified_rate_policy() -> None:
+    model = engine.default_model("统一租金与费用口径审计")
+    model["calculationMode"] = "detailed"
+    model["project"].update({"gbaOverride": 40000, "allowShopOverrides": False})
+    model["floors"] = [
+        {"building": "1号楼", "name": "1F", "buildingArea": 35000, "leasableArea": 35000, "avgRent": 48, "rentAreaBasis": "building"},
+        {"building": "1号楼", "name": "2F", "buildingArea": 5000, "leasableArea": 5000, "avgRent": 30, "rentAreaBasis": "building"},
+    ]
+    model["shops"] = [
+        {"id": "A", "building": "1号楼", "floor": "1F", "buildingArea": 35000, "leasableArea": 0, "category": "零售", "rentOverride": 30, "commercialManagementFeeOverride": 15},
+        {"id": "B", "building": "1号楼", "floor": "2F", "buildingArea": 5000, "leasableArea": 0, "category": "零售", "rentOverride": 30, "commercialManagementFeeOverride": 15},
+    ]
+    model["revenues"]["commercialManagementFee"] = 20
+    result = engine.calculate_model(model, False)
+    assert close(result["shops"][0]["rent"], 48)
+    assert close(result["shops"][1]["rent"], 30)
+    assert all(close(shop["commercialManagementFee"], 20) for shop in result["shops"])
+    model["project"]["allowShopOverrides"] = True
+    overridden = engine.calculate_model(model, False)
+    assert close(overridden["shops"][0]["rent"], 30)
+    assert close(overridden["shops"][0]["commercialManagementFee"], 15)
+
+
 def main() -> None:
     audits = [
         audit_version_and_cache,
@@ -541,6 +566,7 @@ def main() -> None:
         audit_function_annotations,
         audit_engine_invariants,
         audit_monthly_cash_flow,
+        audit_unified_rate_policy,
     ]
     for audit in audits:
         audit()

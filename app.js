@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-milestonecash1';
+import './backend.js?v=20261120-uniformrate1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.38';
+const APP_VERSION = '1.28.39';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3978,6 +3978,11 @@ function renderDetailedPricing(m, shops, preview) {
         ${(m.conditionPremiums || []).map((condition, i) => `<div class="condition-item ${condition.enabled ? 'active' : ''}"><label class="condition-toggle"><input type="checkbox" data-path="conditionPremiums.${i}.enabled" data-type="bool" ${condition.enabled ? 'checked' : ''}><span></span></label><input class="condition-name" data-path="conditionPremiums.${i}.name" data-type="text" value="${escapeHtml(condition.name)}"><div class="condition-rate"><input data-path="conditionPremiums.${i}.premium" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(condition.premium || 0) * 100).toFixed(1)}"><span>%</span></div></div>`).join('')}
       </div>
     </div>
+    <div class="form-section compact-top">
+      <div class="section-title">商铺计价口径</div>
+      <div class="section-note">默认关闭“铺位覆盖”，所有铺位统一按楼层基准租金和项目默认物业费、商管费、空调费核算。只有确实需要单铺特价并明确开启后，系统才读取铺位的租金或费用覆盖值，避免同一项目出现多套口径。</div>
+      <div class="form-grid">${selectField('铺位覆盖规则', 'project.allowShopOverrides', [{ value: false, label: '统一按楼层/项目默认' }, { value: true, label: '允许铺位单独覆盖' }], { type: 'boolean', help: '默认应由楼层基准和项目默认费用统一控制；覆盖值只用于确有单铺合同特殊约定时。' })}</div>
+    </div>
     <div class="table-toolbar">
       <div style="position:relative;flex:1;max-width:360px"><input class="input" id="shop-search" placeholder="搜索楼栋、铺位号、楼层、业态或位置条件" value="${escapeHtml(state.shopSearch)}"></div>
       <div style="display:flex;gap:8px"><button class="btn btn-secondary btn-sm" id="add-shop">${ICONS.plus}<span>新增铺位</span></button>${shops.length ? `<button class="btn btn-danger btn-sm" id="clear-shops">${ICONS.trash}<span>清空</span></button>` : ''}</div>
@@ -3990,7 +3995,9 @@ function renderDetailedPricing(m, shops, preview) {
           const base = calc?.baseRent ?? (categoryRent[shop.category] || 0);
           const modeLabels = { rent:'纯租金', concession:'纯扣点', guarantee_or_concession:'保底/扣点取高' };
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
-          const rentSource = shop.rentOverride !== null && shop.rentOverride !== undefined && Number(shop.rentOverride) > 0 ? '导入/指定' : '自动分配';
+          const rentSource = calc?.rentSource === 'override'
+            ? '铺位覆盖（已启用）'
+            : '楼层/项目默认';
           const defaultCommercialFee = Number(m.revenues?.commercialManagementFee || 0);
           const commercialFeeLabel = calc?.commercialManagementFeeSource === 'override'
             ? `商管 ${fmt(calc.commercialManagementFee, 2)}（铺位覆盖，项目默认 ${fmt(defaultCommercialFee, 2)}）`

@@ -68,6 +68,7 @@ def default_model(name: str = "未命名商业项目") -> dict[str, Any]:
             "buildingStatus": "under_construction",
             "ownerRentAreaBasis": "building",
             "rentAreaBasis": "leasable",
+            "allowShopOverrides": False,
             "revenueModel": "rent",
             "startYear": datetime.now().year + 1,
             "constructionYears": 2,
@@ -1073,6 +1074,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     floors = model.get("floors", [])
     calculation_mode = str(model.get("calculationMode") or "preliminary")
     project_revenue_model = str(project.get("revenueModel") or "rent")
+    allow_shop_overrides = bool(project.get("allowShopOverrides", False))
     gba_override = as_float(project.get("gbaOverride"))
     category_data = {str(c.get("name", "")).strip(): c for c in model.get("categories", [])}
     category_rent = {name: as_float(cat.get("rent")) for name, cat in category_data.items()}
@@ -1098,25 +1100,25 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         building_configured = building_name in central_ac_configs
         if building_configured and not bool(central_config.get("enabled")):
             return {
-                "propertyFee": max(0.0, as_float(record.get("propertyFeeOverride"), property_fee_unit)),
-                "commercialManagementFee": max(0.0, as_float(record.get("commercialManagementFeeOverride"), commercial_management_fee_unit)),
-                "propertyFeeSource": "override" if record.get("propertyFeeOverride") is not None else "project",
-                "commercialManagementFeeSource": "override" if record.get("commercialManagementFeeOverride") is not None else "project",
+                "propertyFee": max(0.0, as_float(record.get("propertyFeeOverride"), property_fee_unit)) if allow_shop_overrides else property_fee_unit,
+                "commercialManagementFee": max(0.0, as_float(record.get("commercialManagementFeeOverride"), commercial_management_fee_unit)) if allow_shop_overrides else commercial_management_fee_unit,
+                "propertyFeeSource": "override" if allow_shop_overrides and record.get("propertyFeeOverride") is not None else "project",
+                "commercialManagementFeeSource": "override" if allow_shop_overrides and record.get("commercialManagementFeeOverride") is not None else "project",
                 "centralAcFee": 0.0,
                 "centralAcEnabled": False,
             }
         central_enabled = bool(central_config.get("enabled")) or bool(record.get("centralAcEnabled"))
         central_rate = as_float(central_config.get("fee"), default_central_ac_fee)
-        if record.get("centralAcFeeOverride") is not None:
+        if allow_shop_overrides and record.get("centralAcFeeOverride") is not None:
             central_rate = max(0.0, as_float(record.get("centralAcFeeOverride")))
             central_enabled = central_rate > 0
-        property_rate = max(0.0, as_float(record.get("propertyFeeOverride"), property_fee_unit))
-        commercial_rate = max(0.0, as_float(record.get("commercialManagementFeeOverride"), commercial_management_fee_unit))
+        property_rate = max(0.0, as_float(record.get("propertyFeeOverride"), property_fee_unit)) if allow_shop_overrides else property_fee_unit
+        commercial_rate = max(0.0, as_float(record.get("commercialManagementFeeOverride"), commercial_management_fee_unit)) if allow_shop_overrides else commercial_management_fee_unit
         return {
             "propertyFee": property_rate,
             "commercialManagementFee": commercial_rate,
-            "propertyFeeSource": "override" if record.get("propertyFeeOverride") is not None else "project",
-            "commercialManagementFeeSource": "override" if record.get("commercialManagementFeeOverride") is not None else "project",
+            "propertyFeeSource": "override" if allow_shop_overrides and record.get("propertyFeeOverride") is not None else "project",
+            "commercialManagementFeeSource": "override" if allow_shop_overrides and record.get("commercialManagementFeeOverride") is not None else "project",
             "centralAcFee": central_rate if central_enabled else 0.0,
             "centralAcEnabled": bool(central_enabled and central_rate > 0),
         }
@@ -1216,7 +1218,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             cat = category_data.get(shop["category"], {})
             category_mode = str(cat.get("revenueMode") or "inherit")
             settlement_mode = project_revenue_model if category_mode == "inherit" else category_mode
-            if shop.get("rentOverride") is not None:
+            if allow_shop_overrides and shop.get("rentOverride") is not None:
                 base_rent = as_float(shop.get("rentOverride"))
                 rent = base_rent
                 condition_premium = 0.0
@@ -1249,6 +1251,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                     "rentArea": rent_area,
                     "baseRent": base_rent,
                     "rent": rent,
+                    "rentSource": "override" if allow_shop_overrides and shop.get("rentOverride") is not None else "floor",
                     "conditionPremium": condition_premium,
                     "appliedConditions": applied_conditions,
                     "salesPerSqmMonth": sales_base,
