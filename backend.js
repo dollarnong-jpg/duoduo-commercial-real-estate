@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rentimport2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rentformat1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1188,17 +1188,21 @@ function excelFreezePaneXml(freeze) {
 }
 
 function excelSheetViewXml(sheetXml, ws) {
-  const showGridLines = ws?.['!sheetViews']?.[0]?.showGridLines === false ? '0' : '1';
+  const view = ws?.['!sheetViews']?.[0] || {};
+  const showGridLines = view.showGridLines === false ? '0' : '1';
+  const zoomScale = Math.max(60, Math.min(100, Number(view.zoomScale || 100)));
   const pane = excelFreezePaneXml(ws?.['!excelFreeze']);
   const match = sheetXml.match(/<sheetView\b([^>]*?)(?:\/>|>([\s\S]*?)<\/sheetView>)/);
   if (!match) {
-    return sheetXml.replace('<sheetViews>', `<sheetViews><sheetView showGridLines="${showGridLines}" workbookViewId="0">${pane}</sheetView>`);
+    return sheetXml.replace('<sheetViews>', `<sheetViews><sheetView showGridLines="${showGridLines}" zoomScale="${zoomScale}" zoomScaleNormal="${zoomScale}" workbookViewId="0">${pane}</sheetView>`);
   }
   const attrs = match[1]
     .replace(/\s+showGridLines="[^"]*"/g, '')
+    .replace(/\s+zoomScale="[^"]*"/g, '')
+    .replace(/\s+zoomScaleNormal="[^"]*"/g, '')
     .replace(/\s+workbookViewId="[^"]*"/g, '');
   const existing = match[2] || '';
-  const next = `<sheetView showGridLines="${showGridLines}" workbookViewId="0"${attrs}>${pane}${existing}</sheetView>`;
+  const next = `<sheetView showGridLines="${showGridLines}" zoomScale="${zoomScale}" zoomScaleNormal="${zoomScale}" workbookViewId="0"${attrs}>${pane}${existing}</sheetView>`;
   return sheetXml.replace(match[0], next);
 }
 
@@ -1667,9 +1671,10 @@ function formatDataSheet(ws, sheetName, profile, inputSheets) {
         wrap: joined.length > 36,
         border: excelBorder({ bottom: { style: isTotal ? 'medium' : 'thin', color: isTotal ? EXCEL_THEME.gold : EXCEL_THEME.borderSoft } }),
       });
-      if (isNumeric && !cell.z) {
+      const genericNumberFormat = !cell.z || ['0', '0.00', 'General'].includes(String(cell.z));
+      if (isNumeric && genericNumberFormat) {
         if (/率|比例|占比|IRR|收益率/i.test(header) && Math.abs(Number(cell.v || 0)) <= 1) cell.z = '0.00%';
-        else if (/年|数量|人数|楼层/.test(header)) cell.z = '#,##0';
+        else if (/年|数量|人数|楼层|月数|期限|数量/.test(header)) cell.z = '#,##0';
         else if (/金额|收入|成本|投资|租金|费用|工资|税费|现金|净收益|NOI|NPV|价值|支出|收益|预算|单价|月薪/.test(header)) cell.z = '#,##0.00;[Red](#,##0.00);-';
         else cell.z = '#,##0.00';
       }
@@ -1678,14 +1683,35 @@ function formatDataSheet(ws, sheetName, profile, inputSheets) {
   const widths = [];
   for (let col = range.s.c; col <= range.e.c; col++) {
     let maxLen = 8;
-    for (let row = range.s.r; row <= Math.min(range.e.r, range.s.r + 200); row++) {
+    let numericCells = 0;
+    let populatedCells = 0;
+    for (let row = range.s.r; row <= Math.min(range.e.r, range.s.r + 240); row++) {
       const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+      if (!cell) continue;
+      populatedCells += 1;
+      if (cell.t === 'n') numericCells += 1;
       maxLen = Math.max(maxLen, excelVisualLength(excelCellText(cell)));
     }
     const current = Number(ws['!cols']?.[col]?.wch || 0);
-    widths.push({ wch: Math.max(8, Math.min(36, Math.max(current, maxLen + 2))) });
+    const numericColumn = populatedCells > 0 && numericCells / populatedCells >= 0.6;
+    const widthCap = numericColumn ? 24 : 52;
+    widths.push({ wch: Math.max(numericColumn ? 10 : 8, Math.min(widthCap, Math.max(current, maxLen + 2))) });
   }
   ws['!cols'] = widths;
+  for (let row = firstBodyRow; row <= range.e.r; row++) {
+    const stats = excelRowStats(ws, row, range.s.c, tableEndCol);
+    if (!stats.count) continue;
+    let maxLines = 1;
+    for (let col = range.s.c; col <= tableEndCol; col++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+      if (!cell) continue;
+      const text = excelCellText(cell);
+      const available = Math.max(8, Number(widths[col - range.s.c]?.wch || 16) - 2);
+      maxLines = Math.max(maxLines, Math.ceil(excelVisualLength(text) / available));
+    }
+    if (!ws['!rows']) ws['!rows'] = [];
+    ws['!rows'][row] = { hpt: Math.max(20, Math.min(66, 17 + (maxLines - 1) * 11)) };
+  }
   const lastRow = range.e.r;
   for (let row = Math.max(0, headerRow); row <= lastRow; row++) {
     if (row < 0) continue;
@@ -1694,9 +1720,10 @@ function formatDataSheet(ws, sheetName, profile, inputSheets) {
     if (leftCell) leftCell.s = { ...(leftCell.s || {}), border: { ...(leftCell.s?.border || {}), left: excelSide('thin', EXCEL_THEME.border) } };
     if (rightCell) rightCell.s = { ...(rightCell.s || {}), border: { ...(rightCell.s?.border || {}), right: excelSide('thin', EXCEL_THEME.border) } };
   }
+  const wideTable = tableEndCol - range.s.c > 8;
   ws['!pageSetup'] = { orientation: tableEndCol - range.s.c > 5 ? 'landscape' : 'portrait', fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
   ws['!margins'] = { left: 0.3, right: 0.3, top: 0.45, bottom: 0.45, header: 0.2, footer: 0.2 };
-  ws['!sheetViews'] = [{ showGridLines: false }];
+  ws['!sheetViews'] = [{ showGridLines: false, zoomScale: wideTable ? 80 : 90 }];
 }
 
 function formatWorkbook(wb, options = {}) {
@@ -1721,6 +1748,7 @@ function formatWorkbook(wb, options = {}) {
   };
   wb.Workbook ||= {};
   wb.Workbook.Sheets ||= [];
+  wb.Workbook.CalcPr = { ...(wb.Workbook.CalcPr || {}), calcMode: 'auto', fullCalcOnLoad: true, forceFullCalc: true };
   wb.SheetNames.forEach((name, index) => {
     const primary = index === 0 ? EXCEL_THEME.gold : ['项目概览', '核心参数', '一铺一价核算', '分析结论'].includes(name) ? EXCEL_THEME.navy : /说明|注解|口径/.test(name) ? EXCEL_THEME.grayTab : /市场|竞品|侦测/.test(name) ? EXCEL_THEME.blueTab : EXCEL_THEME.teal;
     wb.Workbook.Sheets[index] = { ...(wb.Workbook.Sheets[index] || {}), TabColor: { rgb: primary } };
