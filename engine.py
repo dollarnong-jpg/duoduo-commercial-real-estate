@@ -1278,9 +1278,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
                     "deposit": monthly * as_float(operations.get("depositMonths")) / 10000,
                 }
             )
-        floor_names = [building_floor_key(floor) for floor in floors]
+        active_shop_floor_keys = {building_floor_key(shop) for shop in shop_calc} if shops else set()
+        floor_names = [building_floor_key(floor) for floor in floors if not active_shop_floor_keys or building_floor_key(floor) in active_shop_floor_keys]
         for floor in floors:
             key = building_floor_key(floor)
+            if active_shop_floor_keys and key not in active_shop_floor_keys:
+                continue
             group = [shop for shop in shop_calc if building_floor_key(shop) == key]
             rent_area = sum(shop["rentArea"] for shop in group) or rent_area_for(floor, project)
             monthly = sum(shop["monthlyRevenue"] for shop in group)

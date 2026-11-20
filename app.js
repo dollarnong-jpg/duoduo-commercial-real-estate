@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-removephantom1';
+import './backend.js?v=20261120-datasource1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.51';
+const APP_VERSION = '1.28.52';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3020,15 +3020,16 @@ async function openProject(projectId) {
     state.current = { ...payload.project, model: payload.result?.model || payload.project.model };
     const benchmarkInitialized = ensureSettlementBenchmarks(state.current.model);
     const floorRentSynced = reconcileFloorRentOverrides(state.current.model);
+    const buildingSourcesSynced = synchronizeBuildingDataSources(state.current.model);
     state.result = payload.result;
-    state.preview = benchmarkInitialized || floorRentSynced ? null : payload.result;
+    state.preview = benchmarkInitialized || floorRentSynced || buildingSourcesSynced ? null : payload.result;
     state.calculating = false;
     state.calculationError = '';
     state.lastCalculatedAt = payload.result ? Date.now() : 0;
     state.marketAnalysis = null;
     state.marketError = null;
     state.step = 0;
-    state.dirty = benchmarkInitialized || floorRentSynced > 0;
+    state.dirty = Boolean(benchmarkInitialized || floorRentSynced > 0 || buildingSourcesSynced);
     state.floorRentAutoSyncNoticeShown = false;
     state.importWarnings = [];
     state.rentImportStats = null;
@@ -3773,10 +3774,11 @@ function renderFloorEditor(m, mode, preview) {
   const floors = m.floors || [];
   const revenueMode = m.project?.revenueModel || 'rent';
   const concessionEnabled = revenueMode !== 'rent';
+  const buildingSourceLocked = mode === 'detailed' && (m.shops || []).length > 0;
   const buildingOptions = [...new Set([...(floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])];
   return `<div class="form-section">
     <div class="section-title">楼层租金单价与面积</div>
-    <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '这里的楼层租金单价是唯一执行单价，该楼层所有铺位直接按此单价核算，不再乘业态系数或位置溢价。'}</div>
+    <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '一铺一价时，楼栋、楼层和面积统一取铺位明细，不再重复录入；这里只调整楼层租金单价，并自动同步到该楼层全部铺位。'}</div>
     ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层租金单价\n项目租金单价 = 各楼层满租月租金收入合计 ÷ 项目商户计租面积合计', ['SUM', 'MAX', 'IF'], '租金单价就是执行单价；铺位租金自动跟随所属楼层，确保录入值与明细、结果页完全一致。')}
     <div class="data-table-wrap floor-table-wrap">
       <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">商户计租面积（㎡）</th><th class="num">${mode === 'detailed' ? '租金单价（元/㎡/月）' : '楼层租金单价（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th></th></tr></thead><tbody>
@@ -3787,25 +3789,25 @@ function renderFloorEditor(m, mode, preview) {
           const concession = area * Number(floor.salesPerSqmMonth || 0) * Number(floor.concessionRate || 0);
           const monthly = revenueMode === 'concession' ? concession : revenueMode === 'guarantee_or_concession' ? Math.max(guarantee, concession) : guarantee;
           return `<tr>
-            <td><input class="table-input floor-name-input" data-path="floors.${i}.building" data-type="text" list="building-options" value="${escapeHtml(floor.building || '1号楼')}"></td>
-            <td><input class="table-input floor-name-input" data-path="floors.${i}.name" data-type="text" value="${escapeHtml(floor.name || '')}"></td>
+            <td><input class="table-input floor-name-input" data-path="floors.${i}.building" data-type="text" list="building-options" value="${escapeHtml(floor.building || '1号楼')}" ${buildingSourceLocked ? 'disabled title="楼栋统一取铺位明细"' : ''}></td>
+            <td><input class="table-input floor-name-input" data-path="floors.${i}.name" data-type="text" value="${escapeHtml(floor.name || '')}" ${buildingSourceLocked ? 'disabled title="楼层统一取铺位明细"' : ''}></td>
             <td><select class="table-select" data-path="floors.${i}.rentAreaBasis" data-type="text">${Object.entries(RENT_BASIS_LABELS).map(([value,label]) => `<option value="${value}" ${((floor.rentAreaBasis || 'inherit') === value) ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
-            <td class="num"><input class="table-input" data-path="floors.${i}.buildingArea" data-type="number" type="number" step="0.01" value="${Number(floor.buildingArea ?? 0).toFixed(2)}"></td>
-            <td class="num"><input class="table-input" data-path="floors.${i}.leasableArea" data-type="number" type="number" step="0.01" placeholder="未录入" value="${Number(floor.leasableArea) > 0 ? Number(floor.leasableArea).toFixed(2) : ''}"></td>
+            <td class="num"><input class="table-input" data-path="floors.${i}.buildingArea" data-type="number" type="number" step="0.01" value="${Number(floor.buildingArea ?? 0).toFixed(2)}" ${buildingSourceLocked ? 'disabled title="建筑面积统一取铺位明细合计"' : ''}></td>
+            <td class="num"><input class="table-input" data-path="floors.${i}.leasableArea" data-type="number" type="number" step="0.01" placeholder="未录入" value="${Number(floor.leasableArea) > 0 ? Number(floor.leasableArea).toFixed(2) : ''}" ${buildingSourceLocked ? 'disabled title="实用面积统一取铺位明细合计"' : ''}></td>
             <td class="num">${Number(floor.leasableArea) > 0 ? fmtPct(ratio) : '—'}</td>
             <td class="num"><strong>${fmtArea(area)}</strong><small class="rent-source">按${RENT_BASIS_LABELS[resolvedRentAreaBasis(floor, m)]}</small></td>
             <td class="num"><input class="table-input highlight-input" data-path="floors.${i}.avgRent" data-type="number" type="number" step="any" value="${floor.avgRent ?? 0}"></td>
             ${concessionEnabled ? `<td class="num"><input class="table-input" data-path="floors.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${floor.salesPerSqmMonth ?? 0}"></td><td class="num"><input class="table-input" data-path="floors.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(floor.concessionRate || 0) * 100).toFixed(1)}"></td>` : ''}
             <td class="num" data-floor-monthly="${escapeHtml(buildingFloorKey(floor))}">${fmt(monthly)}</td>
-            <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}">${ICONS.trash}</button></td>
+            <td><button type="button" class="btn btn-ghost btn-sm" data-remove-floor="${i}" ${buildingSourceLocked ? 'disabled title="一铺一价时请通过铺位明细调整楼栋、楼层和面积"' : ''}>${ICONS.trash}</button></td>
           </tr>`;
         }).join('') : `<tr><td colspan="${concessionEnabled ? 12 : 10}" style="text-align:center;padding:26px;color:var(--muted)">尚未添加楼层，点击下方“新增楼层”。</td></tr>`}
       </tbody></table>
     </div>
     <datalist id="building-options">${buildingOptions.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-      <button type="button" class="btn btn-secondary btn-sm" id="add-floor">${ICONS.plus}<span>新增楼层</span></button>
-      <span class="live-hint">调整楼层租金单价后系统自动核算</span>
+      <button type="button" class="btn btn-secondary btn-sm" id="add-floor" ${buildingSourceLocked ? 'disabled title="一铺一价时请通过铺位明细新增铺位和楼层"' : ''}>${ICONS.plus}<span>新增楼层</span></button>
+      <span class="live-hint">${buildingSourceLocked ? '楼栋、楼层和面积来自铺位明细；租金单价调整后自动核算' : '调整楼层租金单价后系统自动核算'}</span>
     </div>
   </div>`;
 }
@@ -7782,6 +7784,7 @@ async function runLivePreview() {
     const shopBaselineChanged = ensureShopDetailedBaseline(state.current.model);
     const costBaseline = ensureCostBaselineForCalculation(state.current.model);
     const floorRentSynced = reconcileFloorRentOverrides(state.current.model);
+    const buildingSourcesSynced = synchronizeBuildingDataSources(state.current.model);
     if (shopBaselineChanged) {
       state.dirty = true;
       updateSaveState();
@@ -7805,6 +7808,10 @@ async function runLivePreview() {
         state.floorRentAutoSyncNoticeShown = true;
         toast(`已自动按楼层租金同步 ${floorRentSynced} 个楼层的铺位单价`, 'success');
       }
+    }
+    if (buildingSourcesSynced) {
+      state.dirty = true;
+      updateSaveState();
     }
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
     if (requestSeq !== previewRequestSeq || !state.current) return null;
@@ -8002,20 +8009,23 @@ function ensureFloorsFromShops(model, options = {}) {
     group.rentArea += rentArea;
     group.rentValue += rentArea * rent;
   }
+  const existing = new Map((model.floors || []).map(floor => [buildingFloorKey(floor), floor]));
   if (options.replace) {
-    model.floors = [...groups.values()].map(group => ({
-      building: group.building,
-      name: group.name,
-      rentAreaBasis: 'inherit',
-      buildingArea: roundAreaValue(group.buildingArea),
-      leasableArea: roundAreaValue(group.leasableArea),
-      avgRent: Number((group.rentArea ? group.rentValue / group.rentArea : 0).toFixed(2)),
-      salesPerSqmMonth: 0,
-      concessionRate: 0,
-    }));
+    model.floors = [...groups.values()].map(group => {
+      const current = existing.get(`${group.building}||${group.name}`) || {};
+      return {
+        building: group.building,
+        name: group.name,
+        rentAreaBasis: current.rentAreaBasis || 'inherit',
+        buildingArea: roundAreaValue(group.buildingArea),
+        leasableArea: roundAreaValue(group.leasableArea),
+        avgRent: Number((group.rentArea ? group.rentValue / group.rentArea : 0).toFixed(2)),
+        salesPerSqmMonth: Number(current.salesPerSqmMonth || 0),
+        concessionRate: Number(current.concessionRate || 0),
+      };
+    });
     return;
   }
-  const existing = new Map((model.floors || []).map(floor => [buildingFloorKey(floor), floor]));
   for (const [key, group] of groups) {
     const avg = group.rentArea ? group.rentValue / group.rentArea : 0;
     const floor = existing.get(key);
@@ -8027,6 +8037,23 @@ function ensureFloorsFromShops(model, options = {}) {
       model.floors.push({ building: group.building, name: group.name, rentAreaBasis: 'inherit', buildingArea: group.buildingArea, leasableArea: group.leasableArea, avgRent: Number(avg.toFixed(2)) });
     }
   }
+}
+
+function synchronizeBuildingDataSources(model) {
+  if (!model) return false;
+  const before = JSON.stringify({
+    floors: model.floors || [],
+    centralAcBuildings: model.revenues?.centralAcBuildings || null,
+  });
+  if ((model.calculationMode || 'preliminary') === 'detailed' && (model.shops || []).length) {
+    ensureFloorsFromShops(model, { replace: true });
+  }
+  normalizeCentralAcBuildingConfigs(model);
+  const after = JSON.stringify({
+    floors: model.floors || [],
+    centralAcBuildings: model.revenues?.centralAcBuildings || null,
+  });
+  return before !== after;
 }
 
 function bindShopsStep() {
@@ -8257,8 +8284,7 @@ async function handleShopImport(file) {
     };
     state.importHints = payload.projectHints || {};
     applyImportHints(payload.projectHints || {});
-    ensureFloorsFromShops(state.current.model, { replace: true });
-    normalizeCentralAcBuildingConfigs(state.current.model);
+    synchronizeBuildingDataSources(state.current.model);
     state.dirty = true;
     state.shopPage = 1;
     state.preview = null;
@@ -8427,6 +8453,8 @@ async function saveProject({ force = false } = {}) {
   state.calculating = false;
   setBusy(true);
   try {
+    reconcileFloorRentOverrides(state.current.model);
+    synchronizeBuildingDataSources(state.current.model);
     const payload = await api(`/api/projects/${state.current.id}`, {
       method: 'PUT',
       body: {

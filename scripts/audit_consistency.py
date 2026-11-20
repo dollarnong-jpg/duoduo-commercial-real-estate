@@ -111,11 +111,14 @@ def audit_defaults_and_units() -> None:
     require_text(app, "config.shareUrl", "share relay configuration")
     normalize_hvac = function_segment(app, "normalizeCentralAcBuildingConfigs")
     assert "byBuilding.keys()" not in normalize_hvac, "HVAC buildings must come from imported shops/floors only"
-    require_text(app, "normalizeCentralAcBuildingConfigs(state.current.model);", "shop import prunes stale HVAC buildings")
+    require_text(app, "synchronizeBuildingDataSources(state.current.model);", "shop import prunes stale floors and HVAC buildings")
     require_text(app, "实时收件通道连接失败，已启用云端轮询", "share inbox polling remains active when WebSocket fails")
     require_text(backend, "function normalizedBuildingChargeConfigs(model, result)", "shared HVAC building normalization")
     require_text(backend, "const buildingConfigs = normalizedBuildingChargeConfigs(model, result);", "Excel HVAC export filters to actual buildings")
     require_text(app, "const centralConfigs = normalizeCentralAcBuildingConfigs(model);", "operating ledger filters stale HVAC buildings")
+    require_text(app, "function synchronizeBuildingDataSources(model)", "single building and area source synchronizer")
+    require_text(app, "一铺一价时，楼栋、楼层和面积统一取铺位明细", "detailed mode locks building and area source")
+    require_text(engine_text, "active_shop_floor_keys = {building_floor_key(shop) for shop in shop_calc}", "engine ignores stale floors in detailed mode")
     require_text(backend, "_duoduoLocalProjectId", "local project migration marker")
     require_text(backend, "/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&order=updated_at.desc&limit=1000", "admin all-project query")
     require_text(app, "全部项目统一保存在云端工作台", "cloud-only project workspace copy")
@@ -457,6 +460,35 @@ def audit_engine_invariants() -> None:
     assert close(office_result["summary"]["stableOfficeCost"], 18)
     office_model["officeBudget"]["items"] = []
     assert close(engine.calculate_model(office_model, False)["summary"]["stableOfficeCost"], 0)
+
+    source_basis_model = engine.default_model("楼栋面积唯一数据源审计")
+    source_basis_model["calculationMode"] = "detailed"
+    source_basis_model["project"].update({"gbaOverride": 0, "commonAreaFactor": 0, "rentAreaBasis": "building"})
+    source_basis_model["floors"] = [
+        {"building": "2号楼", "name": "9F", "buildingArea": 99999, "leasableArea": 99999, "avgRent": 999, "rentAreaBasis": "building"},
+    ]
+    source_basis_model["shops"] = [
+        {"id": "S1", "building": "1号楼", "floor": "1F", "buildingArea": 1699.53, "leasableArea": 0, "category": "零售", "rentOverride": 69.42},
+        {"id": "S2", "building": "3号楼", "floor": "1F", "buildingArea": 565.39, "leasableArea": 0, "category": "零售", "rentOverride": 35},
+        {"id": "S3", "building": "3号楼", "floor": "2F", "buildingArea": 1349.50, "leasableArea": 0, "category": "零售", "rentOverride": 24.5},
+        {"id": "S4", "building": "3号楼", "floor": "3F", "buildingArea": 382.26, "leasableArea": 0, "category": "零售", "rentOverride": 12.5},
+        {"id": "S5", "building": "加建", "floor": "1F", "buildingArea": 1116.00, "leasableArea": 0, "category": "零售", "rentOverride": 88.66},
+    ]
+    source_basis_model["revenues"]["centralAcBuildings"] = [
+        {"building": "1号楼", "enabled": False, "fee": 0},
+        {"building": "2号楼", "enabled": True, "fee": 30},
+        {"building": "3号楼", "enabled": False, "fee": 0},
+        {"building": "加建", "enabled": False, "fee": 0},
+    ]
+    source_basis = engine.calculate_model(source_basis_model, False)
+    source_buildings = {item["building"] for item in source_basis["floors"]}
+    assert source_buildings == {"1号楼", "3号楼", "加建"}, source_buildings
+    assert all(item["building"] != "2号楼" for item in source_basis["shops"])
+    assert close(source_basis["summary"]["shopBuildingArea"], 5112.68)
+    assert close(source_basis["summary"]["grossFloorArea"], 5112.68)
+    assert close(source_basis["summary"]["rentBasisArea"], 5112.68)
+    assert source_basis["summary"]["floorCount"] == 5
+    assert all(close(item["centralAcFee"], 0) for item in source_basis["shops"])
 
     central_ac_model = engine.default_model("中央空调楼栋总控")
     central_ac_model["calculationMode"] = "detailed"
