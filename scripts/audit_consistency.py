@@ -109,6 +109,13 @@ def audit_defaults_and_units() -> None:
     require_text(backend, "isPotentialRentHeader", "fallback rent column recognition")
     require_text(app, "cloudShareBaseUrl", "share messages use cloud relay")
     require_text(app, "config.shareUrl", "share relay configuration")
+    normalize_hvac = function_segment(app, "normalizeCentralAcBuildingConfigs")
+    assert "byBuilding.keys()" not in normalize_hvac, "HVAC buildings must come from imported shops/floors only"
+    require_text(app, "normalizeCentralAcBuildingConfigs(state.current.model);", "shop import prunes stale HVAC buildings")
+    require_text(app, "实时收件通道连接失败，已启用云端轮询", "share inbox polling remains active when WebSocket fails")
+    require_text(backend, "function normalizedBuildingChargeConfigs(model, result)", "shared HVAC building normalization")
+    require_text(backend, "const buildingConfigs = normalizedBuildingChargeConfigs(model, result);", "Excel HVAC export filters to actual buildings")
+    require_text(app, "const centralConfigs = normalizeCentralAcBuildingConfigs(model);", "operating ledger filters stale HVAC buildings")
     require_text(backend, "_duoduoLocalProjectId", "local project migration marker")
     require_text(backend, "/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&order=updated_at.desc&limit=1000", "admin all-project query")
     require_text(app, "全部项目统一保存在云端工作台", "cloud-only project workspace copy")

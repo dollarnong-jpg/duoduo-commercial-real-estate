@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-stableshare1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-removephantom1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -2805,6 +2805,30 @@ function parseOperatingBudgetWorkbook(base64, filename) {
   return { organization, propertyService, projectFields, officeBudget, leasingBudget, marketingBudget, maintenanceBudget, operations, warnings };
 }
 
+function normalizedBuildingChargeConfigs(model, result) {
+  const rows = [
+    ...(Array.isArray(result?.floors) ? result.floors : []),
+    ...(Array.isArray(result?.shops) ? result.shops : []),
+  ];
+  const names = [...new Set(rows.map(row => String(row.building || '1号楼').trim() || '1号楼'))]
+    .sort((a, b) => a.localeCompare(b, 'zh-CN', { numeric: true }));
+  const rawConfigs = Array.isArray(model.revenues?.centralAcBuildings)
+    ? model.revenues.centralAcBuildings
+    : Object.entries(model.revenues?.centralAcBuildings || {}).map(([building, value]) => ({ building, ...(value || {}) }));
+  const configuredBuildings = new Map(rawConfigs
+    .map(item => [String(item?.building || '').trim(), item])
+    .filter(([building]) => building));
+  const defaultCentralAcFee = Number(model.revenues?.centralAcFee || 0);
+  return names.map(building => {
+    const configured = configuredBuildings.get(building) || {};
+    return {
+      building,
+      enabled: Boolean(configured.enabled),
+      fee: configured.fee === null || configured.fee === undefined ? defaultCentralAcFee : Number(configured.fee || 0),
+    };
+  });
+}
+
 function buildOperatingLedgerExportRows(result) {
   const model = result?.model || {};
   const annual = (result?.annual || []).filter(row => Number(row.opYear) > 0);
@@ -2814,7 +2838,7 @@ function buildOperatingLedgerExportRows(result) {
   const rentArea = Array.isArray(result?.shops)
     ? result.shops.reduce((total, shop) => total + Number(shop.rentArea || 0), 0)
     : (result?.floors || []).reduce((total, floor) => total + Number(floor.rentArea || 0), 0);
-  const centralConfigs = Array.isArray(model.revenues?.centralAcBuildings) ? model.revenues.centralAcBuildings : [];
+  const centralConfigs = normalizedBuildingChargeConfigs(model, result);
   const enabledCentral = centralConfigs.filter(item => item?.enabled && Number(item?.fee || model.revenues?.centralAcFee || 0) > 0).length;
   const reason = key => {
     if (key === 'propertyManagementRevenue' && Number(model.revenues?.propertyFee || 0) <= 0) return '物业管理费单价为0';
@@ -2987,13 +3011,8 @@ async function exportExcel(result) {
     ['人员', '人员成本来源', model.operations?.staffCostMode === 'area' ? '按面积快速估算' : '按组织架构薪资倒推'],
     ['人员', '招聘培训费率', model.organization?.recruitmentTrainingRate], ['营销', '核算方式', model.marketingBudget?.amountMode === false ? '旧版权重（建议转换）' : '按金额录入，自动计算权重'],
   ], [18, 28, 20]);
-  let buildingConfigs = Array.isArray(model.revenues?.centralAcBuildings)
-    ? model.revenues.centralAcBuildings
-    : Object.entries(model.revenues?.centralAcBuildings || {}).map(([building, value]) => ({ building, ...(value || {}) }));
   const buildingFloorRows = result.floors || [];
-  if (!buildingConfigs.length) {
-    buildingConfigs = [...new Set(buildingFloorRows.map(row => String(row.building || '1号楼')))].map(building => ({ building, enabled: false, fee: Number(model.revenues?.centralAcFee || 0) }));
-  }
+  const buildingConfigs = normalizedBuildingChargeConfigs(model, result);
   const buildingChargeWs = addSheet(wb, '楼栋收费设置', [
     ['楼栋', '是否收取中央空调费', '中央空调费单价（元/㎡/月）', '计租面积（㎡）', '物业管理费（元/㎡/月）', '商业管理费（元/㎡/月）', '满租月物业费（元）', '满租月商管费（元）', '满租月空调费（元）', '满租月三项费用合计（元）', '说明'],
     ...buildingConfigs.map(config => {

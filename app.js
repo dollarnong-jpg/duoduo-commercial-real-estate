@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-stableshare1';
+import './backend.js?v=20261120-removephantom1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.50';
+const APP_VERSION = '1.28.51';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -2188,7 +2188,14 @@ function startShareInbox() {
   const connect = () => {
     if (shareInboxUserId !== userId || !state.token || state.user?.id !== userId) return;
     const wsUrl = config.url.replace(/^http/, 'ws').replace(/\/$/, '') + `/realtime/v1/websocket?apikey=${encodeURIComponent(config.anonKey)}&vsn=1.0.0`;
-    const socket = new WebSocket(wsUrl);
+    let socket;
+    try {
+      socket = new WebSocket(wsUrl);
+    } catch (error) {
+      console.warn('实时收件通道连接失败，已启用云端轮询', error);
+      shareInboxReconnect = setTimeout(connect, 4000);
+      return;
+    }
     shareInboxSocket = socket;
     let ref = 0;
     socket.onopen = () => {
@@ -5196,7 +5203,6 @@ function normalizeCentralAcBuildingConfigs(model) {
   const names = [...new Set([
     ...shops.map(shop => String(shop.building || '1号楼').trim() || '1号楼'),
     ...floors.map(floor => String(floor.building || '1号楼').trim() || '1号楼'),
-    ...byBuilding.keys(),
   ])].sort((a, b) => a.localeCompare(b, 'zh-CN', { numeric: true }));
   const configs = names.map(building => {
     const current = byBuilding.get(building) || {};
@@ -6464,7 +6470,7 @@ function buildOperatingLedger(result = state.result) {
   const defaultCentralAcFee = Number(model.revenues?.centralAcFee || 0);
   const propertyOverrides = shops.filter(shop => Number(shop.propertyFeeOverride || 0) > 0).length;
   const commercialOverrides = shops.filter(shop => Number(shop.commercialManagementFeeOverride || 0) > 0).length;
-  const centralConfigs = Array.isArray(model.revenues?.centralAcBuildings) ? model.revenues.centralAcBuildings : [];
+  const centralConfigs = normalizeCentralAcBuildingConfigs(model);
   const enabledCentralBuildings = centralConfigs.filter(item => item?.enabled && Number(item?.fee || defaultCentralAcFee) > 0).length;
   const annualSum = key => annual.reduce((sum, row) => sum + Number(row[key] || 0), 0);
   const stable = key => Number(stableRow[key] || 0);
@@ -8252,6 +8258,7 @@ async function handleShopImport(file) {
     state.importHints = payload.projectHints || {};
     applyImportHints(payload.projectHints || {});
     ensureFloorsFromShops(state.current.model, { replace: true });
+    normalizeCentralAcBuildingConfigs(state.current.model);
     state.dirty = true;
     state.shopPage = 1;
     state.preview = null;
