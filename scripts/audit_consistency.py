@@ -104,6 +104,8 @@ def audit_defaults_and_units() -> None:
     assert "离线兼容登录" not in app
     require_text(backend, "cloudLoginIdentity", "cloud account login")
     require_text(backend, "cloudRegisterIdentity", "cloud account registration")
+    require_text(backend, "function cloudXHRRequest", "dual-channel cloud login fallback")
+    require_text(backend, "attempt % 2 === 0", "cloud login alternates fetch and XHR")
     require_text(backend, "_duoduoLocalProjectId", "local project migration marker")
     require_text(backend, "/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&order=updated_at.desc&limit=1000", "admin all-project query")
     require_text(app, "全部项目统一保存在云端工作台", "cloud-only project workspace copy")

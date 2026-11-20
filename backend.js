@@ -177,11 +177,39 @@ function cloudErrorMessage(payload, fallback = '云端服务请求失败') {
     (typeof payload?.error === 'string' ? payload.error : '') || payload?.details || payload?.hint || fallback;
 }
 
+function cloudXHRRequest(url, options, body, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(options.method || 'GET', url, true);
+    xhr.timeout = timeoutMs;
+    for (const [key, value] of options.headers.entries()) {
+      try { xhr.setRequestHeader(key, value); } catch {}
+    }
+    xhr.onload = () => resolve(new Response(xhr.responseText || '', {
+      status: xhr.status,
+      headers: { 'Content-Type': xhr.getResponseHeader('Content-Type') || 'application/json' },
+    }));
+    xhr.onerror = () => reject(new TypeError('Cloud XHR network failure'));
+    xhr.ontimeout = () => {
+      const error = new Error('Cloud XHR timeout');
+      error.name = 'AbortError';
+      reject(error);
+    };
+    xhr.onabort = () => {
+      const error = new Error('Cloud XHR aborted');
+      error.name = 'AbortError';
+      reject(error);
+    };
+    xhr.send(body);
+  });
+}
+
 async function cloudRequest(path, options = {}) {
   const token = options.token || CLOUD_CONFIG.anonKey;
   const headers = new Headers(options.headers || {});
   headers.set('apikey', CLOUD_CONFIG.anonKey);
   headers.set('Authorization', `Bearer ${token}`);
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json');
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const attempts = Math.max(1, Math.min(6, Number(options.retries) || 4));
   const timeoutMs = Math.max(5000, Number(options.timeoutMs) || 30000);
@@ -191,13 +219,18 @@ async function cloudRequest(path, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await nativeFetch(`${CLOUD_CONFIG.url}${path}`, {
-        method: options.method || 'GET',
-        headers,
-        body: options.body == null ? undefined : (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)),
-        cache: 'no-store',
-        signal: controller.signal,
-      });
+      const url = `${CLOUD_CONFIG.url}${path}`;
+      const body = options.body == null ? undefined : (typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+      const response = attempt % 2 === 0
+        ? await cloudXHRRequest(url, { method: options.method || 'GET', headers }, body, timeoutMs)
+        : await nativeFetch(url, {
+          method: options.method || 'GET',
+          headers,
+          body,
+          cache: 'no-store',
+          credentials: 'omit',
+          signal: controller.signal,
+        });
       if ([502, 503, 504].includes(response.status) && attempt < attempts) {
         await new Promise(resolve => setTimeout(resolve, Math.min(8000, 800 * (2 ** (attempt - 1)))));
         continue;
@@ -212,8 +245,8 @@ async function cloudRequest(path, options = {}) {
     }
   }
   const networkError = new Error(lastTimedOut
-    ? `连接云端服务超时，系统已自动重试${attempts}次。请切换 Wi-Fi 或手机移动网络，关闭 VPN、代理和广告拦截后重试。`
-    : `无法连接云端服务，系统已自动重试${attempts}次。请切换 Wi-Fi 或手机移动网络，关闭 VPN、代理和广告拦截后重试。`);
+    ? `连接云端服务超时，系统已通过标准通道和兼容通道自动重试${attempts}次。请直接再次点击“进入工作台”；如仍失败，请切换手机移动网络后重试。`
+    : `无法连接云端服务，系统已通过标准通道和兼容通道自动重试${attempts}次。请直接再次点击“进入工作台”；如仍失败，请切换手机移动网络后重试。`);
   networkError.status = 503;
   networkError.code = lastTimedOut ? 'CLOUD_TIMEOUT' : 'CLOUD_NETWORK';
   networkError.cause = lastError;
@@ -469,7 +502,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-loginretry1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-logindual1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
