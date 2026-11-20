@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptstyle3', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptpolish1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3500,7 +3500,7 @@ async function exportExcel(result) {
   return workbookBlob(wb);
 }
 
-const PPT_FONT = 'Arial';
+const PPT_FONT = 'Hiragino Sans GB';
 const PPT_THEME = {
   navy: '103B33',
   navy2: '174E43',
@@ -3550,12 +3550,47 @@ function pptTable(slide, rows, options = {}) {
 function addSlideTitle(slide, title, subtitle = '', options = {}) {
   slide.background = { color: PPT_THEME.paper };
   slide.addShape('rect', { x: 0, y: 0, w: 13.333, h: 0.12, fill: { color: PPT_THEME.navy }, line: { color: PPT_THEME.navy } });
-  slide.addText(title, { x: 0.58, y: 0.34, w: 11.9, h: 0.44, fontFace: PPT_FONT, fontSize: 21, bold: true, color: PPT_THEME.navy, margin: 0 });
-  if (subtitle) slide.addText(subtitle, { x: 0.6, y: 0.82, w: 11.9, h: 0.28, fontFace: PPT_FONT, fontSize: 8.8, color: PPT_THEME.muted, margin: 0 });
+  slide.addText(title, { x: 0.58, y: 0.34, w: 11.9, h: 0.44, fontFace: PPT_FONT, fontSize: 21, bold: true, color: PPT_THEME.navy, margin: 0, breakLine: false });
+  if (subtitle) slide.addText(subtitle, { x: 0.6, y: 0.82, w: 11.9, h: 0.28, fontFace: PPT_FONT, fontSize: 8.8, color: PPT_THEME.muted, margin: 0, breakLine: false });
   slide.addShape('rect', { x: 0.6, y: 1.14, w: 0.52, h: 0.035, fill: { color: PPT_THEME.gold }, line: { color: PPT_THEME.gold } });
   slide.addShape('rect', { x: 0.6, y: 7.07, w: 12.05, h: 0.01, fill: { color: PPT_THEME.line }, line: { color: PPT_THEME.line } });
-  slide.addText(options.projectName || '多多 · 商业地产', { x: 0.6, y: 7.12, w: 7.2, h: 0.18, fontFace: PPT_FONT, fontSize: 7.5, color: PPT_THEME.muted, margin: 0 });
-  if (options.pageNumber) slide.addText(String(options.pageNumber).padStart(2, '0'), { x: 12.1, y: 7.1, w: 0.55, h: 0.2, fontFace: PPT_FONT, fontSize: 8, bold: true, color: PPT_THEME.green, align: 'right', margin: 0 });
+  slide.addText(options.projectName || '多多 · 商业地产', { x: 0.6, y: 7.12, w: 7.2, h: 0.18, fontFace: PPT_FONT, fontSize: 7.5, color: PPT_THEME.muted, margin: 0, breakLine: false });
+  if (options.pageNumber) slide.addText(String(options.pageNumber).padStart(2, '0'), { x: 12.1, y: 7.1, w: 0.55, h: 0.2, fontFace: PPT_FONT, fontSize: 8, bold: true, color: PPT_THEME.green, align: 'right', margin: 0, breakLine: false });
+}
+
+function pptNumber(value, digits = 2) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '—';
+}
+
+function pptPercent(value, digits = 2) {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${(n * 100).toFixed(digits)}%` : '—';
+}
+
+function pptNormalizeNumberText(value) {
+  return String(value ?? '')
+    .replace(/([-−]?\d[\d,]*(?:\.\d+)?)\s*万元/g, (_, n) => `${pptNumber(String(n).replace('−', '-').replace(/,/g, ''))} 万元`)
+    .replace(/([-−]?\d[\d,]*(?:\.\d+)?)\s*万元\/年/g, (_, n) => `${pptNumber(String(n).replace('−', '-').replace(/,/g, ''))} 万元/年`)
+    .replace(/([-−]?\d+(?:\.\d+)?)\s*%/g, (_, n) => `${(Number(String(n).replace('−', '-'))).toFixed(2)}%`);
+}
+
+function pptMetricCard(slide, { x, y, w, h, label, value, note = '', fill = PPT_THEME.greenSoft, valueColor = PPT_THEME.navy, line = 'C9DDD4', valueFontSize = 16 }) {
+  slide.addShape('roundRect', { x, y, w, h, radius: 0.08, fill: { color: fill }, line: { color: line, width: 0.6 } });
+  slide.addText(label, { x: x + 0.18, y: y + 0.12, w: w - 0.36, h: 0.2, fontFace: PPT_FONT, fontSize: 7.6, color: PPT_THEME.muted, margin: 0, breakLine: false });
+  slide.addText(value, { x: x + 0.18, y: y + 0.4, w: w - 0.36, h: 0.32, fontFace: PPT_FONT, fontSize: valueFontSize, bold: true, color: valueColor, margin: 0, breakLine: false });
+  if (note) slide.addText(note, { x: x + 0.18, y: y + h - 0.25, w: w - 0.36, h: 0.16, fontFace: PPT_FONT, fontSize: 6.8, color: PPT_THEME.muted, margin: 0, breakLine: false });
+}
+
+function pptSectionLabel(slide, text, x, y, w, color = PPT_THEME.green) {
+  slide.addText(text, { x, y, w, h: 0.22, fontFace: PPT_FONT, fontSize: 8.5, bold: true, color, margin: 0, breakLine: false });
+}
+
+function pptInsightBar(slide, { x, y, w, h, title, body, fill = PPT_THEME.cream, accent = PPT_THEME.gold }) {
+  slide.addShape('rect', { x, y, w, h, fill: { color: fill }, line: { color: PPT_THEME.line, width: 0.4 } });
+  slide.addShape('rect', { x, y, w: 0.06, h, fill: { color: accent }, line: { color: accent } });
+  slide.addText(title, { x: x + 0.2, y: y + 0.13, w: 1.2, h: 0.22, fontFace: PPT_FONT, fontSize: 8.5, bold: true, color: accent, margin: 0, breakLine: false });
+  slide.addText(body, { x: x + 1.25, y: y + 0.1, w: w - 1.45, h: h - 0.18, fontFace: PPT_FONT, fontSize: 9.2, color: PPT_THEME.text, margin: 0, valign: 'mid', breakLine: false });
 }
 
 async function exportPPT(result) {
@@ -3569,6 +3604,12 @@ async function exportPPT(result) {
   pptx.company = '多多 · 商业地产';
   pptx.lang = 'zh-CN';
   pptx.theme = { headFontFace: PPT_FONT, bodyFontFace: PPT_FONT, lang: 'zh-CN' };
+  let pptPageNumber = 1;
+  const addContentSlide = (title, subtitle = '') => {
+    const nextSlide = pptx.addSlide();
+    addSlideTitle(nextSlide, title, subtitle, { pageNumber: ++pptPageNumber, projectName: s.projectName || '多多 · 商业地产' });
+    return nextSlide;
+  };
 
   let slide = pptx.addSlide();
   slide.background = { color: PPT_THEME.navy };
@@ -3590,27 +3631,33 @@ async function exportPPT(result) {
   });
   slide.addText(`${new Date().toLocaleDateString('zh-CN')}｜人民币｜金额单位：万元`, { x: 1.05, y: 6.55, w: 8, h: 0.28, fontFace: PPT_FONT, fontSize: 9, color: '88A7A0', margin: 0 });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '核心结论', '基于当前输入假设自动生成');
+  slide = addContentSlide('核心结论', '基于当前输入假设自动生成');
   const kpis = [
-    ['项目总投资', `${s.totalInvestment.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 万元`],
-    ['项目IRR', s.projectIrr == null ? '不适用' : `${(s.projectIrr * 100).toFixed(2)}%`],
-    ['项目NPV', `${s.projectNpv.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 万元`],
-    ['稳定期NOI', `${s.stableNoi.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 万元/年`],
-    ['NOI回报率', `${(s.noiYield * 100).toFixed(2)}%`],
-    ['静态回收期', s.staticPayback == null ? '未回收' : `${s.staticPayback.toFixed(2)} 年`],
+    ['项目总投资', `${pptNumber(s.totalInvestment)} 万元`, '资本化投入口径'],
+    ['项目IRR', s.projectIrr == null ? '不适用' : pptPercent(s.projectIrr), '项目现金流内部收益率'],
+    ['项目NPV', `${pptNumber(s.projectNpv)} 万元`, '按设定折现率测算'],
+    ['稳定期NOI', `${pptNumber(s.stableNoi)} 万元/年`, '稳定运营年经营净现金流'],
+    ['NOI回报率', pptPercent(s.noiYield), '稳定期NOI ÷ 项目总投资'],
+    ['静态回收期', s.staticPayback == null ? '未回收' : `${pptNumber(s.staticPayback)} 年`, '按累计项目现金流判断'],
   ];
   kpis.forEach((item, i) => {
     const x = 0.75 + (i % 3) * 4.1;
-    const y = 1.65 + Math.floor(i / 3) * 1.75;
-    slide.addShape(pptx.ShapeType.roundRect, { x, y, w: 3.65, h: 1.3, fill: { color: i < 3 ? 'F7ECD4' : 'E5F0EB' }, line: { color: i < 3 ? 'E9D6AC' : 'C9DDD4', width: 0.5 }, radius: 0.08 });
-    slide.addText(item[0], { x: x + 0.22, y: y + 0.15, w: 3.1, h: 0.28, fontFace: PPT_FONT, fontSize: 10, color: '66736F' });
-    slide.addText(item[1], { x: x + 0.22, y: y + 0.55, w: 3.1, h: 0.45, fontFace: PPT_FONT, fontSize: 21, bold: true, color: '103B33' });
+    const y = 1.52 + Math.floor(i / 3) * 1.62;
+    pptMetricCard(slide, {
+      x, y, w: 3.65, h: 1.22, label: item[0], value: item[1], note: item[2],
+      fill: i < 3 ? PPT_THEME.goldSoft : PPT_THEME.greenSoft,
+      line: i < 3 ? 'E9D6AC' : 'C9DDD4',
+    });
   });
-  slide.addText(`初筛状态：${s.status}`, { x: 0.78, y: 5.45, w: 11.7, h: 0.5, fontFace: PPT_FONT, fontSize: 14, bold: true, color: s.status === '通过初筛' ? '1D6B57' : 'B94A48', fill: { color: 'FBF8F1' }, margin: 0.12 });
+  pptInsightBar(slide, {
+    x: 0.75, y: 5.0, w: 11.85, h: 0.92,
+    title: `初筛状态 ${s.status || '待完善'}`,
+    body: `当前模型结论为“${s.status || '待完善'}”。优先复核租金实现、工程投资、开业去化节奏和运营成本假设；金额单位：万元，比例保留两位小数。`,
+    accent: s.status === '通过初筛' ? PPT_THEME.green : PPT_THEME.red,
+    fill: s.status === '通过初筛' ? PPT_THEME.greenSoft : 'FBEFED',
+  });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '投资构成', '土地、工程、装修、预备费与开办资金');
+  slide = addContentSlide('投资构成', '土地、工程、装修、预备费与开办资金');
   slide.addChart(pptx.ChartType.doughnut, [{ name: '投资构成', labels: result.investmentBreakdown.map(x => x.name), values: result.investmentBreakdown.map(x => x.value) }], {
     x: 0.75, y: 1.5, w: 6.1, h: 4.9, holeSize: 58, showLegend: false, showPercent: true, showValue: false, dataLabelFontFace: PPT_FONT, dataLabelFontSize: 8, dataLabelColor: PPT_THEME.white,
     chartColors: ['103B33', '1D6B57', 'D6A84B', '8EA9A1', 'B7A888', '527C70', 'E4CF9F'],
@@ -3619,12 +3666,11 @@ async function exportPPT(result) {
   let py = 1.68;
   for (const item of result.investmentBreakdown) {
     slide.addText(item.name, { x: 7.0, y: py, w: 2.6, h: 0.25, fontFace: PPT_FONT, fontSize: 10, color: '17211E' });
-    slide.addText(`${item.value.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 万元`, { x: 9.7, y: py, w: 2.4, h: 0.25, fontFace: PPT_FONT, fontSize: 10, bold: true, color: '103B33', align: 'right' });
+    slide.addText(`${pptNumber(item.value)} 万元`, { x: 9.5, y: py, w: 2.6, h: 0.25, fontFace: PPT_FONT, fontSize: 10, bold: true, color: '103B33', align: 'right', breakLine: false });
     py += 0.52;
   }
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, `${Number(result.model.project.operationYears || result.annual?.length || 20)}年营业收入与NOI`, '金额单位：万元');
+  slide = addContentSlide(`${Number(result.model.project.operationYears || result.annual?.length || 20)}年营业收入与NOI`, '金额单位：万元');
   slide.addChart(pptx.ChartType.line, [
     { name: '营业收入', labels: result.annual.map(x => `Y${x.opYear}`), values: result.annual.map(x => x.revenue) },
     { name: 'NOI', labels: result.annual.map(x => `Y${x.opYear}`), values: result.annual.map(x => x.noi) },
@@ -3632,39 +3678,51 @@ async function exportPPT(result) {
   ], { x: 0.7, y: 1.45, w: 12.0, h: 4.75, showLegend: true, legendPos: 't', showTitle: false, lineDataSymbol: 'none', chartColors: ['1D6B57', 'D6A84B', 'B94A48'], catAxisLabelFontSize: 8, valAxisLabelFontSize: 9, catAxisLabelFontFace: PPT_FONT, valAxisLabelFontFace: PPT_FONT, valGridLine: { color: 'E8EEEA', style: 'solid', size: 0.5 }, legendFontFace: PPT_FONT, legendFontSize: 8 });
   slide.addText(`稳定期费用性收入：物业管理费 ${Number(s.stablePropertyManagementIncome || 0).toFixed(2)} 万元/年｜商业管理费 ${Number(s.stableCommercialManagementIncome || 0).toFixed(2)} 万元/年｜中央空调费 ${Number(s.stableCentralAcIncome || 0).toFixed(2)} 万元/年｜三项合计 ${Number(s.stablePropertyFeeIncome || 0).toFixed(2)} 万元/年`, { x: 0.72, y: 6.35, w: 11.95, h: 0.5, fontFace: PPT_FONT, fontSize: 8, color: '17211E', fill: { color: 'E5F0EB' }, margin: 0.08, valign: 'mid' });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '楼栋与楼层面积及租金汇总', `商户计租口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}｜业主支付口径：${result.model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'}｜表内面积为铺位/楼层明细面积，不含公区｜项目总建筑面积 ${Number(s.grossFloorArea || 0).toFixed(2)}㎡`);
-  const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','租金单价','年租金(万元)','占比'], ...(result.floors || []).slice(0, 12).map(x => [x.building || '1号楼', x.name, Number(x.buildingArea || 0).toFixed(2), Number(x.leasableArea || 0).toFixed(2), Number(x.rentArea || 0).toFixed(2), Number(x.weightedRent || x.avgRent || 0).toFixed(2), (Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000).toFixed(2), `${(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1) * 100).toFixed(2)}%`])];
-  pptTable(slide, floorSummaryRows, { x: 0.55, y: 1.4, w: 12.3, colW: [1.25, 0.9, 1.35, 1.35, 1.35, 1.55, 1.9, 1.2], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 8, margin: 0.03, rowH: 0.3, autoFit: false });
-  if ((result.floors || []).length > 12) slide.addText(`仅展示前12个楼层，完整数据见Excel。`, { x: 0.7, y: 6.65, w: 5, h: 0.25, fontFace: PPT_FONT, fontSize: 8, color: '66736F' });
+  slide = addContentSlide('楼栋与楼层面积及租金汇总', `商户计租口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}｜业主支付口径：${result.model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'}｜表内面积为铺位/楼层明细面积，不含公区｜项目总建筑面积 ${Number(s.grossFloorArea || 0).toFixed(2)}㎡`);
+  const floorData = result.floors || [];
+  const floorSummaryRows = [['楼栋','楼层','建筑㎡','实用㎡','计租㎡','租金单价','年租金（万元）','占比'], ...floorData.slice(0, 12).map(x => [x.building || '1号楼', x.name, pptNumber(x.buildingArea), pptNumber(x.leasableArea), pptNumber(x.rentArea), pptNumber(x.weightedRent || x.avgRent || 0), pptNumber(Number(x.monthlyRevenue || x.monthlyRent || 0) * 12 / 10000), pptPercent(Number(x.monthlyRevenue || x.monthlyRent || 0) / Math.max(Number(s.totalMonthlyRent || 0), 1))])];
+  pptTable(slide, floorSummaryRows, { x: 0.55, y: 1.38, w: 12.3, colW: [1.25, 0.9, 1.35, 1.35, 1.35, 1.55, 1.9, 1.2], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 8.5, margin: 0.04, rowH: 0.4, autoFit: false });
+  const summaryRentArea = floorData.reduce((sum, x) => sum + Number(x.rentArea || 0), 0);
+  const summaryMonthlyRent = floorData.reduce((sum, x) => sum + Number(x.monthlyRevenue || x.monthlyRent || 0), 0) || Number(s.totalMonthlyRent || 0);
+  pptMetricCard(slide, { x: 0.7, y: 4.25, w: 3.7, h: 1.12, label: '项目计租面积', value: `${pptNumber(summaryRentArea)} ㎡`, note: '楼层/铺位明细合计，不含公区', fill: PPT_THEME.greenSoft, line: 'C9DDD4' });
+  pptMetricCard(slide, { x: 4.65, y: 4.25, w: 3.7, h: 1.12, label: '项目租金单价', value: `${pptNumber(summaryRentArea ? summaryMonthlyRent / summaryRentArea : 0)} 元/㎡/月`, note: '满租月租金 ÷ 项目计租面积', fill: PPT_THEME.goldSoft, line: 'E9D6AC' });
+  pptMetricCard(slide, { x: 8.6, y: 4.25, w: 3.7, h: 1.12, label: '满租月租金', value: `${pptNumber(summaryMonthlyRent / 10000)} 万元/月`, note: 'Σ各楼层月租金，不含出租率与免租期', fill: PPT_THEME.cream, line: PPT_THEME.line });
+  pptInsightBar(slide, { x: 0.7, y: 5.65, w: 11.6, h: 0.78, title: '统一口径', body: '楼层租金单价 = 该层年租金 ÷ 该层计租面积 ÷ 12；项目租金单价 = 项目年租金 ÷ 项目计租面积 ÷ 12。面积、单价、金额均保留两位小数。', accent: PPT_THEME.green, fill: PPT_THEME.greenSoft });
+  if (floorData.length > 12) slide.addText('仅展示前12个楼层，完整明细见Excel。', { x: 0.72, y: 6.55, w: 5, h: 0.22, fontFace: PPT_FONT, fontSize: 7.5, color: PPT_THEME.muted, breakLine: false });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '租赁与联营规则', `行业基准：${settlementPresetLabels[result.model.settlementBenchmark?.preset] || '购物中心行业常规'}｜销售修正 ×${Number(result.model.settlementBenchmark?.salesFactor || 1).toFixed(2)}`);
+  slide = addContentSlide('租赁与联营规则', `行业基准：${settlementPresetLabels[result.model.settlementBenchmark?.preset] || '购物中心行业常规'}｜销售修正 ×${Number(result.model.settlementBenchmark?.salesFactor || 1).toFixed(2)}`);
+  const revenueModeLabels = { rent: '纯租金', concession: '纯联营扣点', guarantee_or_concession: '保底与扣点取高', inherit: '继承项目' };
+  const paymentModeLabels = { inherit: '继承项目', deposit_and_prepaid: '押金＋预付租金', deposit_only: '仅收押金', prepaid_only: '仅收预付租金' };
   const catRows = [['业态', '保底租金', '销售基数 / 常规区间', '扣点率 / 常规区间', '扣点收益/㎡', '结算方式', '支付方式', '保证金月数', '预付租金月数'], ...(result.model.categories || []).map(x => {
-    const salesRange = x.benchmarkSalesMin == null ? '' : `${x.benchmarkSalesMin}–${x.benchmarkSalesMax}`;
-    const rateRange = x.benchmarkConcessionMin == null ? '' : `${(Number(x.benchmarkConcessionMin) * 100).toFixed(2)}%–${(Number(x.benchmarkConcessionMax) * 100).toFixed(2)}%`;
-    return [x.name, `${Number(x.rent || 0).toFixed(2)}`, `${Number(x.salesPerSqmMonth || 0).toFixed(2)}
-${salesRange}`, `${(Number(x.concessionRate || 0) * 100).toFixed(2)}%
-${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), x.revenueMode, x.paymentMode || 'inherit', x.depositMonths ?? '继承', x.prepaidRentMonths ?? '继承'];
+    const salesRange = x.benchmarkSalesMin == null ? '' : `${pptNumber(x.benchmarkSalesMin)}–${pptNumber(x.benchmarkSalesMax)}`;
+    const rateRange = x.benchmarkConcessionMin == null ? '' : `${pptPercent(x.benchmarkConcessionMin)}–${pptPercent(x.benchmarkConcessionMax)}`;
+    const deposit = x.depositMonths == null ? '继承项目' : `${pptNumber(x.depositMonths)} 个月`;
+    const prepaid = x.prepaidRentMonths == null ? '继承项目' : `${pptNumber(x.prepaidRentMonths)} 个月`;
+    return [x.name, pptNumber(x.rent), salesRange ? `${pptNumber(x.salesPerSqmMonth)}
+常规 ${salesRange}` : pptNumber(x.salesPerSqmMonth), rateRange ? `${pptPercent(x.concessionRate)}
+常规 ${rateRange}` : pptPercent(x.concessionRate), pptNumber(Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0)), revenueModeLabels[x.revenueMode || 'inherit'] || x.revenueMode || '继承项目', paymentModeLabels[x.paymentMode || 'inherit'] || x.paymentMode || '继承项目', deposit, prepaid];
   })];
-  pptTable(slide, catRows, { x: 0.55, y: 1.4, w: 12.2, colW: [1.05, 1.1, 1.75, 1.75, 1.1, 1.1, 1.25, 0.9, 1.0], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 7.6, margin: 0.03, rowH: 0.52, autoFit: false });
+  pptTable(slide, catRows, { x: 0.55, y: 1.36, w: 12.2, colW: [1.05, 1.1, 1.75, 1.75, 1.1, 1.3, 1.3, 1.05, 1.05], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.4, headerFontSize: 7.8, margin: 0.035, rowH: 0.52, autoFit: false });
   slide.addText(`数据来源：${result.model.settlementBenchmark?.source || '公开行业常规区间与项目测算经验'}。已按项目地区能级和3–5公里商业侦测评分做初步销售修正；不代表当地租户实测流水，正式招商前应以竞品流水、品牌报价和合同扣点校准。`, { x: 0.55, y: 6.45, w: 12.2, h: 0.5, fontFace: PPT_FONT, fontSize: 7.2, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.08 });
 
-  slide = pptx.addSlide();
   const serviceModeShort = { self: '自营', resident_outsourced: '第三方常驻', non_resident: '第三方非常驻' };
   const serviceModeText = (result.propertyServiceBreakdown || []).map(item => `${item.name.replace('服务', '')}${serviceModeShort[item.mode] || item.mode}`).join('｜');
-  addSlideTitle(slide, '组织架构与人员成本', result.model.operations?.staffCostMode === 'area'
+  slide = addContentSlide('组织架构与人员成本', result.model.operations?.staffCostMode === 'area'
     ? `当前按面积估算企业人员成本 ${(result.summary.stableStaffCost || 0).toFixed(2)} 万元/年｜组织架构为测算参考`
     : `合计编制 ${result.summary.stableHeadcount || 0} 人｜税前工资 ${(result.summary.annualGrossPayroll || 0).toFixed(2)}｜员工实发 ${(result.summary.annualNetPayroll || 0).toFixed(2)}｜实际人员服务成本 ${(result.summary.stableStaffCost || 0).toFixed(2)} 万元/年｜${serviceModeText}`);
   const orgRows = [
     ['部门','岗位构成','编制','税前工资','个人社保','个税','实发工资','单位社保','企业成本'],
     ...(result.organizationBreakdown || []).map(x => [x.name, (x.positions || []).map(p => `${p.name}${Number(p.headcount) > 1 ? `×${p.headcount}` : ''}`).join('、'), `${x.headcount}人`, (x.grossPayroll || 0).toFixed(2), (x.employeeSocialInsurance || 0).toFixed(2), (x.individualIncomeTax || 0).toFixed(2), (x.netSalary || 0).toFixed(2), (x.employerSocialInsurance || 0).toFixed(2), (x.annualCost || 0).toFixed(2)]),
   ];
-  pptTable(slide, orgRows, { x: 0.55, y: 1.42, w: 12.2, colW: [1.35, 2.75, 0.65, 1.05, 1.05, 0.85, 1.05, 1.05, 1.2], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 7.5, margin: 0.03, rowH: 0.4, autoFit: false });
-  slide.addText(`金额单位：万元/年。月薪按税前应发口径；社保公积金按税前月薪×12个月×配置比例估算。第三方综合管理费合计 ${(result.summary.annualOutsourcedManagementFee || 0).toFixed(2)} 万元；比例、基数及物业服务合同须按属地政策和实际条款复核。`, { x: 0.55, y: 6.55, w: 12.2, h: 0.32, fontFace: PPT_FONT, fontSize: 7.2, color: '66736F' });
+  pptTable(slide, orgRows, { x: 0.55, y: 1.4, w: 12.2, colW: [1.35, 2.75, 0.65, 1.05, 1.05, 0.85, 1.05, 1.05, 1.2], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 8, margin: 0.035, rowH: 0.46, autoFit: false });
+  const orgHeadcount = Number(result.summary.stableHeadcount || (result.organizationBreakdown || []).reduce((sum, x) => sum + Number(x.headcount || 0), 0));
+  pptMetricCard(slide, { x: 0.7, y: 4.45, w: 2.8, h: 1.1, label: '稳定期编制', value: `${pptNumber(orgHeadcount, 0)} 人`, note: '按当前组织架构汇总', fill: PPT_THEME.greenSoft, line: 'C9DDD4' });
+  pptMetricCard(slide, { x: 3.7, y: 4.45, w: 2.8, h: 1.1, label: '税前工资', value: `${pptNumber(result.summary.annualGrossPayroll)} 万元/年`, note: '员工税前应发', fill: PPT_THEME.goldSoft, line: 'E9D6AC' });
+  pptMetricCard(slide, { x: 6.7, y: 4.45, w: 2.8, h: 1.1, label: '企业人员成本', value: `${pptNumber(result.summary.stableStaffCost)} 万元/年`, note: '含单位社保及服务成本', fill: PPT_THEME.cream, line: PPT_THEME.line });
+  pptMetricCard(slide, { x: 9.7, y: 4.45, w: 2.8, h: 1.1, label: '人均企业成本', value: `${pptNumber(orgHeadcount ? Number(result.summary.stableStaffCost || 0) / orgHeadcount : 0)} 万元/人/年`, note: '企业人员成本 ÷ 编制人数', fill: PPT_THEME.greenSoft, line: 'C9DDD4' });
+  slide.addText(`金额单位：万元/年。月薪按税前应发口径；社保公积金按税前月薪×12个月×配置比例估算。第三方综合管理费合计 ${pptNumber(result.summary.annualOutsourcedManagementFee)} 万元；比例、基数及物业服务合同须按属地政策和实际条款复核。`, { x: 0.7, y: 5.85, w: 11.8, h: 0.55, fontFace: PPT_FONT, fontSize: 7.5, color: PPT_THEME.muted, fill: { color: PPT_THEME.cream }, margin: 0.1, breakLine: false });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '项目启动资金与资本金杠杆', `建议启动资金 ${(result.summary.recommendedStartupCapital || 0).toFixed(2)} 万元｜周期净利润 ${(result.summary.periodNetProfit || 0).toFixed(2)} 万元｜资本金 ${(result.summary.equityCapital || 0).toFixed(2)} 万元×${(result.summary.leverageMultiple || 0).toFixed(2)}倍｜资本金净收益 ${(result.summary.equityNetCashProfit || 0).toFixed(2)} 万元`);
+  slide = addContentSlide('项目启动资金与资本金杠杆', `建议启动资金 ${(result.summary.recommendedStartupCapital || 0).toFixed(2)} 万元｜周期净利润 ${(result.summary.periodNetProfit || 0).toFixed(2)} 万元｜资本金 ${(result.summary.equityCapital || 0).toFixed(2)} 万元×${(result.summary.leverageMultiple || 0).toFixed(2)}倍｜资本金净收益 ${(result.summary.equityNetCashProfit || 0).toFixed(2)} 万元`);
   const fundingCards = [
     ['建议启动资金', result.summary.recommendedStartupCapital || 0, '含资金缺口峰值及安全垫'],
     ['项目资金缺口峰值', result.summary.peakProjectFundingRequirement || 0, '项目口径'],
@@ -3672,51 +3730,107 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
     ['累计现金流转正', result.summary.cashFlowBreakEvenYear || '测算期内未转正', result.summary.cashFlowBreakEvenMonth ? `月度计划第${result.summary.cashFlowBreakEvenMonth}个月` : '按年现金流'],
   ];
   fundingCards.forEach((card, index) => {
-    const x = 0.65 + index * 3.12;
-    slide.addText(`${card[0]}\n${typeof card[1] === 'number' ? card[1].toFixed(2) + ' 万元' : card[1]}\n${card[2]}`, { x, y: 1.35, w: 2.9, h: 1.05, fontFace: PPT_FONT, fontSize: 10, bold: true, color: index === 0 ? '76591C' : '103B33', fill: { color: index === 0 ? 'F7ECD4' : 'F7FAF8' }, margin: 0.12, breakLine: false });
+    const value = typeof card[1] === 'number' ? `${pptNumber(card[1])} 万元` : String(card[1]);
+    pptMetricCard(slide, {
+      x: 0.65 + index * 3.12, y: 1.35, w: 2.9, h: 1.12,
+      label: card[0], value, note: card[2],
+      fill: index === 0 ? PPT_THEME.goldSoft : (index === 3 ? PPT_THEME.cream : PPT_THEME.greenSoft),
+      line: index === 0 ? 'E9D6AC' : PPT_THEME.line,
+      valueColor: index === 0 ? '76591C' : PPT_THEME.navy,
+    });
   });
-  const phaseCashRows = [['阶段', '项目口径需准备（万元）', '资本金口径需准备（万元）', '阶段项目净现金流（万元）'], ...(result.phaseFundingRequirements || []).filter(x => ['建设期', '筹备招商期', '开业首年'].includes(x.phase)).map(x => [x.phase, Number(x.projectFundingNeed || 0).toFixed(2), Number(x.equityFundingNeed || 0).toFixed(2), Number(x.projectCashFlow || 0).toFixed(2)])];
-  pptTable(slide, phaseCashRows, { x: 0.65, y: 2.7, w: 11.9, colW: [2.3, 3.3, 3.3, 3.0], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 9, margin: 0.05, rowH: 0.43, autoFit: false });
-  slide.addText(`关键日期：开工 ${result.timeline?.constructionStartDate || '待定'}｜开业 ${result.timeline?.openingDate || '待定'}｜运营结束 ${result.timeline?.operationEndDate || '待定'}。资金计划按实际日期逐月滚动，已纳入出租率、免租期、起收日期、业主租金付款、保证金及还本付息；合同付款节奏仍应最终校准。`, { x: 0.65, y: 5.8, w: 11.9, h: 0.45, fontFace: PPT_FONT, fontSize: 8, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.1 });
+  const phaseCashRows = [['阶段', '项目口径需准备（万元）', '资本金口径需准备（万元）', '阶段项目净现金流（万元）'], ...(result.phaseFundingRequirements || []).filter(x => ['建设期', '筹备招商期', '开业首年'].includes(x.phase)).map(x => [x.phase, pptNumber(x.projectFundingNeed), pptNumber(x.equityFundingNeed), pptNumber(x.projectCashFlow)])];
+  pptTable(slide, phaseCashRows, { x: 0.65, y: 2.78, w: 11.9, colW: [2.3, 3.3, 3.3, 3.0], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 9, margin: 0.05, rowH: 0.55, autoFit: false });
+  pptInsightBar(slide, {
+    x: 0.65, y: 5.68, w: 11.9, h: 0.86,
+    title: '资金安排',
+    body: `关键日期：开工 ${result.timeline?.constructionStartDate || '待定'}｜开业 ${result.timeline?.openingDate || '待定'}｜运营结束 ${result.timeline?.operationEndDate || '待定'}。资金计划按实际日期逐月滚动，已纳入出租率、免租期、起收日期、业主租金付款、保证金及还本付息。`,
+    accent: PPT_THEME.gold, fill: PPT_THEME.cream,
+  });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '年度运营成本与营销预算', '稳定运营年｜金额单位：万元/年');
-  const costRows = [['成本项目','金额'], ...(result.operatingCostBreakdown || []).map(x => [x.name, x.value.toFixed(2)])];
-  pptTable(slide, costRows, { x: 0.65, y: 1.4, w: 5.9, colW: [4.4, 1.5], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 7.5, margin: 0.035, rowH: 0.29, autoFit: false });
+  slide = addContentSlide('年度运营成本与营销预算', '稳定运营年｜金额单位：万元/年');
+  pptSectionLabel(slide, '稳定年运营成本明细', 0.65, 1.28, 4.5, PPT_THEME.navy);
+  pptSectionLabel(slide, '营销预算配置', 6.8, 1.28, 3.2, PPT_THEME.navy);
+  const costRows = [['成本项目','金额'], ...(result.operatingCostBreakdown || []).map(x => [x.name, pptNumber(x.value)])];
+  pptTable(slide, costRows, { x: 0.65, y: 1.55, w: 5.9, colW: [4.4, 1.5], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.2, headerFontSize: 7.8, margin: 0.03, rowH: 0.24, autoFit: false });
   const marketingRows = [
-    ['营销类别','年度金额','自动权重'],
-    ...(result.marketingAllocation || []).map(x => [x.name, x.amount.toFixed(2), `${(Number(x.share || 0) * 100).toFixed(2)}%`]),
-    ...(result.openingMarketingAllocation || []).map(x => [`开业·${x.name}`, x.amount.toFixed(2), `首年${(Number(x.share || 0) * 100).toFixed(2)}%`]),
+    ['营销类别','年度金额','权重'],
+    ...(result.marketingAllocation || []).map(x => [x.name, pptNumber(x.amount), pptPercent(x.share)]),
+    ...(result.openingMarketingAllocation || []).map(x => [`开业·${x.name}`, pptNumber(x.amount), `首年 ${pptPercent(x.share)}`]),
   ];
-  pptTable(slide, marketingRows, { x: 6.8, y: 1.4, w: 5.8, colW: [3.0, 1.4, 1.4], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 7.8, margin: 0.035, rowH: 0.32, autoFit: false });
-  slide.addText(`年度营销 ${(result.summary.stableMarketingCost || 0).toFixed(2)} 万元｜开业首年 ${(result.summary.firstYearMarketingCost || 0).toFixed(2)} 万元｜办公 ${(result.summary.stableOfficeCost || 0).toFixed(2)} 万元｜招商 ${(result.summary.stableLeasingCost || 0).toFixed(2)} 万元｜维保 ${(result.summary.stableMaintenanceCost || 0).toFixed(2)} 万元`, { x: 6.8, y: 5.85, w: 5.8, h: 0.55, fontFace: PPT_FONT, fontSize: 7.2, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.08 });
+  pptTable(slide, marketingRows, { x: 6.8, y: 1.55, w: 5.8, colW: [2.95, 1.35, 1.5], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.8, margin: 0.035, rowH: 0.36, autoFit: false });
+  pptInsightBar(slide, {
+    x: 6.8, y: 4.38, w: 5.8, h: 1.08,
+    title: '年度汇总',
+    body: `年度营销 ${pptNumber(result.summary.stableMarketingCost)} 万元｜开业首年 ${pptNumber(result.summary.firstYearMarketingCost)} 万元｜办公 ${pptNumber(result.summary.stableOfficeCost)} 万元｜招商 ${pptNumber(result.summary.stableLeasingCost)} 万元｜维保 ${pptNumber(result.summary.stableMaintenanceCost)} 万元`,
+    accent: PPT_THEME.gold, fill: PPT_THEME.cream,
+  });
+  slide.addText('成本明细按稳定运营年展示；开业首年营销另列，避免与稳定年营销重复计算。', { x: 0.65, y: 6.55, w: 5.9, h: 0.28, fontFace: PPT_FONT, fontSize: 7.2, color: PPT_THEME.muted, breakLine: false });
 
-  slide = pptx.addSlide();
   const detection = result.model.market?.lastAnalysis || {};
-  addSlideTitle(slide, '3–5公里商业侦测', `综合评分 ${detection.detectionScore || 0}/100｜${detection.marketGrade || '待评估'}｜${detection.competitionLevel || ''}`);
-  slide.addText(`商业POI ${detection.commercialCount || 0}｜直接竞品 ${detection.competitorCount || 0}｜商业锚点 ${detection.anchorCount || 0}｜交通配套 ${detection.transportCount || 0}｜居住社区 ${detection.residentialCount || 0}`, { x: 0.7, y: 1.35, w: 12.0, h: 0.45, fontFace: PPT_FONT, fontSize: 10, color: '17211E', fill: { color: 'E5F0EB' }, margin: 0.1 });
-  const ringRows = [['圈层','商业POI','直接竞品','交通配套','居住片区','业态数'], ...(detection.ringStats || []).map(x => [x.label, x.commercialCount, x.competitorCount, x.transportCount, x.residentialCount, x.categoryCount])];
-  pptTable(slide, ringRows, { x: 0.7, y: 1.95, w: 5.8, colW: [1.2, 1.0, 1.0, 1.0, 1.0, 0.8], border: { color: 'E6E1D8', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 8, margin: 0.04, rowH: 0.52, autoFit: false });
-  slide.addText(`侦测结论\n${(detection.conclusions || []).map(x => `• ${x}`).join('\n')}\n\n商业机会\n${(detection.opportunities || []).map(x => `• ${x}`).join('\n')}`, { x: 6.8, y: 1.95, w: 5.8, h: 4.2, fontFace: PPT_FONT, fontSize: 9, color: '17211E', fill: { color: 'FBF8F1' }, margin: 0.14, valign: 'top', breakLine: false });
-  slide.addText('公开地图数据不含人口、销售额和授权租金，正式决策需结合实地客流、租户访谈和授权市场数据。', { x: 0.7, y: 6.35, w: 11.9, h: 0.4, fontFace: PPT_FONT, fontSize: 8, color: '66736F' });
+  slide = addContentSlide('3–5公里商业侦测', `综合评分 ${pptNumber(detection.detectionScore || 0)}/100｜${detection.marketGrade || '待评估'}｜${detection.competitionLevel || ''}`);
+  const ringStats = Array.isArray(detection.ringStats) ? detection.ringStats : [];
+  const detectionConclusions = Array.isArray(detection.conclusions) ? detection.conclusions.filter(Boolean) : [];
+  const detectionOpportunities = Array.isArray(detection.opportunities) ? detection.opportunities.filter(Boolean) : [];
+  const hasDetection = ringStats.length > 0 || Number(detection.commercialCount || 0) > 0 || detectionConclusions.some(x => !String(x).includes('尚未')) || detectionOpportunities.length > 0;
+  if (hasDetection) {
+    slide.addText(`商业POI ${detection.commercialCount || 0}｜直接竞品 ${detection.competitorCount || 0}｜商业锚点 ${detection.anchorCount || 0}｜交通配套 ${detection.transportCount || 0}｜居住社区 ${detection.residentialCount || 0}`, { x: 0.7, y: 1.35, w: 12.0, h: 0.45, fontFace: PPT_FONT, fontSize: 9.5, color: PPT_THEME.text, fill: { color: PPT_THEME.greenSoft }, margin: 0.1, breakLine: false });
+    const ringRows = [['圈层','商业POI','直接竞品','交通配套','居住片区','业态数'], ...ringStats.map(x => [x.label, x.commercialCount, x.competitorCount, x.transportCount, x.residentialCount, x.categoryCount])];
+    pptTable(slide, ringRows, { x: 0.7, y: 1.95, w: 5.8, colW: [1.2, 1.0, 1.0, 1.0, 1.0, 0.8], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 8, margin: 0.04, rowH: 0.52, autoFit: false });
+    const detectionText = `侦测结论\n${detectionConclusions.map(x => `• ${x}`).join('\n')}${detectionOpportunities.length ? `\n\n商业机会\n${detectionOpportunities.map(x => `• ${x}`).join('\n')}` : ''}`;
+    slide.addText(detectionText, { x: 6.8, y: 1.95, w: 5.8, h: 4.1, fontFace: PPT_FONT, fontSize: 9, color: PPT_THEME.text, fill: { color: PPT_THEME.cream }, margin: 0.14, valign: 'top', breakLine: false });
+  } else {
+    slide.addShape('roundRect', { x: 0.7, y: 1.4, w: 4.0, h: 4.55, radius: 0.08, fill: { color: PPT_THEME.greenSoft }, line: { color: 'C9DDD4', width: 0.6 } });
+    slide.addText('0.00', { x: 0.95, y: 2.0, w: 3.5, h: 0.7, fontFace: PPT_FONT, fontSize: 38, bold: true, color: PPT_THEME.navy, align: 'center', margin: 0, breakLine: false });
+    slide.addText('/ 100', { x: 0.95, y: 2.78, w: 3.5, h: 0.3, fontFace: PPT_FONT, fontSize: 12, color: PPT_THEME.muted, align: 'center', margin: 0, breakLine: false });
+    slide.addText('尚未完成商业侦测', { x: 0.95, y: 3.25, w: 3.5, h: 0.3, fontFace: PPT_FONT, fontSize: 11, bold: true, color: PPT_THEME.navy, align: 'center', margin: 0, breakLine: false });
+    slide.addShape('roundRect', { x: 5.0, y: 1.4, w: 7.6, h: 4.55, radius: 0.08, fill: { color: PPT_THEME.cream }, line: { color: PPT_THEME.line, width: 0.6 } });
+    slide.addText('需要补充的数据', { x: 5.28, y: 1.68, w: 4.0, h: 0.28, fontFace: PPT_FONT, fontSize: 12, bold: true, color: PPT_THEME.navy, margin: 0, breakLine: false });
+    const nextSteps = [
+      ['01', '导入3–5公里竞品租金样本', '至少包含项目名称、业态、楼层、可租赁面积和月租金。'],
+      ['02', '完成公开地图商业侦测', '记录商业POI、直接竞品、商业锚点、交通配套和居住社区。'],
+      ['03', '复核样本口径', '统一为元/㎡/月，并保留样本日期、来源和数据可信度。'],
+    ];
+    nextSteps.forEach((item, index) => {
+      const y = 2.2 + index * 1.05;
+      slide.addText(item[0], { x: 5.3, y, w: 0.45, h: 0.3, fontFace: PPT_FONT, fontSize: 13, bold: true, color: PPT_THEME.gold, margin: 0, breakLine: false });
+      slide.addText(item[1], { x: 5.9, y, w: 5.9, h: 0.28, fontFace: PPT_FONT, fontSize: 10.5, bold: true, color: PPT_THEME.text, margin: 0, breakLine: false });
+      slide.addText(item[2], { x: 5.9, y: y + 0.34, w: 5.9, h: 0.34, fontFace: PPT_FONT, fontSize: 8.5, color: PPT_THEME.muted, margin: 0, breakLine: false });
+    });
+  }
+  slide.addText('公开地图数据不含人口、销售额和授权租金，正式决策需结合实地客流、租户访谈和授权市场数据。', { x: 0.7, y: 6.35, w: 11.9, h: 0.34, fontFace: PPT_FONT, fontSize: 7.8, color: PPT_THEME.muted, breakLine: false });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '项目租金与市场位置', '竞品租金样本用于校准项目一铺一价');
+  slide = addContentSlide('项目租金与市场位置', '项目租金与竞品租金统一定义为“租金单价”，金额保留两位小数');
   const ms = result.marketSummary || {};
-  const marketRentText = value => Number.isFinite(Number(value)) ? `${Number(value).toFixed(2)} 元/㎡/月` : '暂无有效样本';
-  slide.addText(`项目租金单价\n${marketRentText(ms.projectAverageRent)}`, { x: 0.75, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'E5F0EB' }, margin: 0.16, breakLine: false });
-  slide.addText(`市场加权均价\n${marketRentText(ms.weightedAverageRent)}`, { x: 4.45, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'F7ECD4' }, margin: 0.16 });
-  slide.addText(`市场中位数\n${marketRentText(ms.medianRent)}`, { x: 8.15, y: 1.65, w: 3.4, h: 1.1, fontFace: PPT_FONT, fontSize: 16, bold: true, color: '103B33', fill: { color: 'FBF8F1' }, margin: 0.16 });
+  const projectRentArea = (result.floors || []).reduce((sum, x) => sum + Number(x.rentArea || 0), 0);
+  const fallbackProjectRent = projectRentArea > 0 ? Number(s.totalMonthlyRent || 0) / projectRentArea : 0;
+  const projectRent = Number(ms.projectAverageRent) > 0 ? Number(ms.projectAverageRent) : fallbackProjectRent;
+  const marketRentText = value => Number(value) > 0 ? `${pptNumber(value)} 元/㎡/月` : '暂无样本';
+  pptMetricCard(slide, { x: 0.7, y: 1.48, w: 3.8, h: 1.2, label: '项目租金单价', value: marketRentText(projectRent), note: '项目满租月租金 ÷ 项目计租面积', fill: PPT_THEME.greenSoft, line: 'C9DDD4' });
+  pptMetricCard(slide, { x: 4.75, y: 1.48, w: 3.8, h: 1.2, label: '市场加权均价', value: marketRentText(ms.weightedAverageRent), note: '竞品按可租赁面积加权', fill: PPT_THEME.goldSoft, line: 'E9D6AC' });
+  pptMetricCard(slide, { x: 8.8, y: 1.48, w: 3.8, h: 1.2, label: '市场中位数', value: marketRentText(ms.medianRent), note: '竞品租金样本中位数', fill: PPT_THEME.cream, line: PPT_THEME.line });
   const marketConclusions = Array.isArray(ms.conclusions) && ms.conclusions.length ? ms.conclusions : ['尚未导入竞品租金样本，当前以项目自身租金和行业基准进行校验。'];
-  slide.addText(marketConclusions.map((x, i) => `${i + 1}. ${x}`).join('\n\n'), { x: 0.8, y: 3.15, w: 11.7, h: 2.7, fontFace: PPT_FONT, fontSize: 12, color: '17211E', breakLine: false, valign: 'top', margin: 0.05 });
+  pptInsightBar(slide, { x: 0.7, y: 3.0, w: 11.9, h: 0.82, title: '市场位置', body: `当前判断：${ms.position || '暂无竞品样本，无法形成市场位置判断'}` , accent: PPT_THEME.green, fill: PPT_THEME.greenSoft });
+  if (Number(ms.count || 0) > 0) {
+    const marketConclusionText = marketConclusions.map((x, i) => `${i + 1}. ${x}`).join('\n\n');
+    slide.addText(marketConclusionText, { x: 0.85, y: 4.15, w: 11.5, h: 1.9, fontFace: PPT_FONT, fontSize: 10.2, color: PPT_THEME.text, breakLine: false, valign: 'top', margin: 0.05 });
+  } else {
+    const marketNeeds = [
+      ['竞品租金', '至少导入3–5个有效样本'],
+      ['样本面积', '填写可租赁面积以形成加权均价'],
+      ['统一口径', '全部换算为元/㎡/月并保留来源'],
+    ];
+    marketNeeds.forEach((item, i) => {
+      pptMetricCard(slide, { x: 0.7 + i * 4.05, y: 4.15, w: 3.8, h: 0.95, label: item[0], value: item[1], valueFontSize: 10.5, fill: PPT_THEME.cream, line: PPT_THEME.line });
+    });
+    slide.addText(marketConclusions[0], { x: 0.85, y: 5.35, w: 11.5, h: 0.7, fontFace: PPT_FONT, fontSize: 9, color: PPT_THEME.muted, breakLine: false, valign: 'top' });
+  }
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, 'NPV敏感性分析', '租金与投资同时变动时的项目NPV（万元）');
+  slide = addContentSlide('NPV敏感性分析', '租金与投资同时变动时的项目NPV（万元）');
   const matrixRows = [['租金↓ / 投资→', ...(result.sensitivity.capexSteps || []).map(v => `${(v * 100).toFixed(0)}%`)], ...(result.sensitivity.rentSteps || []).map((rent, i) => [`${(rent * 100).toFixed(0)}%`, ...(result.sensitivity.npvMatrix[i] || []).map(v => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))])];
   pptTable(slide, matrixRows, { x: 1.15, y: 1.55, w: 10.9, colW: [2.0, 1.75, 1.75, 1.75, 1.75, 1.75], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 10, align: 'center', valign: 'mid', margin: 0.06, rowH: 0.46 });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '测算公式（一）', '面积、租金、投资与运营成本');
+  slide = addContentSlide('测算公式（一）', '面积、租金、投资与运营成本');
   pptTable(slide, [
     ['模块', '公式', '使用函数'],
     ['面积', 'GBA = 手动值；若为0：一铺一价=商铺面积×(1+公区系数)，初步测算=楼层建筑面积合计', 'IF / SUM'],
@@ -3730,10 +3844,9 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
     ['投资', '分项工程投资 = 总建筑面积×分项单价÷10000', 'SUM / ROUND'],
     ['投资', '预备费 = 直接工程费×预备费率', 'SUM'],
     ['运营', 'NOI = 不含税收入 - 不含税运营成本 - 税费', 'SUM / MIN / MAX'],
-  ], { x: 0.7, y: 1.45, w: 12.0, colW: [1.2, 8.7, 2.1], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 9, margin: 0.05, rowH: 0.48, autoFit: false });
+  ], { x: 0.7, y: 1.35, w: 12.0, colW: [1.2, 8.7, 2.1], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 8, headerFontSize: 8.6, margin: 0.04, rowH: 0.38, autoFit: false });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '测算公式（二）', '税费、融资、折旧、现金流与收益指标');
+  slide = addContentSlide('测算公式（二）', '税费、融资、折旧、现金流与收益指标');
   pptTable(slide, [
     ['模块', '公式', '使用函数'],
     ['税费', '销项税 = Σ[商户含税收入÷(1+税率)×税率]；进项税 = MIN(销项税, 业主租金专票进项 + 其他可抵扣成本进项)', 'SUM / MIN'],
@@ -3744,17 +3857,21 @@ ${rateRange}`, Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0), 
     ['现金流', '项目CF=NOI-资本化改造-项目所得税+退出价值；股权CF=NOI-资本化改造-股权所得税-利息-本金+退出价值', 'SUM / IF'],
     ['收益', 'NPV = Σ[CFt÷(1+r)^t]；IRR：NPV(IRR)=0；回收期按累计CF插值', 'NPV / IRR / LOOKUP'],
     ['敏感性', 'NPV=f(租金系数,投资系数)，在MIN~MAX间按STEP生成矩阵', 'SEQUENCE / NPV'],
-  ], { x: 0.7, y: 1.45, w: 12.0, colW: [1.2, 8.7, 2.1], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 9, margin: 0.05, rowH: 0.48, autoFit: false });
+  ], { x: 0.7, y: 1.38, w: 12.0, colW: [1.2, 8.7, 2.1], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 8.6, headerFontSize: 9, margin: 0.045, rowH: 0.44, autoFit: false });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '函数与公式注解', '语法、含义和调整时应注意的事项');
+  slide = addContentSlide('函数与公式注解', '语法、含义和调整时应注意的事项');
   const functionRows = [['函数', '语法与含义', '调整注意'], ...Object.entries(EXPORT_FUNCTIONS).map(([name, f]) => [name, `${f.syntax}\n${f.meaning}`, f.note])];
-  pptTable(slide, functionRows, { x: 0.7, y: 1.4, w: 12.0, colW: [1.3, 6.7, 4.0], border: { color: 'D9E1F2', width: 0.5 }, fill: 'FFFFFF', color: '17211E', fontFace: PPT_FONT, fontSize: 7.5, margin: 0.04, rowH: 0.36, autoFit: false });
+  pptTable(slide, functionRows, { x: 0.7, y: 1.38, w: 12.0, colW: [1.3, 6.7, 4.0], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.3, headerFontSize: 8, margin: 0.035, rowH: 0.34, autoFit: false });
 
-  slide = pptx.addSlide();
-  addSlideTitle(slide, '分析结论与行动建议', '供内部评审和下一步决策使用');
-  slide.addText((result.analysis.bullets || []).map((x, i) => `• ${x}`).join('\n\n'), { x: 0.72, y: 1.45, w: 5.85, h: 5.35, fontFace: PPT_FONT, fontSize: 10, color: '17211E', breakLine: false, valign: 'top', fill: { color: 'FBF8F1' }, margin: 0.16 });
-  slide.addText((result.analysis.recommendations || []).map((x, i) => `${i + 1}. ${x}`).join('\n\n'), { x: 6.78, y: 1.45, w: 5.85, h: 5.35, fontFace: PPT_FONT, fontSize: 10, color: '17211E', breakLine: false, valign: 'top', fill: { color: 'F7ECD4' }, margin: 0.16 });
+  slide = addContentSlide('分析结论与行动建议', '供内部评审和下一步决策使用');
+  const analysisBullets = (result.analysis.bullets || []).map(x => `• ${pptNormalizeNumberText(x)}`).join('\n\n') || '暂无测算结论';
+  const recommendations = (result.analysis.recommendations || []).map((x, i) => `${i + 1}. ${pptNormalizeNumberText(x)}`).join('\n\n') || '暂无行动建议';
+  slide.addShape('roundRect', { x: 0.7, y: 1.4, w: 5.9, h: 5.28, radius: 0.06, fill: { color: PPT_THEME.cream }, line: { color: PPT_THEME.line, width: 0.5 } });
+  slide.addShape('roundRect', { x: 6.75, y: 1.4, w: 5.9, h: 5.28, radius: 0.06, fill: { color: PPT_THEME.goldSoft }, line: { color: 'E9D6AC', width: 0.5 } });
+  slide.addText('测算结论', { x: 0.95, y: 1.62, w: 3.5, h: 0.28, fontFace: PPT_FONT, fontSize: 11, bold: true, color: PPT_THEME.green, margin: 0, breakLine: false });
+  slide.addText('行动建议', { x: 7.0, y: 1.62, w: 3.5, h: 0.28, fontFace: PPT_FONT, fontSize: 11, bold: true, color: '76591C', margin: 0, breakLine: false });
+  slide.addText(analysisBullets, { x: 0.95, y: 2.05, w: 5.35, h: 4.35, fontFace: PPT_FONT, fontSize: 9.6, color: PPT_THEME.text, breakLine: false, valign: 'top', margin: 0.02 });
+  slide.addText(recommendations, { x: 7.0, y: 2.05, w: 5.35, h: 4.35, fontFace: PPT_FONT, fontSize: 9.3, color: PPT_THEME.text, breakLine: false, valign: 'top', margin: 0.02 });
 
   const output = await pptx.write({ outputType: 'blob' });
   return output instanceof Blob ? output : new Blob([output], { type: PPTX_MIME });
