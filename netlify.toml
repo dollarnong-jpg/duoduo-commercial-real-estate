@@ -1,0 +1,17 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/cloud/*"
+  to = "/.netlify/functions/supabase-proxy/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/api/cloud/*"
+  [headers.values]
+    Cache-Control = "no-store"

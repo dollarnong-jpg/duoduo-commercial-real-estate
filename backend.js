@@ -8,6 +8,7 @@ const USERS_KEY = 'duoduo_static_users_v1';
 const SESSION_PREFIX = 'local|';
 const CLOUD_CONFIG = window.DUODUO_CLOUD_CONFIG || {};
 const CLOUD_ENABLED = CLOUD_CONFIG.mode === 'cloud' && Boolean(CLOUD_CONFIG.url && CLOUD_CONFIG.anonKey);
+const CLOUD_BASE_URL = String(CLOUD_CONFIG.proxyUrl || CLOUD_CONFIG.url || '').replace(/\/$/, '');
 const CLOUD_SESSION_KEY = 'duoduo_cloud_session_v1';
 const DEMO_USER = { username: 'demo', displayName: '演示用户', passwordHash: 'sha256|cd6f2e06047d9e0e9a84ad4a9325dbec4fd1e5e6a17f0e94d5bf8892b7c9b80f' };
 
@@ -219,7 +220,7 @@ async function cloudRequest(path, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const url = `${CLOUD_CONFIG.url}${path}`;
+      const url = `${CLOUD_BASE_URL}${path}`;
       const body = options.body == null ? undefined : (typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
       const response = attempt % 2 === 0
         ? await cloudXHRRequest(url, { method: options.method || 'GET', headers }, body, timeoutMs)
@@ -502,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-logindual1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-netlifyrelay1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json

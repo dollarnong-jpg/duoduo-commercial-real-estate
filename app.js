@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-logindual1';
+import './backend.js?v=20261120-netlifyrelay1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.47';
+const APP_VERSION = '1.28.48';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -2060,7 +2060,8 @@ async function copyTextValue(text) {
 
 function cloudRealtimeConfig() {
   const config = window.DUODUO_CLOUD_CONFIG || {};
-  return config.mode === 'cloud' && config.url && config.anonKey ? config : null;
+  if (config.mode !== 'cloud' || !config.url || !config.anonKey) return null;
+  return { ...config, url: config.realtimeUrl || config.url };
 }
 
 function stopShareInbox() {
