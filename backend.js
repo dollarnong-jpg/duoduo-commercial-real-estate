@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptpolish1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptpolish2', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3691,19 +3691,24 @@ async function exportPPT(result) {
   if (floorData.length > 12) slide.addText('仅展示前12个楼层，完整明细见Excel。', { x: 0.72, y: 6.55, w: 5, h: 0.22, fontFace: PPT_FONT, fontSize: 7.5, color: PPT_THEME.muted, breakLine: false });
 
   slide = addContentSlide('租赁与联营规则', `行业基准：${settlementPresetLabels[result.model.settlementBenchmark?.preset] || '购物中心行业常规'}｜销售修正 ×${Number(result.model.settlementBenchmark?.salesFactor || 1).toFixed(2)}`);
-  const revenueModeLabels = { rent: '纯租金', concession: '纯联营扣点', guarantee_or_concession: '保底与扣点取高', inherit: '继承项目' };
-  const paymentModeLabels = { inherit: '继承项目', deposit_and_prepaid: '押金＋预付租金', deposit_only: '仅收押金', prepaid_only: '仅收预付租金' };
+  const revenueModeLabels = { rent: '纯租金', concession: '纯联营扣点', guarantee_or_concession: '保底与扣点取高' };
+  const paymentModeLabels = { deposit_and_prepaid: '押金＋预付租金', deposit_only: '仅收押金', prepaid_only: '仅收预付租金' };
+  const projectRevenueMode = result.model.project?.revenueModel || 'rent';
+  const projectPaymentMode = result.model.operations?.rentCollectionMode || 'deposit_and_prepaid';
+  const projectDepositMonths = Number(result.model.operations?.depositMonths || 0);
+  const projectPrepaidMonths = Number(result.model.operations?.prepaidRentMonths || 0);
   const catRows = [['业态', '保底租金', '销售基数 / 常规区间', '扣点率 / 常规区间', '扣点收益/㎡', '结算方式', '支付方式', '保证金月数', '预付租金月数'], ...(result.model.categories || []).map(x => {
     const salesRange = x.benchmarkSalesMin == null ? '' : `${pptNumber(x.benchmarkSalesMin)}–${pptNumber(x.benchmarkSalesMax)}`;
     const rateRange = x.benchmarkConcessionMin == null ? '' : `${pptPercent(x.benchmarkConcessionMin)}–${pptPercent(x.benchmarkConcessionMax)}`;
-    const deposit = x.depositMonths == null ? '继承项目' : `${pptNumber(x.depositMonths)} 个月`;
-    const prepaid = x.prepaidRentMonths == null ? '继承项目' : `${pptNumber(x.prepaidRentMonths)} 个月`;
-    return [x.name, pptNumber(x.rent), salesRange ? `${pptNumber(x.salesPerSqmMonth)}
-常规 ${salesRange}` : pptNumber(x.salesPerSqmMonth), rateRange ? `${pptPercent(x.concessionRate)}
-常规 ${rateRange}` : pptPercent(x.concessionRate), pptNumber(Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0)), revenueModeLabels[x.revenueMode || 'inherit'] || x.revenueMode || '继承项目', paymentModeLabels[x.paymentMode || 'inherit'] || x.paymentMode || '继承项目', deposit, prepaid];
+    const effectiveRevenueMode = x.revenueMode && x.revenueMode !== 'inherit' ? x.revenueMode : projectRevenueMode;
+    const effectivePaymentMode = x.paymentMode && x.paymentMode !== 'inherit' ? x.paymentMode : projectPaymentMode;
+    const depositMonths = x.depositMonths ?? (['deposit_and_prepaid', 'deposit_only'].includes(effectivePaymentMode) ? projectDepositMonths : 0);
+    const prepaidMonths = x.prepaidRentMonths ?? (['deposit_and_prepaid', 'prepaid_only'].includes(effectivePaymentMode) ? projectPrepaidMonths : 0);
+    return [x.name, pptNumber(x.rent), salesRange ? `${pptNumber(x.salesPerSqmMonth)}\n常规 ${salesRange}` : pptNumber(x.salesPerSqmMonth), rateRange ? `${pptPercent(x.concessionRate)}\n常规 ${rateRange}` : pptPercent(x.concessionRate), pptNumber(Number(x.salesPerSqmMonth || 0) * Number(x.concessionRate || 0)), revenueModeLabels[effectiveRevenueMode] || effectiveRevenueMode, paymentModeLabels[effectivePaymentMode] || effectivePaymentMode, `${pptNumber(depositMonths)} 个月`, `${pptNumber(prepaidMonths)} 个月`];
   })];
-  pptTable(slide, catRows, { x: 0.55, y: 1.36, w: 12.2, colW: [1.05, 1.1, 1.75, 1.75, 1.1, 1.3, 1.3, 1.05, 1.05], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.4, headerFontSize: 7.8, margin: 0.035, rowH: 0.52, autoFit: false });
-  slide.addText(`数据来源：${result.model.settlementBenchmark?.source || '公开行业常规区间与项目测算经验'}。已按项目地区能级和3–5公里商业侦测评分做初步销售修正；不代表当地租户实测流水，正式招商前应以竞品流水、品牌报价和合同扣点校准。`, { x: 0.55, y: 6.45, w: 12.2, h: 0.5, fontFace: PPT_FONT, fontSize: 7.2, color: '66736F', fill: { color: 'FBF8F1' }, margin: 0.08 });
+  pptTable(slide, catRows, { x: 0.55, y: 1.36, w: 12.2, colW: [1.05, 1.1, 1.75, 1.75, 1.1, 1.3, 1.3, 1.05, 1.05], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.6, headerFontSize: 7.9, margin: 0.035, rowH: 0.5, autoFit: false });
+  pptInsightBar(slide, { x: 0.55, y: 5.25, w: 12.2, h: 0.78, title: '核算口径', body: `当前项目按“${revenueModeLabels[projectRevenueMode] || projectRevenueMode}”核算；保证金与预付租金只影响现金流入时点，不在后续月份重复确认租金收入。`, accent: PPT_THEME.green, fill: PPT_THEME.greenSoft });
+  slide.addText(`数据来源：${result.model.settlementBenchmark?.source || '公开行业常规区间与项目测算经验'}。行业区间仅用于校准，正式招商前应以竞品流水、品牌报价和合同扣点为准。`, { x: 0.55, y: 6.35, w: 12.2, h: 0.4, fontFace: PPT_FONT, fontSize: 7.2, color: PPT_THEME.muted, fill: { color: PPT_THEME.cream }, margin: 0.08, breakLine: false });
 
   const serviceModeShort = { self: '自营', resident_outsourced: '第三方常驻', non_resident: '第三方非常驻' };
   const serviceModeText = (result.propertyServiceBreakdown || []).map(item => `${item.name.replace('服务', '')}${serviceModeShort[item.mode] || item.mode}`).join('｜');
@@ -3768,7 +3773,8 @@ async function exportPPT(result) {
   slide.addText('成本明细按稳定运营年展示；开业首年营销另列，避免与稳定年营销重复计算。', { x: 0.65, y: 6.55, w: 5.9, h: 0.28, fontFace: PPT_FONT, fontSize: 7.2, color: PPT_THEME.muted, breakLine: false });
 
   const detection = result.model.market?.lastAnalysis || {};
-  slide = addContentSlide('3–5公里商业侦测', `综合评分 ${pptNumber(detection.detectionScore || 0)}/100｜${detection.marketGrade || '待评估'}｜${detection.competitionLevel || ''}`);
+  const detectionSubtitle = [`综合评分 ${pptNumber(detection.detectionScore || 0)}/100`, detection.marketGrade || '待评估', detection.competitionLevel || ''].filter(Boolean).join('｜');
+  slide = addContentSlide('3–5公里商业侦测', detectionSubtitle);
   const ringStats = Array.isArray(detection.ringStats) ? detection.ringStats : [];
   const detectionConclusions = Array.isArray(detection.conclusions) ? detection.conclusions.filter(Boolean) : [];
   const detectionOpportunities = Array.isArray(detection.opportunities) ? detection.opportunities.filter(Boolean) : [];
