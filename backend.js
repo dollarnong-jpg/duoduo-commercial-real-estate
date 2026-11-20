@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptpolish2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptpolish3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3675,7 +3675,7 @@ async function exportPPT(result) {
     { name: '营业收入', labels: result.annual.map(x => `Y${x.opYear}`), values: result.annual.map(x => x.revenue) },
     { name: 'NOI', labels: result.annual.map(x => `Y${x.opYear}`), values: result.annual.map(x => x.noi) },
     { name: '税费', labels: result.annual.map(x => `Y${x.opYear}`), values: result.annual.map(x => x.taxes) },
-  ], { x: 0.7, y: 1.45, w: 12.0, h: 4.75, showLegend: true, legendPos: 't', showTitle: false, lineDataSymbol: 'none', chartColors: ['1D6B57', 'D6A84B', 'B94A48'], catAxisLabelFontSize: 8, valAxisLabelFontSize: 9, catAxisLabelFontFace: PPT_FONT, valAxisLabelFontFace: PPT_FONT, valGridLine: { color: 'E8EEEA', style: 'solid', size: 0.5 }, legendFontFace: PPT_FONT, legendFontSize: 8 });
+  ], { x: 0.7, y: 1.45, w: 12.0, h: 4.75, showLegend: true, legendPos: 't', showTitle: false, lineDataSymbol: 'none', chartColors: ['1D6B57', 'D6A84B', 'B94A48'], catAxisLabelFontSize: 8, valAxisLabelFontSize: 9, catAxisLabelFontFace: PPT_FONT, valAxisLabelFontFace: PPT_FONT, dataLabelFontFace: PPT_FONT, dataLabelFontSize: 9, valGridLine: { color: 'E8EEEA', style: 'solid', size: 0.5 }, legendFontFace: PPT_FONT, legendFontSize: 8 });
   slide.addText(`稳定期费用性收入：物业管理费 ${Number(s.stablePropertyManagementIncome || 0).toFixed(2)} 万元/年｜商业管理费 ${Number(s.stableCommercialManagementIncome || 0).toFixed(2)} 万元/年｜中央空调费 ${Number(s.stableCentralAcIncome || 0).toFixed(2)} 万元/年｜三项合计 ${Number(s.stablePropertyFeeIncome || 0).toFixed(2)} 万元/年`, { x: 0.72, y: 6.35, w: 11.95, h: 0.5, fontFace: PPT_FONT, fontSize: 8, color: '17211E', fill: { color: 'E5F0EB' }, margin: 0.08, valign: 'mid' });
 
   slide = addContentSlide('楼栋与楼层面积及租金汇总', `商户计租口径：${result.model.project.rentAreaBasis === 'building' ? '建筑面积' : '实用面积（套内/租赁面积）'}｜业主支付口径：${result.model.project.ownerRentAreaBasis === 'leasable' ? '实用/可租赁面积' : '建筑面积'}｜表内面积为铺位/楼层明细面积，不含公区｜项目总建筑面积 ${Number(s.grossFloorArea || 0).toFixed(2)}㎡`);
@@ -3757,7 +3757,7 @@ async function exportPPT(result) {
   pptSectionLabel(slide, '稳定年运营成本明细', 0.65, 1.28, 4.5, PPT_THEME.navy);
   pptSectionLabel(slide, '营销预算配置', 6.8, 1.28, 3.2, PPT_THEME.navy);
   const costRows = [['成本项目','金额'], ...(result.operatingCostBreakdown || []).map(x => [x.name, pptNumber(x.value)])];
-  pptTable(slide, costRows, { x: 0.65, y: 1.55, w: 5.9, colW: [4.4, 1.5], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.2, headerFontSize: 7.8, margin: 0.03, rowH: 0.24, autoFit: false });
+  pptTable(slide, costRows, { x: 0.65, y: 1.52, w: 5.9, colW: [4.4, 1.5], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.2, headerFontSize: 7.8, margin: 0.028, rowH: 0.23, autoFit: false });
   const marketingRows = [
     ['营销类别','年度金额','权重'],
     ...(result.marketingAllocation || []).map(x => [x.name, pptNumber(x.amount), pptPercent(x.share)]),
@@ -3867,7 +3867,7 @@ async function exportPPT(result) {
 
   slide = addContentSlide('函数与公式注解', '语法、含义和调整时应注意的事项');
   const functionRows = [['函数', '语法与含义', '调整注意'], ...Object.entries(EXPORT_FUNCTIONS).map(([name, f]) => [name, `${f.syntax}\n${f.meaning}`, f.note])];
-  pptTable(slide, functionRows, { x: 0.7, y: 1.38, w: 12.0, colW: [1.3, 6.7, 4.0], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.3, headerFontSize: 8, margin: 0.035, rowH: 0.34, autoFit: false });
+  pptTable(slide, functionRows, { x: 0.7, y: 1.36, w: 12.0, colW: [1.3, 6.7, 4.0], border: { color: PPT_THEME.line, width: 0.5 }, fill: 'FFFFFF', color: PPT_THEME.text, fontFace: PPT_FONT, fontSize: 7.2, headerFontSize: 7.9, margin: 0.032, rowH: 0.32, autoFit: false });
 
   slide = addContentSlide('分析结论与行动建议', '供内部评审和下一步决策使用');
   const analysisBullets = (result.analysis.bullets || []).map(x => `• ${pptNormalizeNumberText(x)}`).join('\n\n') || '暂无测算结论';
@@ -3880,7 +3880,18 @@ async function exportPPT(result) {
   slide.addText(recommendations, { x: 7.0, y: 2.05, w: 5.35, h: 4.35, fontFace: PPT_FONT, fontSize: 9.3, color: PPT_THEME.text, breakLine: false, valign: 'top', margin: 0.02 });
 
   const output = await pptx.write({ outputType: 'blob' });
-  return output instanceof Blob ? output : new Blob([output], { type: PPTX_MIME });
+  if (!window.JSZip) return output instanceof Blob ? output : new Blob([output], { type: PPTX_MIME });
+  const bytes = output instanceof Blob ? await output.arrayBuffer() : output;
+  const zip = await window.JSZip.loadAsync(bytes);
+  for (const name of Object.keys(zip.files)) {
+    if (/^ppt\/(slides\/slide|charts\/chart)\d+\.xml$/.test(name)) {
+      let xml = await zip.file(name).async('string');
+      xml = xml.replace(/typeface="Arial"/g, `typeface="${PPT_FONT}"`).replace(/lang="en-US"/g, 'lang="zh-CN"');
+      zip.file(name, xml);
+    }
+  }
+  const patched = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', mimeType: PPTX_MIME });
+  return patched;
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
