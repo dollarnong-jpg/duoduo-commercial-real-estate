@@ -107,6 +107,7 @@ def audit_defaults_and_units() -> None:
     require_text(backend, "function cloudXHRRequest", "dual-channel cloud login fallback")
     require_text(backend, "attempt % 2 === 0", "cloud login alternates fetch and XHR")
     require_text(backend, "isPotentialRentHeader", "fallback rent column recognition")
+    require_text(backend, "未填写实用/套内面积，已自动按建筑面积计租", "rent area basis fallback when leasable area is blank")
     require_text(app, "cloudShareBaseUrl", "share messages use cloud relay")
     require_text(app, "config.shareUrl", "share relay configuration")
     normalize_hvac = function_segment(app, "normalizeCentralAcBuildingConfigs")

@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rentimport1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rentimport2', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1065,6 +1065,11 @@ function parseShopWorkbook(base64, filename) {
     }
   }
   const warnings = shopWarnings(shops);
+  const hasLeasableArea = shops.some(shop => Number(shop.leasableArea || 0) > 0);
+  if (shops.length && projectHints.project.rentAreaBasis === 'leasable' && !hasLeasableArea) {
+    projectHints.project.rentAreaBasis = 'building';
+    warnings.unshift('导入表未填写实用/套内面积，已自动按建筑面积计租；如需按实用面积计租，请补充该列后重新导入。');
+  }
   const rentRecognizedCount = shops.filter(shop => shop.rentOverride !== null && shop.rentOverride > 0).length;
   const rentMissingCount = Math.max(0, shops.length - rentRecognizedCount);
   const propertyFeeOverrideCount = shops.filter(shop => shop.propertyFeeOverride !== null).length;
