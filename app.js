@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-rentformat1';
+import './backend.js?v=20261120-rentformat2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.56';
+const APP_VERSION = '1.28.57';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');

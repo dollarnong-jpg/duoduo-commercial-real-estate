@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rentformat1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rentformat2', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -1151,7 +1151,7 @@ function parseMarketWorkbook(base64, filename) {
   return { comparables, warnings };
 }
 
-const EXCEL_FONT = 'Microsoft YaHei';
+const EXCEL_FONT = 'Arial';
 
 function excelXmlEscape(value) {
   return String(value ?? '')
