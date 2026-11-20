@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-rateaudit1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-milestonecash1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3368,9 +3368,9 @@ async function exportExcel(result) {
     ...(result.leasingMilestoneAnalysis || []).map(x => [x.date, x.occupancy, x.monthlyRentPotential, x.annualRentPotential, x.note]),
   ], [18, 18, 24, 24, 60]);
   addSheet(wb, '业态收款分析', [
-    ['业态', '满租月租金（万元/月）', '已租月租金（万元/月）', '收款方式', '保证金月数', '预付租金月数', '保证金流入（万元）', '预付租金流入（万元）'],
-    ...(result.categoryPaymentAnalysis || []).map(x => [x.category, Number(x.monthlyRevenue || 0) / 10000, Number(x.occupiedMonthlyRevenue || 0) / 10000, x.paymentModeLabel || '', x.depositMonths || 0, x.prepaidRentMonths || 0, x.depositCashInflow || 0, x.prepaidRentCashInflow || 0]),
-  ], [20, 24, 24, 22, 16, 18, 22, 24]);
+    ['业态', '满租月租金（万元/月）', '已租月租金（万元/月）', '收款方式', '保证金月数', '预付租金月数', '保证金流入（万元）', '预付租金流入（万元）', '收款节点'],
+    ...(result.categoryPaymentAnalysis || []).map(x => [x.category, Number(x.monthlyRevenue || 0) / 10000, Number(x.occupiedMonthlyRevenue || 0) / 10000, x.paymentModeLabel || '', x.depositMonths || 0, x.prepaidRentMonths || 0, x.depositCashInflow || 0, x.prepaidRentCashInflow || 0, (x.paymentEvents || []).map(event => `${event.date}: 保证金${Number(event.depositCashInflow || 0).toFixed(2)}/预付${Number(event.prepaidRentCashInflow || 0).toFixed(2)}`).join('；') || '按首年出租率']),
+  ], [20, 24, 24, 22, 16, 18, 22, 24, 80]);
   addSheet(wb, '自然年运营报表', naturalYearReportSheetRows(result), [12, 18, 18, 10, 12, 12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 24, 16, 14, 16, 16, 16, 20, 22, 22, 40]);
   const annualYears = Number(model.project.operationYears || result.annual?.length || 20);
   const annualExportRows = (result.annual || []).map(x => {

@@ -2392,6 +2392,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         category_monthly_revenue[category_name] = category_monthly_revenue.get(category_name, 0.0) + as_float(shop.get("monthlyRevenue"))
     category_payment_analysis: list[dict[str, Any]] = []
     category_source = category_monthly_revenue if category_monthly_revenue else {"项目整体": total_monthly_revenue}
+    category_payment_start = parse_iso_date(project.get("leasingStartDate")) or opening_date
     for category_name, monthly_revenue in category_source.items():
         category_config = category_data.get(category_name, {})
         category_mode = str(category_config.get("paymentMode") or "inherit")
@@ -2400,9 +2401,39 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         include_category_prepaid = effective_mode in {"deposit_and_prepaid", "prepaid_only"}
         category_deposit_months = as_float(category_config.get("depositMonths"), project_deposit_months) if category_config.get("depositMonths") is not None else project_deposit_months
         category_prepaid_months = as_float(category_config.get("prepaidRentMonths"), project_prepaid_months) if category_config.get("prepaidRentMonths") is not None else project_prepaid_months
-        occupied_monthly_revenue = monthly_revenue * initial_occupancy
-        category_deposit = occupied_monthly_revenue * (max(0.0, category_deposit_months) if include_category_deposit else 0.0) / 10000
-        category_prepaid = occupied_monthly_revenue * (max(0.0, category_prepaid_months) if include_category_prepaid else 0.0) / 10000
+        # Follow the leasing milestones exactly: only newly leased occupancy
+        # triggers a new deposit/prepaid collection. If no milestones are
+        # configured, retain the original first-year occupancy fallback.
+        payment_schedule: list[tuple[date, float]] = []
+        if milestone_dates:
+            previous_target = 0.0
+            for milestone_date, target in milestone_dates:
+                increment = max(0.0, target - previous_target)
+                if increment > 1e-9:
+                    payment_schedule.append((milestone_date, increment))
+                previous_target = max(previous_target, target)
+        elif initial_occupancy > 0:
+            payment_schedule.append((category_payment_start, initial_occupancy))
+        final_occupancy = sum(weight for _, weight in payment_schedule)
+        occupied_monthly_revenue = monthly_revenue * final_occupancy
+        category_deposit = 0.0
+        category_prepaid = 0.0
+        payment_events: list[dict[str, Any]] = []
+        for payment_date, occupancy_increment in payment_schedule:
+            event_deposit = monthly_revenue * occupancy_increment * (max(0.0, category_deposit_months) if include_category_deposit else 0.0) / 10000
+            event_prepaid = monthly_revenue * occupancy_increment * (max(0.0, category_prepaid_months) if include_category_prepaid else 0.0) / 10000
+            category_deposit += event_deposit
+            category_prepaid += event_prepaid
+            payment_events.append({
+                "date": iso_date(payment_date),
+                "occupancyIncrement": occupancy_increment,
+                "depositCashInflow": event_deposit,
+                "prepaidRentCashInflow": event_prepaid,
+            })
+            if event_deposit > 0:
+                add_cash_event(payment_date, f"{category_name}租赁保证金收取", event_deposit, "保证金")
+            if event_prepaid > 0:
+                add_cash_event(payment_date, f"{category_name}预付租金收取", event_prepaid, "预收租金")
         mode_label = "押金+预付租金" if effective_mode == "deposit_and_prepaid" else "仅收押金" if effective_mode == "deposit_only" else "仅收预付租金"
         category_payment_analysis.append({
             "category": category_name,
@@ -2414,12 +2445,10 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "prepaidRentMonths": category_prepaid_months if include_category_prepaid else 0.0,
             "depositCashInflow": category_deposit,
             "prepaidRentCashInflow": category_prepaid,
+            "paymentEvents": payment_events,
         })
         if category_deposit > 0:
-            add_cash_event(project.get("leasingStartDate"), f"{category_name}租赁保证金收取", category_deposit, "保证金")
-            add_cash_event(project.get("operationEndDate"), f"{category_name}租赁保证金退还", -category_deposit, "保证金")
-        if category_prepaid > 0:
-            add_cash_event(project.get("leasingStartDate"), f"{category_name}预付租金收取", category_prepaid, "预收租金")
+            add_cash_event(operation_end_date, f"{category_name}租赁保证金退还", -category_deposit, "保证金")
     tenant_deposit_total = sum(as_float(item.get("depositCashInflow")) for item in category_payment_analysis)
     prepaid_rent_total = sum(as_float(item.get("prepaidRentCashInflow")) for item in category_payment_analysis)
     add_cash_event(owner_deposit_payment_date, "项目进场向业主支付租赁保证金", -owner_deposit, "保证金")

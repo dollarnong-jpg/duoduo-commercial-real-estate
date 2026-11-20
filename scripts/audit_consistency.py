@@ -514,6 +514,7 @@ def audit_monthly_cash_flow() -> None:
     assert category_cash
     assert close(sum(item["depositCashInflow"] for item in category_cash), result["summary"]["merchantDepositCashInflow"])
     assert close(sum(item["prepaidRentCashInflow"] for item in category_cash), result["summary"]["merchantPrepaidRentCashInflow"])
+    assert {event["date"] for item in category_cash for event in item.get("paymentEvents", [])} == {"2027-10-01", "2028-01-01", "2028-07-01"}
     assert close(sum(row["prepaidRentInflow"] for row in plan), result["summary"]["merchantPrepaidRentCashInflow"])
     assert sum(row["prepaidRentAmortization"] for row in plan) <= sum(row["prepaidRentInflow"] for row in plan) + 1e-6
     preopening_events = -sum(event["amount"] for event in result["keyCashEvents"] if event["category"] == "筹备支出")
