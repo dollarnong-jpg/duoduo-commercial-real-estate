@@ -185,8 +185,6 @@ def audit_defaults_and_units() -> None:
     require_text(app, "Number(shop?.buildingArea || 0).toFixed(2)", "fallback shop key includes floor area")
     sync_floor_rent = function_segment(app, "syncFloorRentToShops")
     require_text(sync_floor_rent, "syncFloorOverrideAverage(model, floor, nextRent)", "floor rent edits resync shop overrides")
-    require_text(app, "function reconcileFloorRentOverrides(model)", "automatic floor-rent reconciliation")
-    require_text(app, "已自动按楼层租金同步", "automatic floor-rent synchronization notice")
     ensure_floors = function_segment(app, "ensureFloorsFromShops")
     require_text(ensure_floors, "floor.avgRent = Number(avg.toFixed(2));", "shop import refreshes floor execution rent")
     require_text(app, "楼层满租月收益 = 商户计租面积 × 楼层租金单价", "floor rent rate formula")
@@ -241,6 +239,21 @@ def audit_defaults_and_units() -> None:
 
 
 def audit_presets_and_formulas() -> None:
+    one_shop_model = engine.default_model("一铺一价逐铺租金审计")
+    one_shop_model["calculationMode"] = "detailed"
+    one_shop_model["project"].update({"gbaOverride": 300, "commonAreaFactor": 0, "rentAreaBasis": "building"})
+    one_shop_model["floors"] = [{"building": "1号楼", "name": "1F", "buildingArea": 300, "leasableArea": 0, "avgRent": 100, "rentAreaBasis": "building"}]
+    one_shop_model["shops"] = [
+        {"id": "P1", "building": "1号楼", "floor": "1F", "buildingArea": 100, "leasableArea": 0, "category": "零售", "rentOverride": 90},
+        {"id": "P2", "building": "1号楼", "floor": "1F", "buildingArea": 200, "leasableArea": 0, "category": "零售", "rentOverride": 87.5},
+    ]
+    one_shop = engine.calculate_model(one_shop_model, False)
+    assert close(one_shop["shops"][0]["rent"], 90)
+    assert close(one_shop["shops"][1]["rent"], 87.5)
+    assert all(shop["rentSource"] == "shop" for shop in one_shop["shops"])
+    assert close(one_shop["floors"][0]["weightedRent"], 88.3333333333)
+    assert close(one_shop["summary"]["totalMonthlyRent"], 90 * 100 + 87.5 * 200)
+
     app = read("app.js")
     backend = read("backend.js")
     for preset in ("shopping", "department", "outlet", "street", "community", "community_base"):
@@ -378,7 +391,7 @@ def audit_engine_invariants() -> None:
         "buildingArea": 100,
         "leasableArea": 80,
         "category": "零售",
-        "rentOverride": 999,
+        "rentOverride": 100,
     }]
     basis_model["project"]["rentAreaBasis"] = "building"
     building_basis = engine.calculate_model(basis_model, False)
@@ -633,7 +646,7 @@ def audit_unified_rate_policy() -> None:
         {"building": "1号楼", "name": "2F", "buildingArea": 5000, "leasableArea": 5000, "avgRent": 30, "rentAreaBasis": "building"},
     ]
     model["shops"] = [
-        {"id": "A", "building": "1号楼", "floor": "1F", "buildingArea": 35000, "leasableArea": 0, "category": "零售", "rentOverride": 30, "commercialManagementFeeOverride": 15, "conditions": ["电梯口", "转角铺"]},
+        {"id": "A", "building": "1号楼", "floor": "1F", "buildingArea": 35000, "leasableArea": 0, "category": "零售", "rentOverride": 48, "commercialManagementFeeOverride": 15, "conditions": ["电梯口", "转角铺"]},
         {"id": "B", "building": "1号楼", "floor": "2F", "buildingArea": 5000, "leasableArea": 0, "category": "零售", "rentOverride": 30, "commercialManagementFeeOverride": 15},
     ]
     model["categories"][0]["factor"] = 1.08
@@ -646,13 +659,13 @@ def audit_unified_rate_policy() -> None:
     assert close(result["floors"][0]["monthlyRevenue"], 1680000)
     assert close(result["floors"][1]["monthlyRevenue"], 150000)
     assert all(close(shop["commercialManagementFee"], 20) for shop in result["shops"])
-    assert all(shop["rentSource"] == "floor" for shop in result["shops"])
+    assert all(shop["rentSource"] == "shop" for shop in result["shops"])
     assert all(shop["commercialManagementFeeSource"] == "project" for shop in result["shops"])
     assert close(result["shops"][0]["monthlyCommercialManagementFee"], 700000)
     assert close(result["shops"][1]["monthlyCommercialManagementFee"], 100000)
 
-    # The retained legacy switch and imported per-shop values are audit-only;
-    # they must never create a second execution rate in the live calculation.
+    # The retained legacy switch must not suppress real one-shop-one-price
+    # rents; project-wide service fees remain independent of that switch.
     model["project"]["allowShopOverrides"] = True
     overridden = engine.calculate_model(model, False)
     assert close(overridden["summary"]["totalMonthlyRent"], 1830000)
@@ -665,7 +678,9 @@ def audit_unified_rate_policy() -> None:
     for stale in ("楼层/项目默认", "商铺计价口径", "铺位覆盖规则", "租金单价覆盖"):
         assert stale not in app, f"app.js still contains stale unified-rate label: {stale}"
     assert "项目默认" not in backend
-    require_text(app, "铺位租金自动跟随所属楼层租金单价", "shop rent follows floor rate")
+    require_text(app, "铺位租金单价以导入或录入值为准", "shop rent uses imported or entered unit price")
+    assert "reconcileFloorRentOverrides(" not in app, "project open or calculation must not rewrite shop rents from floor averages"
+    assert "已自动按楼层租金同步" not in app, "stale automatic floor-rent overwrite notice remains"
     require_text(app, "全项目统一使用本页录入的商业管理费单价核算", "project-wide commercial fee rate")
     require_text(app, "招商现金流已计入项目时间轴", "leasing cash reconciliation notice")
     require_text(app, "招商签约流入（万元）", "dedicated leasing cash column")

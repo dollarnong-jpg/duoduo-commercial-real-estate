@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-datasource2';
+import './backend.js?v=20261120-rentimport1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.53';
+const APP_VERSION = '1.28.54';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -696,7 +696,6 @@ const state = {
   preOpeningWarnings: [],
   costBaselineNoticeShown: false,
   shopBaselineNoticeShown: false,
-  floorRentAutoSyncNoticeShown: false,
   sidebarOpen: false,
   adminUsers: [],
   adminProjects: [],
@@ -3019,27 +3018,25 @@ async function openProject(projectId) {
     const payload = await api(`/api/projects/${projectId}`);
     state.current = { ...payload.project, model: payload.result?.model || payload.project.model };
     const benchmarkInitialized = ensureSettlementBenchmarks(state.current.model);
-    const floorRentSynced = reconcileFloorRentOverrides(state.current.model);
     synchronizeBuildingDataSources(state.current.model);
     state.result = payload.result;
-    state.preview = benchmarkInitialized || floorRentSynced ? null : payload.result;
+    state.preview = benchmarkInitialized ? null : payload.result;
     state.calculating = false;
     state.calculationError = '';
     state.lastCalculatedAt = payload.result ? Date.now() : 0;
     state.marketAnalysis = null;
     state.marketError = null;
     state.step = 0;
-    state.dirty = benchmarkInitialized || floorRentSynced > 0;
-    state.floorRentAutoSyncNoticeShown = false;
+    state.dirty = Boolean(benchmarkInitialized);
     state.importWarnings = [];
     state.rentImportStats = null;
     state.preOpeningWarnings = [];
     state.shopPage = 1;
     state.shopSearch = '';
     renderWorkspace();
-    if (benchmarkInitialized || floorRentSynced) {
+    if (benchmarkInitialized) {
       scheduleLivePreview();
-      setTimeout(() => toast(benchmarkInitialized ? '已按行业常规和项目地区补充联营销售/扣点基准，请核对后保存' : '已自动按楼层租金同步铺位单价，请核对后保存', 'success'), 250);
+      setTimeout(() => toast('已按行业常规和项目地区补充联营销售/扣点基准，请核对后保存', 'success'), 250);
     }
   } catch (error) { toast(error.message, 'error'); } finally { setBusy(false); }
 }
@@ -3442,7 +3439,7 @@ function renderProjectStep() {
   return `
     <div class="callout">${ICONS.info}<div>不确定“总建筑面积”时可以先留空：${preliminary ? '初步测算按楼层建筑面积合计计算' : '一铺一价按商铺建筑面积 ×（1 + 公共部位分摊系数）自动推算'}。</div></div>
     ${gbaBelowShopArea ? `<div class="callout soft" style="border-color:#d9a44e">${ICONS.info}<div><strong>面积口径冲突：</strong>手填项目总建筑面积 ${fmtArea(m.project.gbaOverride)}㎡，小于商铺建筑面积合计 ${fmtArea(shopBuilding)}㎡。请核对规划总建筑面积或铺位面积。</div></div>` : ''}
-    ${formulaPanel('面积、租金与投资基数公式', `总建筑面积 = IF(手动值为0, ${preliminary ? '楼层建筑面积合计' : '商铺建筑面积合计 ×（1 + 公区系数)'}, 手动值)\n铺位租金 = 铺位计租面积 × 所属楼层租金单价\n项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金`, ['IF', 'SUM', 'MAX', 'POWER'], '楼层租金单价是唯一执行单价；每个参数下方的ƒ按钮会显示该参数在公式中的具体作用。')}
+    ${formulaPanel('面积、租金与投资基数公式', `总建筑面积 = IF(手动值为0, ${preliminary ? '楼层建筑面积合计' : '商铺建筑面积合计 ×（1 + 公区系数)'}, 手动值)\n${preliminary ? '楼层租金 = 楼层计租面积 × 楼层租金单价' : '铺位租金 = 铺位计租面积 × 导入/录入的铺位租金单价'}\n项目总投资 = 土地及契税 + 建设工程 + 预备费 + 招商开办 + 流动资金`, ['IF', 'SUM', 'MAX', 'POWER'], preliminary ? '初步测算以楼层租金单价为执行价。' : '一铺一价以每个铺位导入或录入的租金单价为执行价；楼层租金只作面积加权平均展示。')}
     <div class="form-section">
       <div class="section-title">项目概况</div>
       <div class="form-grid">
@@ -3662,11 +3659,6 @@ function syncProjectServiceFeeOverrides(model, field, previousValue, nextValue) 
   return changed;
 }
 
-function reconcileFloorRentOverrides(model) {
-  const floors = Array.isArray(model?.floors) ? model.floors : [];
-  return floors.reduce((count, floor) => count + (syncFloorOverrideAverage(model, floor, floor.avgRent) ? 1 : 0), 0);
-}
-
 function openingOccupancyTarget(model) {
   const openingDate = String(model?.project?.openingDate || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(openingDate)) return null;
@@ -3778,10 +3770,10 @@ function renderFloorEditor(m, mode, preview) {
   const buildingOptions = [...new Set([...(floors || []).map(floor => floor.building || '1号楼'), ...(m.shops || []).map(shop => shop.building || '1号楼')])];
   return `<div class="form-section">
     <div class="section-title">楼层租金单价与面积</div>
-    <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '一铺一价时，楼栋、楼层和面积统一取铺位明细，不再重复录入；这里只调整楼层租金单价，并自动同步到该楼层全部铺位。'}</div>
-    ${formulaPanel('商户租金公式', '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层租金单价\n项目租金单价 = 各楼层满租月租金收入合计 ÷ 项目商户计租面积合计', ['SUM', 'MAX', 'IF'], '租金单价就是执行单价；铺位租金自动跟随所属楼层，确保录入值与明细、结果页完全一致。')}
+    <div class="section-note">${mode === 'preliminary' ? `系统按项目计租方式汇总楼层收益${concessionEnabled ? '，并比较保底租金与联营扣点' : ''}。调整面积、租金、销售基数或扣点率后会自动重新测算。` : '一铺一价时，楼栋、楼层和面积统一取铺位明细，不再重复录入；铺位租金单价以导入或录入值为准；楼层显示按面积加权平均价，修改楼层平均值会按比例同步该层铺位。'}</div>
+    ${formulaPanel('商户租金公式', mode === 'preliminary' ? '商户计租面积 = IF(商户计租口径=建筑面积, 建筑面积, 实用面积)\n楼层满租月收益 = 商户计租面积 × 楼层租金单价\n项目租金单价 = 各楼层满租月租金收入合计 ÷ 项目商户计租面积合计' : '铺位满租月租金 = 铺位计租面积 × 铺位租金单价\n楼层满租月收益 = 该楼层全部铺位满租月租金合计\n楼层平均租金 = 楼层满租月收益 ÷ 楼层计租面积\n项目租金单价 = 全部铺位满租月租金合计 ÷ 项目商户计租面积合计', ['SUM', 'MAX', 'IF'], mode === 'preliminary' ? '初步测算以楼层租金单价为执行价。' : '一铺一价以铺位租金单价为执行价；楼层和项目租金单价均按面积加权计算。')}
     <div class="data-table-wrap floor-table-wrap">
-      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">商户计租面积（㎡）</th><th class="num">${mode === 'detailed' ? '租金单价（元/㎡/月）' : '楼层租金单价（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th></th></tr></thead><tbody>
+      <table class="data-table floor-table"><thead><tr><th>楼栋</th><th>楼层</th><th>商户计租口径</th><th class="num">建筑面积（㎡）</th><th class="num">实用/租赁面积（㎡）</th><th class="num">${termLabel('得铺率')}</th><th class="num">商户计租面积（㎡）</th><th class="num">${mode === 'detailed' ? '楼层平均租金（元/㎡/月）' : '楼层租金单价（元/㎡/月）'}</th>${concessionEnabled ? `<th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}</th><th class="num">${termLabel('扣点率')}</th>` : ''}<th class="num">满租月收益（元）</th><th></th></tr></thead><tbody>
         ${floors.length ? floors.map((floor, i) => {
           const ratio = Number(floor.buildingArea) ? Number(floor.leasableArea) / Number(floor.buildingArea) : 0;
           const area = rentAreaFor(floor, m);
@@ -3987,7 +3979,8 @@ function renderDetailedPricing(m, shops, preview) {
         ${pageRows.length ? pageRows.map(shop => {
           const key = shopRecordKey(shop);
           const calc = previewShopMap.get(key);
-          const base = calc?.baseRent ?? (categoryRent[shop.category] || 0);
+          const shopRentOverride = shop.rentOverride === null || shop.rentOverride === undefined ? null : Number(shop.rentOverride);
+          const base = calc?.baseRent ?? (Number.isFinite(shopRentOverride) && shopRentOverride > 0 ? shopRentOverride : (categoryRent[shop.category] || 0));
           const modeLabels = { rent:'纯租金', concession:'纯扣点', guarantee_or_concession:'保底/扣点取高' };
           const mode = calc?.settlementMode || (m.categories.find(c => c.name === shop.category)?.revenueMode !== 'inherit' ? m.categories.find(c => c.name === shop.category)?.revenueMode : m.project.revenueModel) || 'rent';
           const feeText = calc ? `物业 ${fmt(calc.propertyFee, 2)} / 商管 ${fmt(calc.commercialManagementFee, 2)} / 空调 ${fmt(calc.centralAcFee, 2)}<small class="rent-source">合计 ${fmt(calc.monthlyServiceFee, 2)} 元/月</small>` : '待计算';
@@ -7783,7 +7776,6 @@ async function runLivePreview() {
   try {
     const shopBaselineChanged = ensureShopDetailedBaseline(state.current.model);
     const costBaseline = ensureCostBaselineForCalculation(state.current.model);
-    const floorRentSynced = reconcileFloorRentOverrides(state.current.model);
     synchronizeBuildingDataSources(state.current.model);
     if (shopBaselineChanged) {
       state.dirty = true;
@@ -7799,14 +7791,6 @@ async function runLivePreview() {
       if (!state.costBaselineNoticeShown) {
         state.costBaselineNoticeShown = true;
         toast(`检测到工程投资为空，已按${costBaseline.cityLabel} · ${costBaseline.developmentLabel}补充参考单价，请到“建设投资”复核`, 'success');
-      }
-    }
-    if (floorRentSynced) {
-      state.dirty = true;
-      updateSaveState();
-      if (!state.floorRentAutoSyncNoticeShown) {
-        state.floorRentAutoSyncNoticeShown = true;
-        toast(`已自动按楼层租金同步 ${floorRentSynced} 个楼层的铺位单价`, 'success');
       }
     }
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
@@ -8340,7 +8324,7 @@ function openAddShopModal(editIndex = null) {
   modalRegion.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
       <div class="modal">
-        <div class="modal-head"><div><h2>${editing ? '编辑铺位' : '新增铺位'}</h2><p>铺位租金自动跟随所属楼层租金单价；位置条件仅用于联营扣点测算。</p></div><button class="modal-close" id="modal-close">×</button></div>
+        <div class="modal-head"><div><h2>${editing ? '编辑铺位' : '新增铺位'}</h2><p>铺位租金单价以本铺导入或录入值为准；位置条件仅用于联营扣点测算。</p></div><button class="modal-close" id="modal-close">×</button></div>
         <form id="add-shop-form">
           <div class="modal-body">
             <div class="form-grid two">
@@ -8449,7 +8433,6 @@ async function saveProject({ force = false } = {}) {
   state.calculating = false;
   setBusy(true);
   try {
-    reconcileFloorRentOverrides(state.current.model);
     synchronizeBuildingDataSources(state.current.model);
     const payload = await api(`/api/projects/${state.current.id}`, {
       method: 'PUT',
