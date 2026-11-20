@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-datasource1';
+import './backend.js?v=20261120-datasource2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.52';
+const APP_VERSION = '1.28.53';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -3020,16 +3020,16 @@ async function openProject(projectId) {
     state.current = { ...payload.project, model: payload.result?.model || payload.project.model };
     const benchmarkInitialized = ensureSettlementBenchmarks(state.current.model);
     const floorRentSynced = reconcileFloorRentOverrides(state.current.model);
-    const buildingSourcesSynced = synchronizeBuildingDataSources(state.current.model);
+    synchronizeBuildingDataSources(state.current.model);
     state.result = payload.result;
-    state.preview = benchmarkInitialized || floorRentSynced || buildingSourcesSynced ? null : payload.result;
+    state.preview = benchmarkInitialized || floorRentSynced ? null : payload.result;
     state.calculating = false;
     state.calculationError = '';
     state.lastCalculatedAt = payload.result ? Date.now() : 0;
     state.marketAnalysis = null;
     state.marketError = null;
     state.step = 0;
-    state.dirty = Boolean(benchmarkInitialized || floorRentSynced > 0 || buildingSourcesSynced);
+    state.dirty = benchmarkInitialized || floorRentSynced > 0;
     state.floorRentAutoSyncNoticeShown = false;
     state.importWarnings = [];
     state.rentImportStats = null;
@@ -7784,7 +7784,7 @@ async function runLivePreview() {
     const shopBaselineChanged = ensureShopDetailedBaseline(state.current.model);
     const costBaseline = ensureCostBaselineForCalculation(state.current.model);
     const floorRentSynced = reconcileFloorRentOverrides(state.current.model);
-    const buildingSourcesSynced = synchronizeBuildingDataSources(state.current.model);
+    synchronizeBuildingDataSources(state.current.model);
     if (shopBaselineChanged) {
       state.dirty = true;
       updateSaveState();
@@ -7808,10 +7808,6 @@ async function runLivePreview() {
         state.floorRentAutoSyncNoticeShown = true;
         toast(`已自动按楼层租金同步 ${floorRentSynced} 个楼层的铺位单价`, 'success');
       }
-    }
-    if (buildingSourcesSynced) {
-      state.dirty = true;
-      updateSaveState();
     }
     const result = await api('/api/calculate', { method: 'POST', body: { model: state.current.model, includeSensitivity: false } });
     if (requestSeq !== previewRequestSeq || !state.current) return null;
