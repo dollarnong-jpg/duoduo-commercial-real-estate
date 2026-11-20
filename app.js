@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-occupancybasis1';
+import './backend.js?v=20261120-cloudonly1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.44';
+const APP_VERSION = '1.28.45';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -732,7 +732,7 @@ function normalizeUserRole(value) {
 }
 
 function isSuperAdmin(user = state.user) {
-  return Boolean(user && !user.localMode && normalizeUserRole(user.role) === 'super_admin');
+  return Boolean(user && normalizeUserRole(user.role) === 'super_admin');
 }
 
 function projectUpdatedAtChanged(previous, latest) {
@@ -1438,10 +1438,10 @@ async function loadProjects() {
     state.projectLoadError = '';
     state.adminLoaded = false;
     if (Number(payload.migratedLocalProjects || 0) > 0) {
-      toast(`已将 ${payload.migratedLocalProjects} 个本机项目同步到当前云端账号`, 'success');
+      toast(`已将 ${payload.migratedLocalProjects} 个历史项目并入云端工作台`, 'success');
     }
     if (Number(payload.localProjectMigrationFailures || 0) > 0) {
-      toast(`有 ${payload.localProjectMigrationFailures} 个本机项目暂未同步，请稍后点击“重新加载项目”重试`, 'error');
+      toast(`有 ${payload.localProjectMigrationFailures} 个历史项目暂未同步，请稍后点击“重新加载项目”重试`, 'error');
     }
     return payload;
   } catch (error) {
@@ -1456,7 +1456,7 @@ async function loadProjects() {
 }
 
 async function syncProjectsAfterFocus() {
-  if (document.hidden || !state.token || !state.user?.id || state.user?.localMode || state.projectSyncBusy) return;
+  if (document.hidden || !state.token || !state.user?.id || state.projectSyncBusy) return;
   if (Date.now() - Number(state.lastProjectSyncAt || 0) < 15000) return;
   state.lastProjectSyncAt = Date.now();
   state.projectSyncBusy = true;
@@ -1525,7 +1525,7 @@ function renderAuth(mode = 'login') {
       <section class="auth-panel">
         <div class="auth-card">
           <h2>${isLogin ? '登录工作台' : '申请正式账号'}</h2>
-          <p class="auth-sub">${isLogin ? '正式账号登录后可跨设备访问自己的项目；演示账号仍保存在本机。' : '首个正式账号自动成为超级管理员，其余账号须经管理员审核授权。'}</p>
+          <p class="auth-sub">${isLogin ? '所有账号均使用云端工作台，登录后可在任意设备访问自己的项目。' : '首个正式账号自动成为超级管理员，其余账号须经管理员审核授权。'}</p>
           <div class="auth-tabs">
             <button type="button" class="${isLogin ? 'active' : ''}" data-auth-mode="login">登录</button>
             <button type="button" class="${!isLogin ? 'active' : ''}" data-auth-mode="register">注册</button>
@@ -1535,10 +1535,9 @@ function renderAuth(mode = 'login') {
             ${!isLogin ? '<div class="field"><label>姓名 / 称呼</label><input class="input" name="displayName" autocomplete="name" placeholder="例如：王经理"></div>' : ''}
             <div class="field"><label>用户名</label><input class="input" name="username" autocomplete="username" required placeholder="输入用户名"></div>
             <div class="field"><label>密码 <small>至少6位</small></label><input class="input" type="password" name="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" required placeholder="输入密码"></div>
-            <label class="local-auth-mode"><input type="checkbox" name="localMode" id="local-auth-mode"><span><strong>离线兼容登录</strong><small>仅在云端暂时无法连接时使用。登录时系统仍会自动尝试连接同用户名云端账号；连接成功后会立即把本机项目迁移到云端，失败时才保留为待同步本机项目。</small></span></label>
             <button class="auth-submit" type="submit">${isLogin ? '进入工作台' : '提交注册申请'}</button>
           </form>
-          ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>首次使用可直接体验：账号 <strong>demo</strong>，密码 <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
+          ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>云端演示账号：<strong>demo</strong> / <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
           <div class="auth-font-setting">
             <span>界面字号</span>
             <div class="auth-font-options" role="group" aria-label="界面字号调整">
@@ -1557,11 +1556,6 @@ function renderAuth(mode = 'login') {
     form.username.value = 'demo';
     form.password.value = 'demo1234';
   });
-  const localModeInput = document.getElementById('local-auth-mode');
-  if (localModeInput) {
-    localModeInput.checked = localStorage.getItem('duoduo_local_auth_mode') === '1';
-    localModeInput.addEventListener('change', () => localStorage.setItem('duoduo_local_auth_mode', localModeInput.checked ? '1' : '0'));
-  }
   document.getElementById('auth-form').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1572,7 +1566,6 @@ function renderAuth(mode = 'login') {
       username: form.username.value.trim(),
       password: form.password.value,
       displayName: form.displayName?.value.trim() || form.username.value.trim(),
-      mode: form.localMode.checked ? 'local' : 'cloud',
     };
     setBusy(true);
     try {
@@ -1589,11 +1582,7 @@ function renderAuth(mode = 'login') {
       if (!state.token) return;
       renderProjectList();
       if (payload.cloudLinked) {
-        toast(payload.cloudRegistered ? '已自动创建并连接云端账号，正在同步本机项目' : '已连接云端账号，正在同步本机项目', 'success');
-      } else if (payload.cloudPending) {
-        toast(payload.cloudMessage || '本机项目已保存，云端账号审核通过后重新登录会自动上传', 'success');
-      } else if (payload.cloudFallback) {
-        toast(payload.cloudMessage || '云端暂时不可用，已进入离线兼容工作区；恢复后重新登录会自动上传', 'success');
+        toast(payload.cloudRegistered ? '已自动创建并连接云端账号，正在同步历史项目' : '已连接云端账号，正在同步项目', 'success');
       }
       if (payload.firstAdmin) setTimeout(() => toast('首个正式账号已自动设为超级管理员', 'success'), 120);
     } catch (error) {
@@ -1631,7 +1620,7 @@ function sidebar(active = 'projects') {
       <div class="sidebar-spacer"></div>
       <div class="user-box">
         <strong>${escapeHtml(state.user?.displayName || state.user?.username || '')}</strong>
-        <span>${isSuperAdmin() ? '超级管理员 · 云端工作空间' : state.user?.username === 'demo' ? '演示账号 · 本地工作空间' : state.user?.localMode ? '离线兼容账号 · 待云端同步' : '正式账号 · 云端工作空间'}</span>
+        <span>${isSuperAdmin() ? '超级管理员 · 云端工作台' : state.user?.username === 'demo' ? '演示账号 · 云端工作台' : '正式账号 · 云端工作台'}</span>
         <div class="font-size-setting">
           <span class="font-size-setting-title">界面字号</span>
           <div class="font-size-options" role="group" aria-label="界面字号调整">
@@ -1732,11 +1721,7 @@ function bindShell() {
 function renderProjectList() {
   state.adminActive = false;
   const cards = state.projects.map(project => projectCard(project)).join('');
-  const localOnlyCount = state.projects.filter(project => project.storage === 'local').length;
-  const storageCopy = state.user?.username === 'demo'
-    ? '演示账号项目只保存在当前浏览器，适合体验功能。' : state.user?.localMode
-    ? '离线兼容项目已保存在当前浏览器；系统会在下次云端登录时自动迁移，无需再靠分享码搬运。'
-    : '正式账号项目保存在云端，登录后可跨设备继续测算。';
+  const storageCopy = '全部项目统一保存在云端工作台，登录后可在任意设备继续测算。';
   const content = `
     <div class="page-intro">
       <div>
@@ -1747,8 +1732,6 @@ function renderProjectList() {
       <div class="project-intro-actions"><button class="btn btn-secondary" id="compare-projects-btn">${ICONS.compare}<span>方案对比</span></button><button class="btn btn-secondary" id="import-share-btn">${ICONS.download}<span>接收项目</span></button><button class="btn btn-primary" id="new-project-btn">${ICONS.plus}<span>新建测算项目</span></button></div>
     </div>
     ${state.projectLoadError ? `<div class="warning-list project-load-warning"><div class="warning-item"><strong>项目数据未完整加载</strong><span>${escapeHtml(state.projectLoadError)}。账号仍保持登录，模块不会因此隐藏。</span><button class="btn btn-secondary btn-sm" id="retry-projects">重新加载项目</button></div></div>` : ''}
-    ${state.user?.localMode && state.user?.username !== 'demo' ? `<div class="warning-list"><div class="warning-item"><strong>${state.user.cloudSyncState === 'pending_approval' ? '本机项目等待云端审核' : state.user.cloudSyncState === 'password_mismatch' ? '本机项目等待云端账号验证' : '本机项目待同步到云端'}</strong><span>${escapeHtml(state.user.cloudMessage || '项目已安全保存在当前设备。请保持网络连接，退出后重新登录一次；系统会连接同用户名云端账号，并自动上传全部本机项目。')}</span><button class="btn btn-secondary btn-sm" id="relogin-cloud-sync">重新登录并同步</button></div></div>` : ''}
-    ${localOnlyCount > 0 && !state.user?.localMode ? `<div class="warning-list"><div class="warning-item"><strong>发现 ${localOnlyCount} 个仅本机项目</strong><span>这些项目只保存在当前设备，超级管理员后台无法看到。请点击“上传本机项目”，或导出项目后重新导入云端账号。</span><button class="btn btn-secondary btn-sm" id="relogin-cloud-sync">上传本机项目</button></div></div>` : ''}
     ${state.projects.length ? `<div class="project-grid">${cards}${newProjectCard()}</div>` : state.projectLoadError ? '' : emptyProjectState()}`;
   shell(content, 'projects', false);
   document.getElementById('new-project-btn')?.addEventListener('click', openNewProjectModal);
@@ -1760,10 +1743,6 @@ function renderProjectList() {
     setBusy(true);
     try { await loadProjects(); renderProjectList(); }
     finally { setBusy(false); }
-  });
-  document.getElementById('relogin-cloud-sync')?.addEventListener('click', () => {
-    if (!confirm('将退出当前本机会话。请使用同一账号密码重新登录，系统会连接云端并自动上传本机项目；本机项目不会删除。确定继续吗？')) return;
-    logout();
   });
   document.querySelectorAll('[data-project-id]').forEach(card => card.addEventListener('click', event => {
     if (event.target.closest('[data-delete-project], [data-share-project], [data-duplicate-project]')) return;
@@ -2242,8 +2221,7 @@ function startShareInbox() {
 
 async function sendProjectToInbox({ recipientId, recipientUsername, recipientName, shareCode, note }) {
   const config = cloudRealtimeConfig();
-  if (!config) throw new Error('当前为本地模式，无法直接发送到对方工作台');
-  if (state.user?.localMode) throw new Error('当前是离线兼容账号，请先重新登录并同步到云端后再直接发送');
+  if (!config) throw new Error('云端分享服务暂时不可用，请稍后重试');
   const shareId = crypto.randomUUID();
   const topic = recipientId ? shareInboxTopic(recipientId) : await shareUsernameTopic(recipientUsername);
   if (!topic) throw new Error('请输入接收方的云端用户名');
@@ -2645,7 +2623,7 @@ function projectCard(project) {
   const sharedUsername = shareMeta.sourceUsername || shareMeta.importedFrom || '';
   const sharedName = shareMeta.sourceDisplayName || shareMeta.importedFromName || '';
   const sharedFrom = sharedName && sharedUsername ? `${sharedName} @${sharedUsername}` : (sharedName || (sharedUsername ? `@${sharedUsername}` : ''));
-  const storageLabel = project.storage === 'local' ? '仅本机 · 未进入管理员后台' : project.storage === 'cloud' ? '云端已同步' : '';
+  const storageLabel = '云端工作台';
   return `<article class="project-card" data-project-id="${project.id}">
     <div class="project-card-status"><span>●</span>${escapeHtml(status)}</div>
     <h3>${escapeHtml(s.projectName || project.model?.project?.name || '未命名项目')}</h3>
@@ -2656,7 +2634,7 @@ function projectCard(project) {
       <div class="project-metric"><strong>${s.projectIrr == null ? '—' : fmtPct(s.projectIrr)}</strong><span>项目IRR</span></div>
       <div class="project-metric"><strong>${s.calculationMode === 'preliminary' ? (s.floorCount || 0) : (s.shopsCount || 0)}</strong><span>${s.calculationMode === 'preliminary' ? '测算楼层' : '铺位数量'}</span></div>
     </div>
-    <div class="project-card-foot"><span>更新于 ${fmtDate(project.updatedAt)}${storageLabel ? ` · <em class="project-storage ${project.storage === 'local' ? 'local' : 'cloud'}">${storageLabel}</em>` : ''}</span><div class="project-card-actions"><button class="btn btn-ghost btn-sm" data-share-project="${project.id}" title="发送或生成分享码">${ICONS.share}<span>发送</span></button><button class="btn btn-ghost btn-sm" data-duplicate-project="${project.id}" title="复制为对比方案">${ICONS.copy}<span>复制</span></button><button class="btn btn-ghost btn-sm" data-delete-project="${project.id}" title="删除项目">${ICONS.trash}</button></div></div>
+    <div class="project-card-foot"><span>更新于 ${fmtDate(project.updatedAt)} · <em class="project-storage cloud">${storageLabel}</em></span><div class="project-card-actions"><button class="btn btn-ghost btn-sm" data-share-project="${project.id}" title="发送或生成分享码">${ICONS.share}<span>发送</span></button><button class="btn btn-ghost btn-sm" data-duplicate-project="${project.id}" title="复制为对比方案">${ICONS.copy}<span>复制</span></button><button class="btn btn-ghost btn-sm" data-delete-project="${project.id}" title="删除项目">${ICONS.trash}</button></div></div>
   </article>`;
 }
 
@@ -2867,7 +2845,7 @@ function renderAdminDashboard() {
     </section>
     <section class="admin-section">
       <div class="admin-section-head"><div><span class="eyebrow">Project oversight</span><h2>全部用户项目</h2></div></div>
-      <div class="admin-cloud-note"><strong>这里是云端项目总览</strong><span>只显示已经获得云端用户归属的项目。伙伴在离线兼容模式下创建的项目，会在其重新登录且云端连接成功后自动上传；未完成云端身份验证前，任何管理员都无法远程读取其浏览器里的本机数据。</span></div>
+      <div class="admin-cloud-note"><strong>这里是云端项目总览</strong><span>所有正式账号的项目均统一保存在云端。历史浏览器项目会在账号登录后自动并入云端工作台，超级管理员可查看项目数据并调用完整测算结果。</span></div>
       <div id="admin-project-list">${adminProjectTable()}</div>
     </section>
     <section class="admin-section admin-audit-section">
@@ -3009,7 +2987,7 @@ function openGuideModal() {
           <p><strong style="color:var(--navy)">5. 运营期成本：</strong>核算组织、物业、办公、招商、营销、维保和服务成本。</p>
           <p><strong style="color:var(--navy)">6. 税费与利润：</strong>设置税费、融资、折旧、所得税和退出参数。</p>
           <p><strong style="color:var(--navy)">7. 资本金与回报：</strong>查看投资、IRR、NPV、NOI、回收期和方案对比，并导出Excel与PPT。</p>
-          <div class="callout" style="margin-top:18px;margin-bottom:0">${ICONS.info}<div>演示账号：demo / demo1234。数据只保存在本机，不上传云端。</div></div>
+          <div class="callout" style="margin-top:18px;margin-bottom:0">${ICONS.info}<div>演示账号：demo / demo1234。所有账号项目统一保存在云端工作台。</div></div>
         </div>
         <div class="modal-foot"><button class="btn btn-primary" id="modal-cancel">知道了</button></div>
       </div>
@@ -3062,7 +3040,7 @@ function renderWorkspace() {
     <div class="workspace-grid">
       <aside class="steps">
         ${stepsHtml}
-        <div class="step-footer">数据保存在本机<br>每次保存后自动计算最新结果</div>
+        <div class="step-footer">数据保存在云端工作台<br>跨设备登录自动同步最新结果</div>
       </aside>
       <section class="step-panel">
         <div class="panel-head"><h2>${active.label}</h2><p>${stepDescription(state.step)}</p></div>

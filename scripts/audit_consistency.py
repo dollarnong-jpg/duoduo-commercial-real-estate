@@ -100,14 +100,15 @@ def audit_defaults_and_units() -> None:
     require_text(app, "org-delete-btn danger-text", "organization icon delete action")
     assert "<span>删除岗位</span>" not in app
     assert "<span>删除部门</span>" not in app
-    require_text(backend, "body.mode === 'local'", "local fallback registration")
-    require_text(app, "离线兼容登录", "local fallback login UI")
-    require_text(backend, "cloudLoginIdentity", "local login cloud upgrade")
-    require_text(backend, "cloudRegisterIdentity", "local login cloud registration fallback")
-    require_text(backend, "cloudLinked: true", "local login cloud link response")
-    require_text(backend, "自动提交云端账号申请", "local account cloud approval queue")
+    assert "body.mode === 'local'" not in backend
+    assert "离线兼容登录" not in app
+    require_text(backend, "cloudLoginIdentity", "cloud account login")
+    require_text(backend, "cloudRegisterIdentity", "cloud account registration")
     require_text(backend, "_duoduoLocalProjectId", "local project migration marker")
-    require_text(app, "重新登录并同步", "local project manual re-login sync action")
+    require_text(backend, "/rest/v1/projects?select=id,user_id,name,model,created_at,updated_at&order=updated_at.desc&limit=1000", "admin all-project query")
+    require_text(app, "全部项目统一保存在云端工作台", "cloud-only project workspace copy")
+    assert "仅本机 · 未进入管理员后台" not in app
+    assert "重新登录并同步" not in app
     require_text(app, "parseDD4CompressedBytes", "share code byte-length compatibility")
     require_text(app, "decompressShareJson", "legacy share code repair")
     require_text(app, "shareUsernameTopic", "username inbox routing")
@@ -125,8 +126,8 @@ def audit_defaults_and_units() -> None:
     require_text(app, "直接发送到伙伴项目工作台", "direct project delivery wording")
     require_text(app, "由 ${escapeHtml(sharedFrom)} 发送，已直接加入工作台", "project sender attribution")
     assert "站内收件箱" not in app
-    require_text(app, "仅本机 · 未进入管理员后台", "project storage status")
-    require_text(app, "发现 ${localOnlyCount} 个仅本机项目", "local-only project warning")
+    require_text(app, "const storageLabel = '云端工作台'", "cloud project storage label")
+    assert "发现 ${localOnlyCount} 个仅本机项目" not in app
     require_text(backend, "storage: 'cloud'", "cloud project storage marker")
     assert "userOK && (!keyword || haystack.includes(keyword))" not in app
     require_text(app, "buildStatusAdvice", "actionable live status advice")
