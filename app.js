@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-strictcashflow1';
+import './backend.js?v=20261120-occupancybasis1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.43';
+const APP_VERSION = '1.28.44';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -87,9 +87,9 @@ const FIELD_FORMULAS = {
   'costs.municipalFeeRate': { title: '市政基础设施配套费', formula: '市政配套费 = 总建筑面积 × 属地配套费单价 ÷ 10000', functions: ['SUM'], role: '默认0，应按项目属地最新政策填写。' },
   'costs.civilDefenseFeeRate': { title: '人防易地建设费', formula: '人防易地建设费 = 总建筑面积 × 属地人防单价 ÷ 10000', functions: ['SUM'], role: '默认0，应按规划条件和属地政策填写。' },
   'costs.otherPublicFeeRate': { title: '其他公共规费', formula: '其他公共规费 = 总建筑面积 × 其他规费单价 ÷ 10000', functions: ['SUM'], role: '用于水电气增容、报建等未单列公共费用。' },
-  'operations.occupancyY1': { title: '首年有效出租率', formula: '首年出租率 = 输入值；首年免租系数 = 1 - 免租月数 ÷ 12', functions: ['IF', 'POWER'], role: '首年出租率同时影响租金、物业费、停车和多经收入。' },
-  'operations.occupancyY2': { title: '第二年出租率', formula: '第二年出租率 = 输入值；稳定年前各年按该出租率计算', functions: ['IF'], role: '稳定期前的过渡出租率。' },
-  'operations.stableOccupancy': { title: '稳定期出租率', formula: '稳定期出租率 = 输入值；运营年 ≥ 稳定起始年时启用', functions: ['IF'], role: '决定稳定期NOI和退出价值。' },
+  'operations.occupancyY1': { title: '首年最低出租率', formula: '首年最低出租率 = 页面录入值；开业前最后招商目标仅作参考；首年免租系数 = 1 - 免租月数 ÷ 12', functions: ['IF', 'POWER'], role: '首年最低出租率由项目按实际经营假设录入，并同时影响租金、物业费、停车和多经收入。' },
+  'operations.occupancyY2': { title: '第二年出租率', formula: '第二年出租率 = 页面录入值；稳定年前各年按该出租率计算', functions: ['IF'], role: '第二年出租率可独立设定，建议与首年最低出租率保持一致。' },
+  'operations.stableOccupancy': { title: '稳定期出租率', formula: '稳定期出租率 = 输入值；运营年 ≥ 稳定起始年时启用', functions: ['IF'], role: '从稳定期起始运营年开始，常规运营自然年统一使用该出租率。' },
   'operations.stableYear': { title: '稳定期起始年', formula: 'IF(运营年 < 稳定期起始年, 第二年出租率, 稳定期出租率)', functions: ['IF'], role: '控制出租率爬坡持续时间。' },
   'operations.rentFreeMonths': { title: '首年免租', formula: '首年有效租金 = 满租租金 × 出租率 ×（1 - 免租月数 ÷ 12）', functions: ['IF'], role: '仅影响首个运营年，不改变合同租金单价。' },
   'operations.rentGrowth': { title: '租金年递增率', formula: '每年复利：租金 ×（1 + 年递增率）^（运营年 - 1）\n每年单利：租金 ×［1 + 年递增率 ×（运营年 - 1）］', functions: ['POWER', 'IF'], role: '用于基础年度递增；阶段性招商调整会再叠加在基础递增因子之上。' },
@@ -105,9 +105,9 @@ const FIELD_FORMULAS = {
   'operations.centralAcStepYears': { title: '中央空调费递增周期', formula: '阶梯递增：每 N 个运营年上调一次中央空调费', functions: ['INT', 'POWER'], role: '仅在中央空调费“每N年阶梯递增”模式下生效。' },
   'operations.centralAcStepRate': { title: '中央空调费阶梯递增率', formula: '空调费因子 =（1 + 阶梯递增率）^［(运营年 - 1) ÷ N 取整］', functions: ['INT', 'POWER'], role: '用于每N年调整一次中央空调使用费单价。' },
   'operations.salesGrowth': { title: '联营销售额增长', formula: '联营扣点收入 = 销售基数 × 扣点率 × 销售额增长因子', functions: ['POWER', 'MAX'], role: '仅影响联营扣点收入；纯租金模式不产生此项。' },
-  'operations.collectionRate': { title: '租金收缴率', formula: '实收租金 = 应收租金 × 租金收缴率；未收租金 = 应收租金 ×（1 - 收缴率）', functions: ['SUM'], role: '收租率直接决定实收租金，并通过未收租金扣减影响NOI和现金流。' },
+  'operations.collectionRate': { title: '收租率', formula: '实收租金 = 应收租金 × 收租率；未收租金 = 应收租金 ×（1 - 收租率）', functions: ['SUM'], role: '收租率直接决定实收租金，自然年报表和月度现金流统一使用本值。' },
   'operations.renewalCycle': { title: '续租周期', formula: '续租佣金年度 = 运营年 MOD 续租周期 = 0', functions: ['MOD', 'IF'], role: '用于测算续租佣金和招商费用发生时点。' },
-  'operations.commissionMonths': { title: '首开招商佣金', formula: '首开招商佣金 = 月租金 × 招商佣金月数 × 首年出租率', functions: ['SUM'], role: '该费用计入项目总投资中的招商及开办。' },
+  'operations.commissionMonths': { title: '首开招商佣金', formula: '首开招商佣金 = 月租金 × 招商佣金月数 × 首年最低出租率', functions: ['SUM'], role: '该费用计入项目总投资中的招商及开办。' },
   'operations.renewalCommissionMonths': { title: '续租佣金', formula: '续租佣金 = 月租金 × 续租佣金月数 × 当年出租率', functions: ['MOD', 'IF'], role: '按续租周期进入运营期现金流。' },
   'operations.depositMonths': { title: '租赁保证金', formula: '租赁保证金 = 月租金 × 保证金月数', functions: ['SUM'], role: '作为招商期现金流入和期末退还的参考。' },
   'operations.rentFreeUntilDate': { title: '商户免租截止日期', formula: '首年可收租金月份 = 开业日至免租截止日之后的月份', functions: ['IF'], role: '用日期替代按固定免租月数估算，便于与实际租赁条款对齐。' },
@@ -252,7 +252,7 @@ FIELD_FORMULAS['leasingBudget.channelAreaRatio'] = { title: '渠道招商面积�
 FIELD_FORMULAS['leasingBudget.channelRentPerSqmMonth'] = { title: '渠道首年月租金单价', formula: '首年月租金总额 = 渠道招商面积 × 渠道测算租金单价 × 月租金倍数', functions: ['SUM'], role: '默认自动带出项目平均月租金；可直接改为合同约定的渠道租金单价，留空或点击“恢复项目均价”后重新自动取数。' };
 FIELD_FORMULAS['leasingBudget.channelCommissionMonths'] = { title: '渠道月租金倍数', formula: '渠道佣金 = 渠道招商面积 × 首年月租金单价 × 月租金倍数 ÷ 10000', functions: ['SUM'], role: '1倍表示1个月租金，1.5倍表示1.5个月租金。' };
 const FUNCTION_DEFINITIONS = {
-  'IF': { syntax: 'IF(条件, 条件成立时的值, 条件不成立时的值)', meaning: '条件判断函数。系统先判断条件，再选择对应的计算结果。', example: 'IF(运营年=1, 首年出租率, 稳定期出租率)', note: '调整出租率、稳定年或计租方式时，首先会检查 IF 的条件和边界。' },
+  'IF': { syntax: 'IF(条件, 条件成立时的值, 条件不成立时的值)', meaning: '条件判断函数。系统先判断条件，再选择对应的计算结果。', example: 'IF(运营年=1, 首年最低出租率, 稳定期出租率)', note: '调整出租率、稳定年或计租方式时，首先会检查 IF 的条件和边界。' },
   'SUM': { syntax: 'SUM(数值1, 数值2, …) 或 Σ', meaning: '把多个分项金额或比率相加，形成合计。', example: '项目总投资 = SUM(土地, 工程, 装修, 预备费, 开办费, 流动资金)', note: '漏项会直接造成投资或收入低估；新增费用时应检查是否已纳入对应 SUM。' },
   'MAX': { syntax: 'MAX(数值1, 数值2, …)', meaning: '取多个数值中的最大值，常用于保底与扣点取高、零值下限。', example: '月收益 = MAX(保底月租金, 联营扣点月收入)', note: '如果希望保底条款优先，确保保底收入被正确录入；取高模式不会同时重复计算两项收入。' },
   'MIN': { syntax: 'MIN(数值1, 数值2, …)', meaning: '取多个数值中的最小值，常用于进项税抵扣上限、联营位置修正率封顶。', example: '进项税 = MIN(销项税, 可抵扣进项税估算)', note: 'MIN 的上限值如果设得过低，会压低抵扣或联营销售修正；应核对税法上限和项目招商政策。' },
@@ -396,7 +396,7 @@ const TERM_DEFINITIONS = {
   '增值税': { category: '税费', definition: '对商品和服务增值部分征收的流转税，项目测算中通常分别计算销项税和可抵扣进项税。', why: '影响不含税收入、运营成本和现金流。', how: '按项目实际纳税人身份、业务类型和属地税务口径设置，不建议直接套用单一税率。' },
   '房产税': { category: '税费', definition: '商业物业持有期间按房产原值或租金收入计征的税。', why: '是持有型商业项目的重要年度税费。', how: '需确认从租计征或从价计征及当地扣除比例，按税务认定填写。' },
   '企业所得税': { category: '税费', definition: '对项目税前利润征收的所得税。', why: '影响税后净利润和股权现金流。', how: '系统分别计算融资前项目所得税和融资后股权所得税；两者都受折旧、亏损结转影响，股权口径还受融资利息影响。' },
-  '租金收缴率': { category: '运营管理', definition: '实际收到租金占应收租金的比例。', why: '收缴率不足会形成坏账并影响现金流。', how: '根据商户质量、运营管理能力和历史收缴情况设置，不宜默认100%。' },
+  '收租率': { category: '运营管理', definition: '实际收到租金占应收租金的比例。', why: '收租率不足会形成坏账并影响现金流。', how: '根据商户质量、运营管理能力和历史收缴情况设置，不宜默认100%。' },
   '运营成本': { category: '运营管理', definition: '项目运营期间发生的物业、能耗、人员、办公、招商、营销、维保、保险和坏账等成本。', why: '运营成本直接决定NOI和资产估值。', how: '按年度预算和合同逐项填写，重点区分固定成本、随出租率变化的成本和一次性费用。' },
 };
 
@@ -3147,7 +3147,7 @@ function textField(label, path, opts = {}) {
   return `<div class="field">
     <label><span>${label}${opts.optional ? '<small>可选</small>' : ''}</span>${formula ? '<span class="label-fx" title="查看公式">ƒ</span>' : ''}</label>
     <div class="${unit ? 'input-affix' : ''}">
-      <input class="input" data-path="${path}" data-type="${type === 'date' ? 'text' : type}" data-scale="${scale}" type="${inputType}" step="${opts.step || 'any'}" value="${escapeHtml(display)}" placeholder="${escapeHtml(opts.placeholder || '')}">
+      <input class="input${opts.readonly ? ' readonly-input' : ''}" data-path="${path}" data-type="${type === 'date' ? 'text' : type}" data-scale="${scale}" type="${inputType}" step="${opts.step || 'any'}" value="${escapeHtml(display)}" placeholder="${escapeHtml(opts.placeholder || '')}" ${opts.readonly ? 'readonly aria-readonly="true"' : ''}>
       ${unit ? `<span>${unit}</span>` : ''}
     </div>
     ${help ? `<div class="field-help">${help}</div>` : ''}
@@ -3612,7 +3612,7 @@ function buildStatusAdvice(result = state.preview || state.result) {
   } else if (status === '收益接近门槛') {
     title = '接近投资门槛';
     short = '再做小幅优化即可进入初筛';
-    detail = '优先测试总投资下降3%、首年出租率提高3个百分点和首层租金提高3%，比较NPV与回收期改善幅度。';
+    detail = '优先测试总投资下降3%、首年最低出租率提高3个百分点和首层租金提高3%，比较NPV与回收期改善幅度。';
     tone = 'warning';
   } else if (status === '通过初筛') {
     title = '通过初筛';
@@ -3671,6 +3671,16 @@ function syncProjectServiceFeeOverrides(model, field, previousValue, nextValue) 
 function reconcileFloorRentOverrides(model) {
   const floors = Array.isArray(model?.floors) ? model.floors : [];
   return floors.reduce((count, floor) => count + (syncFloorOverrideAverage(model, floor, floor.avgRent) ? 1 : 0), 0);
+}
+
+function openingOccupancyTarget(model) {
+  const openingDate = String(model?.project?.openingDate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(openingDate)) return null;
+  const milestones = (model?.operations?.leasingMilestones || [])
+    .map(item => ({ date: String(item?.date || '').slice(0, 10), occupancy: Number(item?.occupancy) }))
+    .filter(item => /^\d{4}-\d{2}-\d{2}$/.test(item.date) && item.date <= openingDate && Number.isFinite(item.occupancy))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return milestones.length ? milestones.at(-1).occupancy : null;
 }
 
 function currentFloorRentSummary(model) {
@@ -3933,7 +3943,7 @@ function renderDetailedPricing(m, shops, preview) {
       <div class="rent-average-formula"><strong>项目租金单价核算</strong><span>项目租金单价 = 满租月租金总收入 ÷ 商户计租面积合计</span><code data-live="rentFormula">${fmt(monthlyRentPreview, 2)} 元/月 ÷ ${fmtArea(totalRentArea)}㎡ = ${fmt(revenueImpliedAverageRent, 2)} 元/㎡/月</code></div>
       <div class="rent-average-metrics">
         <div><span>商户计租面积合计</span><strong>${fmtArea(totalRentArea)}</strong><em>㎡ · 当前计租口径</em></div>
-        <div><span>稳定年实收租金</span><strong>${fmt(stableAnnualRentRevenue, 2)}</strong><em>万元 · 第${stableYear}年，已考虑招商率、递增和收租率</em></div>
+        <div><span>稳定年实收租金</span><strong>${fmt(stableAnnualRentRevenue, 2)}</strong><em>万元 · 第${stableYear}年，已考虑出租率、递增和收租率</em></div>
       </div>
       <div class="floor-average-check">
         <div class="section-title">分楼层租金单价核算</div>
@@ -3947,11 +3957,11 @@ function renderDetailedPricing(m, shops, preview) {
           }).join('') || '<tr><td colspan="9" class="admin-empty">暂无楼层测算数据，请先导入铺位并完成实时测算。</td></tr>'}
         </tbody><tfoot><tr class="total-row"><td colspan="2"><strong>全项目合计</strong></td><td class="num"><strong data-project-rent-area>${fmtArea(floorAverageTotal.rentArea)}</strong></td><td class="num"><strong data-project-rent-monthly>${fmt(floorAverageTotal.monthlyRevenue, 2)}</strong></td><td class="num"><strong data-project-rent-quarterly>${fmt(floorAverageTotal.monthlyRevenue * 3 / 10000, 2)}</strong></td><td class="num"><strong data-project-rent-annual>${fmt(floorAverageTotal.monthlyRevenue * 12 / 10000, 2)}</strong></td><td class="num"><strong data-project-rent-avg>${fmt(floorAverageTotal.rentArea ? floorAverageTotal.monthlyRevenue / floorAverageTotal.rentArea : 0, 2)}</strong></td><td class="num"><strong data-project-rent-allocated>${fmt(operationPeriodRentRevenue, 2)}</strong></td><td data-project-rent-formula>${fmt(floorAverageTotal.monthlyRevenue, 2)} ÷ ${fmtArea(floorAverageTotal.rentArea)}</td></tr></tfoot></table></div>
       </div>
-      <p>项目租金单价和楼层租金单价均按“该层级满租月租金收入 ÷ 该层级商户计租面积合计”计算。季度租金按满租月租金 × 3，满租年租金按满租月租金 × 12；运营周期实收租金按各年度招商率、免租期、递增因子和收租率逐年汇总；应收租金与未收租金同时展示。分楼层运营期租金按各层稳定月租金占比分摊，仅用于结构分析。</p>
+      <p>项目租金单价和楼层租金单价均按“该层级满租月租金收入 ÷ 该层级商户计租面积合计”计算。季度租金按满租月租金 × 3，满租年租金按满租月租金 × 12；运营周期实收租金按各年度出租率、免租期、递增因子和收租率逐年汇总；应收租金与未收租金同时展示。分楼层运营期租金按各层稳定月租金占比分摊，仅用于结构分析。</p>
     </div>
     <div class="form-section compact-top">
       <div class="section-title">业态租金 / 联营扣点规则</div>
-      <div class="section-note">每个业态可单独选择计租方式和支付方式。支付方式、保证金月数和预付租金月数会按照“招商里程碑”的日期和目标招商率逐节点进入现金流，不一次性提前计入全年招商率。当前结算方式为纯租金时，联营条件仅作参考，不进入收入。</div>
+      <div class="section-note">每个业态可单独选择计租方式和支付方式。支付方式、保证金月数和预付租金月数会按照“招商里程碑”的日期和目标出租率逐节点进入现金流，不一次性提前计入全年出租率。当前结算方式为纯租金时，联营条件仅作参考，不进入收入。</div>
       ${renderSettlementBenchmarkPanel(m)}
       ${formulaPanel('铺位租金与联营扣点公式', '铺位保底月收入 = 铺位计租面积 × 所属楼层租金单价\n联营扣点月收入 = 铺位计租面积 × 月销售基数 × 扣点率\n纯租金 = 保底；纯扣点 = 扣点；取高 = MAX(保底, 扣点)', ['MAX', 'IF', 'SUM'], '铺位租金单价直接取所属楼层录入值；物业费、商管费和空调费统一取系统当前录入的执行单价。')}
       <div class="data-table-wrap" style="max-height:none"><table class="data-table category-rules-table"><thead><tr><th>业态</th><th>结算方式</th><th class="num">保底租金<br><small>元/㎡/月</small></th><th class="num">${termLabel('销售基数', '销售基数（元/㎡/月）')}<br><small>当前 / 常规区间</small></th><th class="num">${termLabel('扣点率')}<br><small>当前 / 常规区间</small></th><th class="num">扣点收益<br><small>元/㎡/月</small></th><th>支付方式</th><th class="num">保证金<br><small>月</small></th><th class="num">预付租金<br><small>月</small></th></tr></thead><tbody>
@@ -3962,7 +3972,7 @@ function renderDetailedPricing(m, shops, preview) {
           return `<tr><td><strong>${escapeHtml(cat.name)}</strong><small class="benchmark-row-source">${escapeHtml(benchmark.context.preset.shortLabel)}基准</small></td><td><select class="table-select" data-path="categories.${i}.revenueMode" data-type="text"><option value="inherit" ${cat.revenueMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="rent" ${cat.revenueMode === 'rent' ? 'selected' : ''}>纯租金</option><option value="concession" ${cat.revenueMode === 'concession' ? 'selected' : ''}>纯联营扣点</option><option value="guarantee_or_concession" ${cat.revenueMode === 'guarantee_or_concession' ? 'selected' : ''}>保底与扣点取高</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.rent" data-type="number" type="number" step="any" value="${cat.rent ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.rentRange[0], 0)}–${fmt(benchmark.rentRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.salesPerSqmMonth" data-type="number" type="number" step="any" value="${cat.salesPerSqmMonth ?? 0}"><small class="range-hint">常规 ${fmt(benchmark.salesRange[0], 0)}–${fmt(benchmark.salesRange[1], 0)}</small></td><td class="num"><input class="table-input" data-path="categories.${i}.concessionRate" data-type="number" data-scale="0.01" type="number" step="any" value="${(Number(cat.concessionRate || 0) * 100).toFixed(1)}"><small class="range-hint">常规 ${fmtPct(benchmark.concessionRange[0], 0)}–${fmtPct(benchmark.concessionRange[1], 0)}</small></td><td class="num"><strong>${fmt(commissionPerSqm, 2)}</strong><small class="range-hint">${cat.revenueMode === 'rent' ? '纯租金不参与' : '测算参考'}</small></td><td><select class="table-select" data-path="categories.${i}.paymentMode" data-type="text"><option value="inherit" ${paymentMode === 'inherit' ? 'selected' : ''}>继承项目</option><option value="deposit_and_prepaid" ${paymentMode === 'deposit_and_prepaid' ? 'selected' : ''}>押金+预付租金</option><option value="deposit_only" ${paymentMode === 'deposit_only' ? 'selected' : ''}>仅收押金</option><option value="prepaid_only" ${paymentMode === 'prepaid_only' ? 'selected' : ''}>仅收预付租金</option></select></td><td class="num"><input class="table-input" data-path="categories.${i}.depositMonths" data-type="number" type="number" step="0.5" placeholder="继承" value="${cat.depositMonths ?? ''}"></td><td class="num"><input class="table-input" data-path="categories.${i}.prepaidRentMonths" data-type="number" type="number" step="0.5" placeholder="继承" value="${cat.prepaidRentMonths ?? ''}"></td></tr>`;
         }).join('')}
       </tbody></table></div>
-      ${(preview?.categoryPaymentAnalysis || []).length ? `<div class="subsection-heading" style="margin-top:18px"><div><strong>业态支付方式与招商期现金流入</strong><span>单位：万元；严格按招商里程碑的日期、目标招商率和新增出租面积分节点测算</span></div></div><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>业态</th><th class="num">已租月租金（万元/月）</th><th>收款方式</th><th class="num">保证金月数</th><th class="num">预付租金月数</th><th class="num">保证金流入（万元）</th><th class="num">预付租金流入（万元）</th><th>收款节点</th></tr></thead><tbody>${(preview.categoryPaymentAnalysis || []).map(item => { const timeline = (item.paymentEvents || []).map(event => `${event.date}：保证金 ${fmt(event.depositCashInflow, 2)} / 预付 ${fmt(event.prepaidRentCashInflow, 2)}`).join('<br>') || '无招商里程碑，按首年出租率计入'; return `<tr><td>${escapeHtml(item.category || '')}</td><td class="num">${fmt(Number(item.occupiedMonthlyRevenue || 0) / 10000, 2)}</td><td>${escapeHtml(item.paymentModeLabel || '')}</td><td class="num">${fmt(item.depositMonths, 2)}</td><td class="num">${fmt(item.prepaidRentMonths, 2)}</td><td class="num pos">${fmt(item.depositCashInflow, 2)}</td><td class="num pos">${fmt(item.prepaidRentCashInflow, 2)}</td><td>${timeline}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
+      ${(preview?.categoryPaymentAnalysis || []).length ? `<div class="subsection-heading" style="margin-top:18px"><div><strong>业态支付方式与开业前招商现金流入</strong><span>单位：万元；严格按开业日及之前的招商节点、目标出租率和新增出租面积分节点测算</span></div></div><div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>业态</th><th class="num">已租月租金（万元/月）</th><th>收款方式</th><th class="num">保证金月数</th><th class="num">预付租金月数</th><th class="num">保证金流入（万元）</th><th class="num">预付租金流入（万元）</th><th>收款节点</th></tr></thead><tbody>${(preview.categoryPaymentAnalysis || []).map(item => { const timeline = (item.paymentEvents || []).map(event => `${event.date}：保证金 ${fmt(event.depositCashInflow, 2)} / 预付 ${fmt(event.prepaidRentCashInflow, 2)}`).join('<br>') || '无开业前招商节点，按首年最低出租率计入'; return `<tr><td>${escapeHtml(item.category || '')}</td><td class="num">${fmt(Number(item.occupiedMonthlyRevenue || 0) / 10000, 2)}</td><td>${escapeHtml(item.paymentModeLabel || '')}</td><td class="num">${fmt(item.depositMonths, 2)}</td><td class="num">${fmt(item.prepaidRentMonths, 2)}</td><td class="num pos">${fmt(item.depositCashInflow, 2)}</td><td class="num pos">${fmt(item.prepaidRentCashInflow, 2)}</td><td>${timeline}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
     </div>
     <div class="form-section">
       <div class="section-title">联营位置修正</div>
@@ -5371,20 +5381,23 @@ function frontendRentGrowthFactor(model, opYear) {
 function renderLeasingMilestoneSection(model) {
   const milestones = Array.isArray(model.operations?.leasingMilestones) ? model.operations.leasingMilestones : [];
   const averageMonthlyRent = Number((state.preview || state.result)?.summary?.totalMonthlyRent || 0);
-  return `<div class="subsection-heading" style="margin-top:22px"><div><strong>招商开业里程碑</strong><span>按年月日设置阶段招商率，系统把目标出租率换算为可实现月租金，并用于首年出租率加权</span></div><button class="btn btn-secondary btn-sm" type="button" data-add-leasing-milestone>${ICONS.plus}<span>新增招商里程碑</span></button></div>
-  ${formulaPanel('阶段性招商率与可实现租金', '里程碑可实现月租金 = 满租月租金 × 目标招商率\n首年有效出租率 = 各月实际出租率的平均值\n资金计划 = 将招商率、租金起收和免租日期映射到对应月份', ['IF','SUM'], '建议设置“招商启动、开业前30天、开业、开业后3个月、开业后6个月、稳定期”等节点。')}
-  <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>目标日期</th><th class="num">目标招商率</th><th class="num">可实现月租金（元）</th><th class="num">年化租金（万元）</th><th>说明</th><th>操作</th></tr></thead><tbody>
+  const openingDate = String(model.project?.openingDate || '').slice(0, 10);
+  return `<div class="subsection-heading" style="margin-top:22px"><div><strong>招商开业里程碑</strong><span>开业日及之前最后一个目标出租率作为首年最低出租率的核对参考；首年、第二年和稳定期出租率仍由页面录入并独立核算，开业后的节点仅作租赁计划展示</span></div><button class="btn btn-secondary btn-sm" type="button" data-add-leasing-milestone>${ICONS.plus}<span>新增招商里程碑</span></button></div>
+  ${formulaPanel('开业前招商目标与可实现租金', '开业前目标出租率 = 开业日及之前最后一个招商里程碑出租率（参考值）\n首年最低出租率 = 页面录入值\n第二年出租率 = 页面录入值\n里程碑可实现月租金 = 满租月租金 × 目标出租率\n资金计划 = 开业前招商节点按日期进入签约收款，开业后按首年、第二年、稳定期录入的出租率核算', ['IF','SUM'], '招商里程碑用于核对首年最低出租率并形成开业前收款节点；不会自动把出租率改成100%，也不会覆盖页面中可编辑的出租率假设。')}
+  <div class="data-table-wrap" style="max-height:none"><table class="data-table"><thead><tr><th>目标日期</th><th class="num">目标出租率</th><th class="num">可实现月租金（元）</th><th class="num">年化租金（万元）</th><th>开业前参考</th><th>说明</th><th>操作</th></tr></thead><tbody>
     ${milestones.map((item, index) => {
       const occupancy = Number(item.occupancy || 0);
+      const includedInOpeningOccupancy = Boolean(openingDate) && String(item.date || '').slice(0, 10) <= openingDate;
       return `<tr>
         <td><input class="table-input" data-path="operations.leasingMilestones.${index}.date" data-type="text" type="date" value="${escapeHtml(item.date || '')}"></td>
         <td class="num"><div class="input-affix compact"><input class="table-input" data-path="operations.leasingMilestones.${index}.occupancy" data-type="number" data-scale="0.01" type="number" min="0" max="100" step="0.1" value="${roundDisplayValue(occupancy * 100, 2)}"><span>%</span></div></td>
         <td class="num"><strong>${averageMonthlyRent ? fmt(averageMonthlyRent * occupancy) : '计算后显示'}</strong></td>
         <td class="num"><strong>${averageMonthlyRent ? fmt(averageMonthlyRent * occupancy * 12 / 10000, 2) : '计算后显示'}</strong></td>
+        <td><span class="tag">${includedInOpeningOccupancy ? '纳入开业前目标' : '开业后展示'}</span></td>
         <td><input class="table-input text-left" data-path="operations.leasingMilestones.${index}.note" data-type="text" value="${escapeHtml(item.note || '')}" placeholder="例如：主力店签约、开业前30天、稳定期"></td>
         <td><button class="btn btn-ghost btn-sm" type="button" data-remove-leasing-milestone="${index}">${ICONS.trash}</button></td>
       </tr>`;
-    }).join('') || '<tr><td colspan="6" class="admin-empty">尚未设置招商里程碑。设置后系统会按里程碑加权首年出租率，而不再只使用一个年度比例。</td></tr>'}
+    }).join('') || '<tr><td colspan="7" class="admin-empty">尚未设置招商里程碑。首年最低出租率将按手动录入值核算。</td></tr>'}
   </tbody></table></div>`;
 }
 
@@ -5444,13 +5457,20 @@ function renderRevenueAssumptionsSection() {
   const occupancy = Math.max(0, Number(operations.stableOccupancy ?? 0.95));
   const defaultCentralAcFee = Math.max(0, Number(model.revenues?.centralAcFee || 0));
   const enabledCentralAcBuildings = configs.filter(item => item.enabled).length;
+  const openingOccupancy = openingOccupancyTarget(model);
+  const enteredY1 = Number(operations.occupancyY1 || 0);
+  const enteredY2 = Number(operations.occupancyY2 || 0);
+  const firstYearMismatch = openingOccupancy != null && Math.abs(enteredY1 - openingOccupancy) >= 0.005;
+  const openingOccupancyHelp = openingOccupancy == null
+    ? '按项目实际经营假设录入首年最低出租率'
+    : `参考开业前最后一个招商目标 ${fmtPct(openingOccupancy)}；当前按录入的 ${fmtPct(enteredY1)} 核算${firstYearMismatch ? '，与招商目标不一致，请核对' : ''}`;
   return `<div class="form-section">
     <div class="section-title">出租率、租金增长与租赁条款</div>
-    ${formulaPanel('出租率、租金及费用递增公式', '有效出租率 = IF(运营年=1, 首年出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子\n签约现金流入 = 已租铺位月租金 ×（保证金月数 + 预付租金月数）\n商管进场月度成本 = 筹备团队 + 筹备物业 + 其他开办费用，按进场日至开业日分摊', ['IF', 'POWER', 'INT', 'SUM'], '租金、物业管理费、商业管理费和中央空调费分别设置增长方式和递增率；押金和预付租金在招商签约时形成真实现金流入，预付租金对应的后续月份不再重复计入实收租金。')}
+    ${formulaPanel('出租率、租金及费用递增公式', '首年最低出租率 = 页面录入值（开业前最后招商目标作为参考）\n第二年出租率 = 页面录入值\n有效出租率 = IF(运营年=1, 首年最低出租率, IF(运营年<稳定年, 第二年出租率, 稳定出租率))\n每年复利因子 = (1 + 年递增率)^(运营年-1)\n每年单利因子 = 1 + 年递增率 × (运营年-1)\n每N年阶梯因子 = (1 + 阶梯递增率)^INT((运营年-1)÷N)\n租金收入 = 满租月租金 × 12 × 出租率 × 免租系数 × 租金递增因子\n签约现金流入 = 已租铺位月租金 ×（保证金月数 + 预付租金月数）\n商管进场月度成本 = 筹备团队 + 筹备物业 + 其他开办费用，按进场日至开业日分摊', ['IF', 'POWER', 'INT', 'SUM'], '首年、第二年和稳定期出租率均按页面录入值核算；开业前招商目标仅作参考和收款节点，押金及预付租金在开业前招商节点形成真实现金流入。')}
     <div class="form-grid">
-      ${textField('首年出租率', 'operations.occupancyY1', { type: 'number', unit: '%', scale: 0.01 })}
-      ${textField('第二年出租率', 'operations.occupancyY2', { type: 'number', unit: '%', scale: 0.01 })}
-      ${textField('稳定期出租率', 'operations.stableOccupancy', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('首年最低出租率', 'operations.occupancyY1', { type: 'number', unit: '%', scale: 0.01, help: openingOccupancyHelp })}
+      ${textField('第二年出租率', 'operations.occupancyY2', { type: 'number', unit: '%', scale: 0.01, help: Math.abs(enteredY1 - enteredY2) >= 0.005 ? '建议与首年最低出租率保持一致；当前系统按录入值核算' : '当前按录入值核算' })}
+      ${textField('稳定期出租率', 'operations.stableOccupancy', { type: 'number', unit: '%', scale: 0.01, help: '从稳定期起始运营年开始，常规运营自然年按此出租率核算' })}
       ${textField('稳定期起始运营年', 'operations.stableYear', { type: 'number', unit: '年' })}
       ${textField('首年免租月数', 'operations.rentFreeMonths', { type: 'number', unit: '月' })}
       ${textField('商户免租截止日期', 'operations.rentFreeUntilDate', { type: 'date', optional: true, help: '填写后优先按日期计算首年可收租金月份' })}
@@ -5459,7 +5479,7 @@ function renderRevenueAssumptionsSection() {
         ? `${textField('租金递增周期', 'operations.rentStepYears', { type: 'number', unit: '年' })}${textField('租金阶梯递增率', 'operations.rentStepRate', { type: 'number', unit: '%', scale: 0.01 })}`
         : textField('租金年递增率', 'operations.rentGrowth', { type: 'number', unit: '%', scale: 0.01 })}
       ${textField('联营销售额年增长率', 'operations.salesGrowth', { type: 'number', unit: '%', scale: 0.01 })}
-      ${textField('租金收缴率', 'operations.collectionRate', { type: 'number', unit: '%', scale: 0.01 })}
+      ${textField('收租率', 'operations.collectionRate', { type: 'number', unit: '%', scale: 0.01, help: '自然年报表和月度现金流统一按此收租率核算' })}
       ${selectField('租金收取方式', 'operations.rentCollectionMode', [{ value: 'deposit_and_prepaid', label: '押金 + 预付租金' }, { value: 'deposit_only', label: '仅收押金' }, { value: 'prepaid_only', label: '仅收预付租金' }], { help: '招商签约时按已租铺位收取押金和预付租金，形成招商期真实现金流入' })}
       ${textField('续租周期', 'operations.renewalCycle', { type: 'number', unit: '年' })}
       ${rentCollectionMode !== 'prepaid_only' ? textField('租赁保证金月数', 'operations.depositMonths', { type: 'number', unit: '月', help: '保证金 = 初始已租铺位月租金 × 保证金月数' }) : ''}
@@ -5860,9 +5880,9 @@ function renderPreOpeningCostStep() {
     <div class="callout">${ICONS.info}<div>本页用于开业前的筹备费用，不包含土地和建设工程。商管公司从项目接管/进场日开始按月发生筹备团队、物业及开办成本；招商启动后按合同收取的租赁保证金和预付租金会进入真实现金流，并在后续月份自动冲抵，不重复确认收入。</div></div>
     <div class="form-section">
       <div class="section-title">筹备期成本参数</div>
-      ${formulaPanel('筹备期成本公式', '首开招商佣金 = 满租月租金 × 佣金月数 × 首年出租率 ÷ 10000\n筹备团队成本 = Σ（编制 × 税前月薪 × 筹备月数 + 单位社保 + 招聘培训）\n筹备物业成本 = Σ各服务模式岗位成本 + 第三方管理费 + 物业一次性费用\n行政开办费用 = Σ（每月金额 × 月数 或 一次性总额）\n筹备期非工程费用 = 团队 + 物业 + 行政 + 首开佣金 + 筹备营销', ['SUM','IF'], '明细预算会自动回写团队、物业和其他开办三项汇总；快速总额模式适合项目初筛。')}
+      ${formulaPanel('筹备期成本公式', '首开招商佣金 = 满租月租金 × 佣金月数 × 首年最低出租率 ÷ 10000\n筹备团队成本 = Σ（编制 × 税前月薪 × 筹备月数 + 单位社保 + 招聘培训）\n筹备物业成本 = Σ各服务模式岗位成本 + 第三方管理费 + 物业一次性费用\n行政开办费用 = Σ（每月金额 × 月数 或 一次性总额）\n筹备期非工程费用 = 团队 + 物业 + 行政 + 首开佣金 + 筹备营销', ['SUM','IF'], '明细预算会自动回写团队、物业和其他开办三项汇总；快速总额模式适合项目初筛。')}
       <div class="form-grid">
-        ${textField('首开招商佣金月数', 'operations.commissionMonths', { type: 'number', unit: '月', help: '按满租月租金和首年出租率计算首开招商佣金' })}
+        ${textField('首开招商佣金月数', 'operations.commissionMonths', { type: 'number', unit: '月', help: '按满租月租金和首年最低出租率计算首开招商佣金' })}
         ${textField('筹备招商总周期', 'project.leasingPeriodMonths', { type: 'number', unit: '月', help: '建设完成后至正式开业之间的总周期。岗位、物业和月度行政费用的参与月数默认继承该周期，可单独调整晚进场或提前撤场月份' })}
         ${textField('启动资金安全垫', 'project.startupReserveMonths', { type: 'number', unit: '月', help: '在资金缺口峰值之外额外准备的稳定期运营月数' })}
         ${selectField('筹备成本录入方式', 'preOpeningBudget.mode', [{ value: 'summary', label: '快速总额（适合初筛）' }, { value: 'detailed', label: '明细预算（岗位与服务核算）' }], { help: '切换到明细预算后，团队、物业和行政开办总额由明细自动汇总。' })}
@@ -6494,7 +6514,7 @@ function buildOperatingLedger(result = state.result) {
     if (key === 'marketingCost') return '年度常规营销预算和开业专项营销均为 0。';
     if (key === 'maintenanceCost') return '固定维保预算和按工程投资比例计取的维保费用均为 0。';
     if (key === 'insuranceCost') return '保险预算和按工程投资比例计取的保险费均为 0。';
-    if (key === 'badDebtCost') return '租金收缴率为 100%，或当前没有应收租金，因此未收租金为 0。';
+    if (key === 'badDebtCost') return '收租率为 100%，或当前没有应收租金，因此未收租金为 0。';
     if (key === 'otherOpexCost') return '其他运营费用比例和直接金额均为 0。';
     if (key === 'ownerRent') return '业主租金未启用，或土地/物业租赁基数、单价为 0。';
     if (key === 'taxes') return '当前收入和可计税基数未形成经营税费。';
@@ -6595,7 +6615,7 @@ function renderOperatingLedgerCard() {
   const growthText = rentGrowthMode === 'step'
     ? `${growthLabels[rentGrowthMode]}：每${fmt(rentStepYears, 0) || 3}年递增${fmtPct(rentStepRate)}`
     : `${growthLabels[rentGrowthMode] || rentGrowthMode}：年递增率${fmtPct(rentGrowth)}`;
-  const assumptionText = `招商率：首年${fmtPct(ledger.model.operations?.occupancyY1)}，第二年${fmtPct(ledger.model.operations?.occupancyY2)}，稳定期${fmtPct(ledger.model.operations?.stableOccupancy)}；收租率${fmtPct(ledger.model.operations?.collectionRate)}；${growthText}`;
+  const assumptionText = `出租率：首年最低${fmtPct(ledger.model.operations?.occupancyY1)}，第二年${fmtPct(ledger.model.operations?.occupancyY2)}，稳定期${fmtPct(ledger.model.operations?.stableOccupancy)}；收租率${fmtPct(ledger.model.operations?.collectionRate)}；${growthText}`;
   return `<div class="card operating-ledger-card">
     <div class="ledger-head"><div><span class="eyebrow">Operating ledger</span><h3>运营收入、成本与物业/商管/空调收费结余</h3><p>稳定月均为稳定年金额 ÷ 12；运营期累计为全部运营年度合计。收费结余不是项目净利润，项目利润请看“周期净利润”和“项目盈利合计”。</p></div><span class="tag">${ledger.annual.length} 个运营年度</span></div>
     <div class="ledger-rent-assumptions"><strong>运营周期租金测算前提</strong><span>${escapeHtml(assumptionText)}</span></div>
@@ -6614,7 +6634,7 @@ function renderOperatingLedgerCard() {
     <div class="data-table-wrap" style="max-height:none"><table class="data-table operating-ledger-table"><thead><tr><th>归类 / 项目</th><th>计算口径与出处</th><th class="num">稳定月均（万元）</th><th class="num">稳定年（万元）</th><th class="num">运营期累计（万元）</th><th>为 0 / 异常原因</th></tr></thead><tbody>
       ${ledger.rows.map(row => `<tr class="${rowClass(row)}"><td><span class="ledger-section">${escapeHtml(row.section)}</span><strong>${escapeHtml(row.name)}</strong></td><td class="ledger-formula">${escapeHtml(row.formula)}</td><td class="num">${fmt(row.monthly, 2)}</td><td class="num">${fmt(row.annual, 2)}</td><td class="num">${fmt(row.cumulative, 2)}</td><td class="ledger-reason ${row.note ? 'has-reason' : ''}">${escapeHtml(row.note || '已形成有效数据')}</td></tr>`).join('')}
     </tbody></table></div>
-    <details class="advanced ledger-year-details"><summary>逐年收入、收费结余与现金流明细（${ledger.annual.length}年）</summary><div class="advanced-body"><div class="data-table-wrap" style="max-height:560px"><table class="data-table"><thead><tr><th>运营年</th><th>阶段</th><th class="num">招商率</th><th class="num">收租率</th><th class="num">递增因子</th><th class="num">应收租金</th><th class="num">未收租金</th><th class="num">实收租金</th><th class="num">物业费</th><th class="num">商管费</th><th class="num">空调费</th><th class="num">物业+商管+空调收费合计</th><th class="num">对应物业/能耗成本</th><th class="num">收费结余<br>（非净利润）</th><th class="num">营业收入</th><th class="num">运营成本</th><th class="num">税费</th><th class="num">NOI</th><th class="num">累计项目现金流</th></tr></thead><tbody>${ledger.yearly.map(row => `<tr><td>第${row.opYear}年</td><td>${escapeHtml(row.phase || '运营期')}</td><td class="num">${fmtPct(row.occupancy)}</td><td class="num">${fmtPct(row.rentCollectionRate)}</td><td class="num">×${fmt(row.rentGrowthFactor, 3)}</td><td class="num">${fmt(row.scheduledRent, 2)}</td><td class="num neg">${fmt(row.uncollectedRent, 2)}</td><td class="num"><strong>${fmt(row.rent, 2)}</strong></td><td class="num">${fmt(row.propertyFee, 2)}</td><td class="num">${fmt(row.commercialFee, 2)}</td><td class="num">${fmt(row.centralAcFee, 2)}</td><td class="num"><strong>${fmt(row.feeIncome, 2)}</strong></td><td class="num">${fmt(row.serviceCost, 2)}</td><td class="num ${row.feeBalance < 0 ? 'neg' : 'pos'}">${fmt(row.feeBalance, 2)}</td><td class="num">${fmt(row.revenue, 2)}</td><td class="num">${fmt(row.operatingCost, 2)}</td><td class="num">${fmt(row.taxes, 2)}</td><td class="num ${row.noi < 0 ? 'neg' : 'pos'}">${fmt(row.noi, 2)}</td><td class="num ${row.cumulativeCash < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeCash, 2)}</td></tr>`).join('')}</tbody></table></div></div></details>
+    <details class="advanced ledger-year-details"><summary>逐年收入、收费结余与现金流明细（${ledger.annual.length}年）</summary><div class="advanced-body"><div class="data-table-wrap" style="max-height:560px"><table class="data-table"><thead><tr><th>运营年</th><th>阶段</th><th class="num">出租率</th><th class="num">收租率</th><th class="num">递增因子</th><th class="num">应收租金</th><th class="num">未收租金</th><th class="num">实收租金</th><th class="num">物业费</th><th class="num">商管费</th><th class="num">空调费</th><th class="num">物业+商管+空调收费合计</th><th class="num">对应物业/能耗成本</th><th class="num">收费结余<br>（非净利润）</th><th class="num">营业收入</th><th class="num">运营成本</th><th class="num">税费</th><th class="num">NOI</th><th class="num">累计项目现金流</th></tr></thead><tbody>${ledger.yearly.map(row => `<tr><td>第${row.opYear}年</td><td>${escapeHtml(row.phase || '运营期')}</td><td class="num">${fmtPct(row.occupancy)}</td><td class="num">${fmtPct(row.rentCollectionRate)}</td><td class="num">×${fmt(row.rentGrowthFactor, 3)}</td><td class="num">${fmt(row.scheduledRent, 2)}</td><td class="num neg">${fmt(row.uncollectedRent, 2)}</td><td class="num"><strong>${fmt(row.rent, 2)}</strong></td><td class="num">${fmt(row.propertyFee, 2)}</td><td class="num">${fmt(row.commercialFee, 2)}</td><td class="num">${fmt(row.centralAcFee, 2)}</td><td class="num"><strong>${fmt(row.feeIncome, 2)}</strong></td><td class="num">${fmt(row.serviceCost, 2)}</td><td class="num ${row.feeBalance < 0 ? 'neg' : 'pos'}">${fmt(row.feeBalance, 2)}</td><td class="num">${fmt(row.revenue, 2)}</td><td class="num">${fmt(row.operatingCost, 2)}</td><td class="num">${fmt(row.taxes, 2)}</td><td class="num ${row.noi < 0 ? 'neg' : 'pos'}">${fmt(row.noi, 2)}</td><td class="num ${row.cumulativeCash < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeCash, 2)}</td></tr>`).join('')}</tbody></table></div></div></details>
     <div class="field-help">口径说明：“人员及物业服务成本”已包含第三方物业服务管理费、保安、保洁、物业工程及自营招聘培训；“第三方物业服务管理费”仅作明细展示，不重复加总。收费结余 = 物业管理费收入 + 商业管理费收入 + 中央空调费收入 − 对应物业工程、保安、保洁及公共能耗成本。运营人员、营销推广、招商、办公、维保、保险、坏账等其他商业管理成本已完整进入“商业及运营管理成本”和NOI，不会遗漏，也不会在收费结余中重复扣减。收费结余不是项目利润；项目利润还要看稳定年净利润、周期净利润和项目盈利合计。</div>
   </div>`;
 }
@@ -6728,7 +6748,7 @@ function renderNaturalYearReportCard() {
     <div class="natural-year-kpis" style="margin-top:8px"><div><span>原始建设投资</span><strong>${fmt(s.hardInvestment, 2)}</strong><em>万元</em></div><div><span>招商运营启动投入</span><strong>${fmt(s.softPreopeningInvestment, 2)}</strong><em>万元</em></div><div><span>运营现金回收</span><strong>${fmt(s.capitalRecoveredByOperation, 2)}</strong><em>万元 · 回收率 ${fmtPct(s.initialInvestmentRecoveryRate)}</em></div><div class="${Number(s.initialInvestmentFullyRecovered) ? 'positive' : 'danger'}"><span>原始投入尚未回收</span><strong>${fmt(s.unrecoveredInitialInvestment, 2)}</strong><em>万元 · ${s.initialInvestmentFullyRecovered ? '已全部回收' : '尚未全部回收'}</em></div></div>
 
     <div class="subsection-heading natural-year-subsection-heading"><div><strong>逐年经营收入明细</strong><span>单位：万元；按每个自然年实际计费区间拆分</span></div></div>
-    <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table natural-year-income-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">有效月数</th><th class="num">招商率</th><th class="num">收租率</th><th class="num">应收租金</th><th class="num">未收租金</th><th class="num">实收租金</th><th class="num">物业管理费收入</th><th class="num">商业管理费收入</th><th class="num">中央空调费收入</th><th class="num">三项费用合计</th><th class="num">其他收入</th><th class="num">总收入</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(row.activeMonths, 0)}</td><td class="num">${fmtPct(row.occupancy)}</td><td class="num">${fmtPct(row.rentCollectionRate)}</td><td class="num">${fmt(row.scheduledRentRevenue, 2)}</td><td class="num neg">${fmt(row.uncollectedRentRevenue, 2)}</td><td class="num"><strong>${fmt(row.rentRevenue, 2)}</strong></td><td class="num">${fmt(row.propertyManagementRevenue, 2)}</td><td class="num">${fmt(row.commercialManagementRevenue, 2)}</td><td class="num">${fmt(row.centralAcRevenue, 2)}</td><td class="num"><strong>${fmt(feeTotal(row), 2)}</strong></td><td class="num">${fmt(row.otherRevenue, 2)}</td><td class="num"><strong>${fmt(row.totalIncome, 2)}</strong></td></tr>`).join('')}</tbody></table></div>
+    <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table natural-year-income-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">有效月数</th><th class="num">出租率</th><th class="num">收租率</th><th class="num">应收租金</th><th class="num">未收租金</th><th class="num">实收租金</th><th class="num">物业管理费收入</th><th class="num">商业管理费收入</th><th class="num">中央空调费收入</th><th class="num">三项费用合计</th><th class="num">其他收入</th><th class="num">总收入</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(row.activeMonths, 0)}</td><td class="num">${fmtPct(row.occupancy)}</td><td class="num">${fmtPct(row.rentCollectionRate)}</td><td class="num">${fmt(row.scheduledRentRevenue, 2)}</td><td class="num neg">${fmt(row.uncollectedRentRevenue, 2)}</td><td class="num"><strong>${fmt(row.rentRevenue, 2)}</strong></td><td class="num">${fmt(row.propertyManagementRevenue, 2)}</td><td class="num">${fmt(row.commercialManagementRevenue, 2)}</td><td class="num">${fmt(row.centralAcRevenue, 2)}</td><td class="num"><strong>${fmt(feeTotal(row), 2)}</strong></td><td class="num">${fmt(row.otherRevenue, 2)}</td><td class="num"><strong>${fmt(row.totalIncome, 2)}</strong></td></tr>`).join('')}</tbody></table></div>
 
     <div class="subsection-heading natural-year-subsection-heading"><div><strong>逐年成本、税费与现金流</strong><span>单位：万元；运营成本不含业主租金，业主租金单列并计入总支出与NOI</span></div></div>
     <div class="data-table-wrap natural-year-table-wrap"><table class="data-table natural-year-table"><thead><tr><th>自然年</th><th>实际计费区间</th><th class="num">运营成本<br>（不含业主租金）</th><th class="num">业主租金</th><th class="num">税费</th><th class="num">项目所得税</th><th class="num">资本支出</th><th class="num">总支出</th><th class="num">NOI</th><th class="num">调整后净现金流</th><th class="num">累计运营现金流</th><th>调整说明</th></tr></thead><tbody>${rows.map(row => { const ownerRent = Number(row.ownerRent ?? 0); const operatingExOwner = Number(row.cashOperatingCostExOwnerRent ?? (Number(row.cashOperatingCost || 0) - ownerRent)); return `<tr><td><strong>${row.calendarYear}</strong>${row.isPartialYear ? '<small class="partial-year-tag">开业/结束不足一年</small>' : ''}</td><td>${escapeHtml(row.periodStart || '')} 至 ${escapeHtml(row.periodEndExclusive || '')}</td><td class="num">${fmt(operatingExOwner, 2)}</td><td class="num ${ownerRent > 0 ? 'neg' : ''}">${fmt(ownerRent, 2)}</td><td class="num">${fmt(row.taxes, 2)}</td><td class="num">${fmt(row.projectIncomeTax, 2)}</td><td class="num">${fmt(row.projectCapex, 2)}</td><td class="num"><strong>${fmt(row.totalExpense, 2)}</strong></td><td class="num ${Number(row.noi || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.noi, 2)}</td><td class="num ${row.adjustedProjectCashFlow < 0 ? 'neg' : 'pos'}"><strong>${fmt(row.adjustedProjectCashFlow, 2)}</strong></td><td class="num">${fmt(row.cumulativeOperationCashFlow, 2)}</td><td>${escapeHtml(row.adjustmentNote || (Math.abs((row.revenueAdjustment || 0) + (row.operatingCostAdjustment || 0) + (row.taxAdjustment || 0) + (row.capexAdjustment || 0)) > 0.005 ? '已应用导入调整' : ''))}</td></tr>`; }).join('')}</tbody></table></div>
@@ -6867,8 +6887,8 @@ function renderFundingPlanCard() {
       <tr><td>${escapeHtml(timeline.operationEndDate || '—')}</td><td>运营结束</td><td>时间轴</td><td class="num">—</td></tr>
       ${visibleEvents.map(item => `<tr><td>${escapeHtml(item.date)}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.category)}</td><td class="num ${Number(item.amount) < 0 ? 'neg' : 'pos'}">${fmt(item.amount, 2)}</td></tr>`).join('')}
     </tbody></table></div>
-    ${milestoneRows.length ? `<div class="data-table-wrap" style="max-height:none;margin-bottom:14px"><table class="data-table"><thead><tr><th>招商里程碑日期</th><th class="num">目标招商率</th><th class="num">可实现月租金（元）</th><th class="num">年化租金（万元）</th><th>说明</th></tr></thead><tbody>${milestoneRows.map(item => `<tr><td>${escapeHtml(item.date)}</td><td class="num">${fmtPct(item.occupancy)}</td><td class="num">${fmt(item.monthlyRentPotential, 0)}</td><td class="num">${fmt(item.annualRentPotential, 2)}</td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
-    <div class="section-note">以下为<strong>按实际日期滚动的月度现金流水</strong>，不再把年度金额简单除以12：商管从项目接管/进场开始按月发生团队、物业及开办成本；招商启动时按签约铺位收取保证金和预付租金；商户租金及费用按各月招商率、免租期、起收日期及收缴率进入；业主租金按付款频率与免租期进入，融资按投放和还本付息进入。${Number(timeline.ownerDepositAmount || 0) > 0 ? `业主租赁保证金 ${fmt(timeline.ownerDepositAmount, 2)} 万元于 ${escapeHtml(timeline.ownerDepositPaymentDate || '项目进场日')} 支付，${escapeHtml(timeline.ownerDepositRefundDate || '运营结束日')} 收回；` : ''}实际付款仍应按合同、发票和工程进度调整。</div>
+    ${milestoneRows.length ? `<div class="data-table-wrap" style="max-height:none;margin-bottom:14px"><table class="data-table"><thead><tr><th>招商里程碑日期</th><th class="num">目标出租率</th><th class="num">可实现月租金（元）</th><th class="num">年化租金（万元）</th><th>开业前参考</th><th>说明</th></tr></thead><tbody>${milestoneRows.map(item => `<tr><td>${escapeHtml(item.date)}</td><td class="num">${fmtPct(item.occupancy)}</td><td class="num">${fmt(item.monthlyRentPotential, 0)}</td><td class="num">${fmt(item.annualRentPotential, 2)}</td><td><span class="tag">${item.includedInOpeningOccupancy ? '计入开业前参考' : '开业后展示'}</span></td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    <div class="section-note">以下为<strong>按实际日期滚动的月度现金流水</strong>，不再把年度金额简单除以12：商管从项目接管/进场开始按月发生团队、物业及开办成本；开业前招商节点按签约铺位收取保证金和预付租金；商户租金及费用按首年、第二年、稳定期出租率，以及免租期、起收日期和收租率进入；业主租金按付款频率与免租期进入，融资按投放和还本付息进入。${Number(timeline.ownerDepositAmount || 0) > 0 ? `业主租赁保证金 ${fmt(timeline.ownerDepositAmount, 2)} 万元于 ${escapeHtml(timeline.ownerDepositPaymentDate || '项目进场日')} 支付，${escapeHtml(timeline.ownerDepositRefundDate || '运营结束日')} 收回；` : ''}实际付款仍应按合同、发票和工程进度调整。</div>
     <div class="data-table-wrap funding-monthly-wrap"><table class="data-table funding-monthly-table"><thead><tr><th>月份 / 关键日期</th><th>阶段</th><th class="num">商户经营流入（万元）</th><th class="num">招商签约流入（万元）</th><th class="num">经营及税费支出<br>（不含业主租金）</th><th class="num">业主租金（万元）</th><th class="num">建设/筹备支出（万元）</th><th class="num">融资流入（万元）</th><th class="num">还本付息（万元）</th><th class="num">项目净现金流（万元）</th><th class="num">项目累计现金流（万元）</th><th class="num">资本金净现金流（万元）</th><th class="num">资本金累计/缺口（万元）</th></tr></thead><tbody>${monthly.map(row => {
       const depositInflow = Number(row.tenantDepositInflow ?? 0);
       const prepaidRentInflow = Number(row.prepaidRentInflow ?? 0);

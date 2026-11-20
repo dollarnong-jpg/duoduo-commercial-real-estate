@@ -475,11 +475,11 @@ def audit_monthly_cash_flow() -> None:
         "handoverDate": "2027-07-01",
         "leasingStartDate": "2027-07-01",
         "openingDate": "2027-10-01",
-        "operationEndDate": "2029-09-30",
+        "operationEndDate": "2030-09-30",
         "constructionPeriodUnit": "month",
         "constructionMonthsInput": 6,
         "leasingPeriodMonths": 3,
-        "operationYears": 2,
+        "operationYears": 3,
         "startYear": 2027,
         "gbaOverride": 12000,
         "landArea": 4000,
@@ -509,6 +509,11 @@ def audit_monthly_cash_flow() -> None:
         {"date": "2028-01-01", "occupancy": 0.70},
         {"date": "2028-07-01", "occupancy": 0.90},
     ]
+    model["operations"]["occupancyY1"] = 0.70
+    model["operations"]["occupancyY2"] = 0.75
+    model["operations"]["stableOccupancy"] = 0.85
+    model["operations"]["stableYear"] = 3
+    model["operations"]["collectionRate"] = 0.85
     model["operations"]["rentFreeMonths"] = 0
     model["operations"]["rentFreeUntilDate"] = "2028-01-01"
     model["ownerRent"].update({
@@ -542,12 +547,21 @@ def audit_monthly_cash_flow() -> None:
     assert category_cash
     assert close(sum(item["depositCashInflow"] for item in category_cash), result["summary"]["merchantDepositCashInflow"])
     assert close(sum(item["prepaidRentCashInflow"] for item in category_cash), result["summary"]["merchantPrepaidRentCashInflow"])
-    assert {event["date"] for item in category_cash for event in item.get("paymentEvents", [])} == {"2027-10-01", "2028-01-01", "2028-07-01"}
+    assert {event["date"] for item in category_cash for event in item.get("paymentEvents", [])} == {"2027-10-01"}
     assert close(sum(row["tenantDepositInflow"] for row in plan), result["summary"]["merchantDepositCashInflow"])
     assert close(sum(row["prepaidRentInflow"] for row in plan), result["summary"]["merchantPrepaidRentCashInflow"])
     milestone_event_dates = {row["date"]: set(row.get("eventDates", [])) for row in plan if row.get("eventDates")}
-    for event_date in ("2027-10-01", "2028-01-01", "2028-07-01"):
-        assert any(event_date in dates for dates in milestone_event_dates.values()), f"monthly plan lacks dated leasing cash event {event_date}"
+    assert any("2027-10-01" in dates for dates in milestone_event_dates.values()), "monthly plan lacks opening-date leasing cash event"
+    annual_by_op_year = {int(row["opYear"]): row for row in result["annual"]}
+    assert close(annual_by_op_year[1]["occupancy"], 0.70)
+    assert close(annual_by_op_year[2]["occupancy"], 0.75)
+    assert close(annual_by_op_year[3]["occupancy"], 0.85)
+    natural_by_year = {int(row["calendarYear"]): row for row in result["naturalYearReport"]}
+    assert close(natural_by_year[2027]["occupancy"], 0.70)
+    assert close(natural_by_year[2028]["occupancy"], 0.712568, 1e-5)
+    assert close(natural_by_year[2029]["occupancy"], 0.775205, 1e-5)
+    assert close(natural_by_year[2030]["occupancy"], 0.85)
+    assert all(close(row["rentCollectionRate"], 0.85) for row in result["naturalYearReport"])
     assert sum(row["prepaidRentAmortization"] for row in plan) <= sum(row["prepaidRentInflow"] for row in plan) + 1e-6
     preopening_events = -sum(event["amount"] for event in result["keyCashEvents"] if event["category"] == "筹备支出")
     management_costs = sum(row["preopeningManagementOutflow"] for row in plan)
@@ -562,7 +576,7 @@ def audit_monthly_cash_flow() -> None:
     assert result["summary"]["peakProjectFundingDate"] in {row["date"] for row in plan}
     owner_deposit_events = [event for event in result["keyCashEvents"] if "业主" in event["name"] and "保证金" in event["name"]]
     assert any(event["date"] == "2027-07-01" and event["amount"] == -300 for event in owner_deposit_events)
-    assert any(event["date"] == "2029-09-30" and event["amount"] == 300 for event in owner_deposit_events)
+    assert any(event["date"] == "2030-09-30" and event["amount"] == 300 for event in owner_deposit_events)
 
 
 def audit_unified_rate_policy() -> None:

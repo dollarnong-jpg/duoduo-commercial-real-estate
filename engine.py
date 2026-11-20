@@ -1655,23 +1655,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         if milestone_date:
             milestone_dates.append((milestone_date, min(1.0, max(0.0, as_float(item.get("occupancy"))))))
     milestone_dates.sort(key=lambda pair: pair[0])
-
-    def occupancy_for_operation_year(operation_year: int, default_occupancy: float) -> float:
-        if not milestone_dates:
-            return default_occupancy
-        year_start = add_months(opening_date, (operation_year - 1) * 12)
-        total = 0.0
-        first_target = milestone_dates[0][1]
-        for month in range(12):
-            sample_date = add_months(year_start, month)
-            occupancy = first_target if sample_date < milestone_dates[0][0] else milestone_dates[-1][1]
-            for milestone_date, target in milestone_dates:
-                if milestone_date <= sample_date:
-                    occupancy = target
-                else:
-                    break
-            total += occupancy
-        return total / 12
+    pre_opening_milestone_dates = [(milestone_date, target) for milestone_date, target in milestone_dates if milestone_date <= opening_date]
 
     def billable_months_for_fee(operation_year: int, start_value: Any, free_until_value: Any) -> float:
         year_start = add_months(opening_date, (operation_year - 1) * 12)
@@ -1760,7 +1744,6 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         occupancy = occupancy_for_year(op_year, operations)
         if leasing_stage and leasing_stage["targetOccupancy"] > 0:
             occupancy = leasing_stage["targetOccupancy"]
-        occupancy = occupancy_for_operation_year(op_year, occupancy)
         free_factor = rent_free_factor(op_year)
         property_fee_factor = fee_factor_for_year(op_year, revenues.get("propertyFeeStartDate"), revenues.get("propertyFeeFreeUntil"))
         commercial_management_fee_factor = fee_factor_for_year(op_year, revenues.get("commercialManagementFeeStartDate"), revenues.get("commercialManagementFeeFreeUntil"))
@@ -2413,9 +2396,9 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         # triggers a new deposit/prepaid collection. If no milestones are
         # configured, retain the original first-year occupancy fallback.
         payment_schedule: list[tuple[date, float]] = []
-        if milestone_dates:
+        if pre_opening_milestone_dates:
             previous_target = 0.0
-            for milestone_date, target in milestone_dates:
+            for milestone_date, target in pre_opening_milestone_dates:
                 increment = max(0.0, target - previous_target)
                 if increment > 1e-9:
                     payment_schedule.append((milestone_date, increment))
@@ -2536,16 +2519,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         return (month.year - opening_date.year) * 12 + (month.month - opening_date.month)
 
     def occupancy_for_month(month: date, fallback: float) -> float:
-        if not milestone_dates:
-            return fallback
-        sample = calendar_month_start(month)
-        occupancy = milestone_dates[0][1] if sample < milestone_dates[0][0] else milestone_dates[-1][1]
-        for milestone_date, target in milestone_dates:
-            if milestone_date <= sample:
-                occupancy = target
-            else:
-                break
-        return occupancy
+        return fallback
 
     def rent_free_fraction(month: date, op_offset: int) -> float:
         free_until = parse_iso_date(operations.get("rentFreeUntilDate"))
@@ -2795,6 +2769,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
         leasing_milestone_analysis.append({
             "date": iso_date(milestone_date),
             "occupancy": target,
+            "includedInOpeningOccupancy": milestone_date <= opening_date,
             "monthlyRentPotential": total_monthly_revenue * target,
             "annualRentPotential": total_monthly_revenue * target * 12 / 10000,
             "note": str(milestone.get("note") or ""),
