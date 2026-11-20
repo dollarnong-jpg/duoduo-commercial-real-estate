@@ -119,6 +119,10 @@ def audit_defaults_and_units() -> None:
     require_text(backend, "fullCalcOnLoad: true", "exported formulas recalculate on open")
     require_text(backend, "const calcPrXml = '<calcPr calcId=\"0\"", "workbook XML recalculates formulas on open")
     require_text(backend, "const EXCEL_FONT = 'Arial';", "export uses cross-platform font")
+    require_text(backend, "const PPT_FONT = 'Arial';", "PPT uses cross-platform font")
+    require_text(backend, "function pptTable(slide, rows, options = {})", "PPT tables share one styled component")
+    require_text(backend, "slide.background = { color: PPT_THEME.paper };", "PPT content slides share a unified background")
+    assert backend.count("pptTable(slide,") >= 10, "PPT tables should use the shared styled table helper"
     require_text(app, "cloudShareBaseUrl", "share messages use cloud relay")
     require_text(app, "config.shareUrl", "share relay configuration")
     normalize_hvac = function_segment(app, "normalizeCentralAcBuildingConfigs")
