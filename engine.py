@@ -2530,6 +2530,7 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
     management_months = max(1, months_between(management_start_date, opening_date))
     management_monthly_cost = (preopening_team + preopening_property + preopening_other_direct) / management_months
     prepaid_rent_balance = 0.0
+    tenant_deposit_inflow = 0.0
 
     def operation_month_offset(month: date) -> int:
         return (month.year - opening_date.year) * 12 + (month.month - opening_date.month)
@@ -2676,7 +2677,12 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             operating_outflow += preopening_management_outflow
 
         # Dated events: construction/pre-opening payments, deposits and owner rent.
-        for event in event_by_month.get(calendar_key, []):
+        month_events = event_by_month.get(calendar_key, [])
+        tenant_deposit_inflow = 0.0
+        event_dates = sorted({str(event.get("date")) for event in month_events if event.get("date")})
+        deposit_event_dates = sorted({str(event.get("date")) for event in month_events if event.get("category") == "保证金" and as_float(event.get("amount")) > 0})
+        prepaid_event_dates = sorted({str(event.get("date")) for event in month_events if event.get("category") == "预收租金" and as_float(event.get("amount")) > 0})
+        for event in month_events:
             category = str(event.get("category") or "")
             amount = as_float(event.get("amount"))
             if category == "业主租金":
@@ -2684,6 +2690,8 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             elif category == "保证金":
                 if amount >= 0:
                     deposit_inflow += amount
+                    if "租赁保证金收取" in str(event.get("name") or ""):
+                        tenant_deposit_inflow += amount
                 else:
                     deposit_outflow += -amount
             elif category == "预收租金":
@@ -2716,9 +2724,13 @@ def calculate_model(raw_model: dict[str, Any] | None, include_sensitivity: bool 
             "preopeningManagementOutflow": preopening_management_outflow,
             "ownerRentOutflow": owner_rent_outflow,
             "depositInflow": deposit_inflow,
+            "tenantDepositInflow": tenant_deposit_inflow,
             "depositOutflow": deposit_outflow,
             "prepaidRentInflow": prepaid_rent_inflow,
             "prepaidRentAmortization": prepaid_rent_amortization,
+            "eventDates": event_dates,
+            "depositEventDates": deposit_event_dates,
+            "prepaidEventDates": prepaid_event_dates,
             "taxOutflow": tax_outflow,
             "incomeTaxOutflow": project_income_tax,
             "capexOutflow": capex_outflow,

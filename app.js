@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-strictuniform2';
+import './backend.js?v=20261120-strictcashflow1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.42';
+const APP_VERSION = '1.28.43';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -6818,6 +6818,11 @@ function renderFundingPlanCard() {
   const timeline = result?.timeline || {};
   const cashEvents = result?.keyCashEvents || [];
   const milestoneRows = result?.leasingMilestoneAnalysis || [];
+  const categoryDepositTotal = (result?.categoryPaymentAnalysis || []).reduce((sum, item) => sum + Number(item.depositCashInflow || 0), 0);
+  const categoryPrepaidTotal = (result?.categoryPaymentAnalysis || []).reduce((sum, item) => sum + Number(item.prepaidRentCashInflow || 0), 0);
+  const monthlyDepositTotal = monthly.reduce((sum, row) => sum + Number(row.tenantDepositInflow || 0), 0);
+  const monthlyPrepaidTotal = monthly.reduce((sum, row) => sum + Number(row.prepaidRentInflow || 0), 0);
+  const leasingCashReconciled = Math.abs(categoryDepositTotal - monthlyDepositTotal) < 0.005 && Math.abs(categoryPrepaidTotal - monthlyPrepaidTotal) < 0.005;
   const visibleEvents = [...cashEvents.filter(item => item.category !== '业主租金').slice(0, 20), ...cashEvents.filter(item => item.category === '业主租金').slice(0, 16)].sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(0, 36);
   if (!phases.length) return '';
   const breakEvenText = s.cashFlowBreakEvenMonth ? `第 ${s.cashFlowBreakEvenMonth} 个月` : s.cashFlowBreakEvenYear ? `${s.cashFlowBreakEvenYear} 年` : '当前测算期内未转正';
@@ -6832,7 +6837,8 @@ function renderFundingPlanCard() {
       <div><span>常态化运营资金需求</span><strong>${fmt(s.normalOperationCapital, 2)}</strong><em>万元 · 月均现金支出 ${fmt(s.stableMonthlyCashOutflow, 2)} × ${fmt(state.current?.model?.project?.startupReserveMonths || 0, 2)}个月安全垫</em></div>
       <div><span>稳定期月净现金流</span><strong class="${Number(s.stableMonthlyNetCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(s.stableMonthlyNetCashFlow, 2)}</strong><em>万元/月 · 扣除运营成本、资本性支出及还本付息</em></div>
     </div>
-    <div class="section-note">商管进场：${escapeHtml(s.managementStartDate || '待定')} 起，按月计入筹备团队、物业及开办成本 ${fmt(s.managementMonthlyCost, 2)} 万元/月；招商启动预计收取租赁保证金 ${fmt(s.merchantDepositCashInflow, 2)} 万元、预付租金 ${fmt(s.merchantPrepaidRentCashInflow, 2)} 万元（按首年出租率和合同月数估算）。</div>
+    <div class="section-note">商管进场：${escapeHtml(s.managementStartDate || '待定')} 起，按月计入筹备团队、物业及开办成本 ${fmt(s.managementMonthlyCost, 2)} 万元/月；招商启动预计收取租赁保证金 ${fmt(s.merchantDepositCashInflow, 2)} 万元、预付租金 ${fmt(s.merchantPrepaidRentCashInflow, 2)} 万元（按招商里程碑逐节点计入）。</div>
+    <div class="callout ${leasingCashReconciled ? 'soft' : ''}" id="leasing-cashflow-reconciliation" data-deposit-total="${categoryDepositTotal}" data-prepaid-total="${categoryPrepaidTotal}" data-monthly-deposit-total="${monthlyDepositTotal}" data-monthly-prepaid-total="${monthlyPrepaidTotal}"><div><strong>招商现金流已计入项目时间轴：</strong>保证金 ${fmt(monthlyDepositTotal, 2)} 万元、预付租金 ${fmt(monthlyPrepaidTotal, 2)} 万元。与上方招商里程碑分节点合计${leasingCashReconciled ? '一致' : '存在差异，请检查'}；这些金额已计入对应月份的项目净现金流和累计现金流。</div></div>
     <div class="data-table-wrap" style="max-height:none;margin-bottom:16px"><table class="data-table"><thead><tr><th>资金阶段</th><th class="num">项目口径需准备（万元）</th><th class="num">资本金口径需准备（万元）</th><th class="num">阶段净现金流（万元）</th><th>说明</th></tr></thead><tbody>
       ${phaseFunding.filter(item => ['建设期', '筹备招商期', '开业首年'].includes(item.phase)).map(item => `<tr><td><strong>${escapeHtml(item.phase)}</strong></td><td class="num">${fmt(item.projectFundingNeed, 2)}</td><td class="num">${fmt(item.equityFundingNeed, 2)}</td><td class="num ${item.projectCashFlow < 0 ? 'neg' : 'pos'}">${fmt(item.projectCashFlow, 2)}</td><td>${item.phase === '建设期' ? '土地、工程、装修设备、规费、预备费及建设期利息的阶段性资金需求' : item.phase === '筹备招商期' ? '筹备团队、物业、招商佣金、营销、开办费及业主租金/保证金的阶段性资金需求' : '开业初期运营成本、税费、租金爬坡及安全垫对应的资金需求'}</td></tr>`).join('')}
     </tbody></table></div>
@@ -6863,11 +6869,16 @@ function renderFundingPlanCard() {
     </tbody></table></div>
     ${milestoneRows.length ? `<div class="data-table-wrap" style="max-height:none;margin-bottom:14px"><table class="data-table"><thead><tr><th>招商里程碑日期</th><th class="num">目标招商率</th><th class="num">可实现月租金（元）</th><th class="num">年化租金（万元）</th><th>说明</th></tr></thead><tbody>${milestoneRows.map(item => `<tr><td>${escapeHtml(item.date)}</td><td class="num">${fmtPct(item.occupancy)}</td><td class="num">${fmt(item.monthlyRentPotential, 0)}</td><td class="num">${fmt(item.annualRentPotential, 2)}</td><td>${escapeHtml(item.note || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div class="section-note">以下为<strong>按实际日期滚动的月度现金流水</strong>，不再把年度金额简单除以12：商管从项目接管/进场开始按月发生团队、物业及开办成本；招商启动时按签约铺位收取保证金和预付租金；商户租金及费用按各月招商率、免租期、起收日期及收缴率进入；业主租金按付款频率与免租期进入，融资按投放和还本付息进入。${Number(timeline.ownerDepositAmount || 0) > 0 ? `业主租赁保证金 ${fmt(timeline.ownerDepositAmount, 2)} 万元于 ${escapeHtml(timeline.ownerDepositPaymentDate || '项目进场日')} 支付，${escapeHtml(timeline.ownerDepositRefundDate || '运营结束日')} 收回；` : ''}实际付款仍应按合同、发票和工程进度调整。</div>
-    <div class="data-table-wrap funding-monthly-wrap"><table class="data-table funding-monthly-table"><thead><tr><th>月份 / 日期</th><th>阶段</th><th class="num">经营流入（万元）</th><th class="num">经营及税费支出<br>（不含业主租金）</th><th class="num">业主租金（万元）</th><th class="num">建设/筹备支出（万元）</th><th class="num">融资流入（万元）</th><th class="num">还本付息（万元）</th><th class="num">项目净现金流（万元）</th><th class="num">项目累计现金流（万元）</th><th class="num">资本金净现金流（万元）</th><th class="num">资本金累计/缺口（万元）</th></tr></thead><tbody>${monthly.map(row => {
-      const operatingIn = Number(row.operatingInflow ?? 0) + Number(row.depositInflow ?? 0);
+    <div class="data-table-wrap funding-monthly-wrap"><table class="data-table funding-monthly-table"><thead><tr><th>月份 / 关键日期</th><th>阶段</th><th class="num">商户经营流入（万元）</th><th class="num">招商签约流入（万元）</th><th class="num">经营及税费支出<br>（不含业主租金）</th><th class="num">业主租金（万元）</th><th class="num">建设/筹备支出（万元）</th><th class="num">融资流入（万元）</th><th class="num">还本付息（万元）</th><th class="num">项目净现金流（万元）</th><th class="num">项目累计现金流（万元）</th><th class="num">资本金净现金流（万元）</th><th class="num">资本金累计/缺口（万元）</th></tr></thead><tbody>${monthly.map(row => {
+      const depositInflow = Number(row.tenantDepositInflow ?? 0);
+      const prepaidRentInflow = Number(row.prepaidRentInflow ?? 0);
+      const leasingCashInflow = depositInflow + prepaidRentInflow;
+      const operatingIn = Math.max(0, Number(row.operatingInflow ?? 0) - prepaidRentInflow);
       const operatingOut = Number(row.operatingOutflow ?? 0) + Number(row.depositOutflow ?? 0) + Number(row.taxOutflow ?? 0);
       const debtService = Number(row.loanInterest ?? 0) + Number(row.loanPrincipal ?? 0);
-      return `<tr><td>${escapeHtml(row.date || `第${row.month}月`)}${row.month ? `<small>第${row.month}月</small>` : ''}</td><td>${escapeHtml(row.phase || '')}</td><td class="num pos">${fmt(operatingIn, 2)}${Number(row.prepaidRentInflow || 0) > 0 ? `<small>含预收租金 ${fmt(row.prepaidRentInflow, 2)}</small>` : ''}${Number(row.depositInflow || 0) > 0 ? `<small>含保证金 ${fmt(row.depositInflow, 2)}</small>` : ''}</td><td class="num neg">${fmt(operatingOut, 2)}${Number(row.preopeningManagementOutflow || 0) > 0 ? `<small>含商管进场 ${fmt(row.preopeningManagementOutflow, 2)}</small>` : ''}${Number(row.depositOutflow || 0) > 0 ? `<small>含保证金/退还 ${fmt(row.depositOutflow, 2)}</small>` : ''}</td><td class="num ${Number(row.ownerRentOutflow || 0) > 0 ? 'neg' : ''}">${fmt(row.ownerRentOutflow, 2)}</td><td class="num ${Number(row.capexOutflow || 0) < 0 ? 'neg' : ''}">${fmt(row.capexOutflow, 2)}</td><td class="num pos">${fmt(row.loanDraw, 2)}</td><td class="num neg">${fmt(debtService, 2)}</td><td class="num ${Number(row.projectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.projectCashFlow, 2)}</td><td class="num ${Number(row.cumulativeProjectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeProjectCashFlow, 2)}</td><td class="num ${Number(row.equityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.equityCashFlow, 2)}</td><td class="num ${Number(row.cumulativeEquityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeEquityCashFlow, 2)}${Number(row.equityFundingGap || 0) > 0 ? `<small>缺口 ${fmt(row.equityFundingGap, 2)}</small>` : ''}</td></tr>`;
+      const periodLabel = row.calendarYear ? `${row.calendarYear}年${row.calendarMonth}月` : (row.date || `第${row.month}月`);
+      const eventDates = Array.isArray(row.eventDates) ? row.eventDates : [];
+      return `<tr class="${leasingCashInflow > 0 ? 'lease-cash-row' : ''}"><td>${escapeHtml(periodLabel)}<small>第${row.month}月${eventDates.length ? ` · 关键日期 ${escapeHtml(eventDates.join('、'))}` : ''}</small></td><td>${escapeHtml(row.phase || '')}</td><td class="num pos">${fmt(operatingIn, 2)}</td><td class="num pos">${leasingCashInflow > 0 ? fmt(leasingCashInflow, 2) : '—'}${depositInflow > 0 ? `<small>保证金 ${fmt(depositInflow, 2)}</small>` : ''}${prepaidRentInflow > 0 ? `<small>预付租金 ${fmt(prepaidRentInflow, 2)}</small>` : ''}</td><td class="num neg">${fmt(operatingOut, 2)}${Number(row.preopeningManagementOutflow || 0) > 0 ? `<small>含商管进场 ${fmt(row.preopeningManagementOutflow, 2)}</small>` : ''}${Number(row.depositOutflow || 0) > 0 ? `<small>含保证金/退还 ${fmt(row.depositOutflow, 2)}</small>` : ''}</td><td class="num ${Number(row.ownerRentOutflow || 0) > 0 ? 'neg' : ''}">${fmt(row.ownerRentOutflow, 2)}</td><td class="num ${Number(row.capexOutflow || 0) < 0 ? 'neg' : ''}">${fmt(row.capexOutflow, 2)}</td><td class="num pos">${fmt(row.loanDraw, 2)}</td><td class="num neg">${fmt(debtService, 2)}</td><td class="num ${Number(row.projectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.projectCashFlow, 2)}</td><td class="num ${Number(row.cumulativeProjectCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeProjectCashFlow, 2)}</td><td class="num ${Number(row.equityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.equityCashFlow, 2)}</td><td class="num ${Number(row.cumulativeEquityCashFlow || 0) < 0 ? 'neg' : 'pos'}">${fmt(row.cumulativeEquityCashFlow, 2)}${Number(row.equityFundingGap || 0) > 0 ? `<small>缺口 ${fmt(row.equityFundingGap, 2)}</small>` : ''}</td></tr>`;
     }).join('')}</tbody></table></div>
   </div>`;
 }

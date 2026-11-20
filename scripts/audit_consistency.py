@@ -543,7 +543,11 @@ def audit_monthly_cash_flow() -> None:
     assert close(sum(item["depositCashInflow"] for item in category_cash), result["summary"]["merchantDepositCashInflow"])
     assert close(sum(item["prepaidRentCashInflow"] for item in category_cash), result["summary"]["merchantPrepaidRentCashInflow"])
     assert {event["date"] for item in category_cash for event in item.get("paymentEvents", [])} == {"2027-10-01", "2028-01-01", "2028-07-01"}
+    assert close(sum(row["tenantDepositInflow"] for row in plan), result["summary"]["merchantDepositCashInflow"])
     assert close(sum(row["prepaidRentInflow"] for row in plan), result["summary"]["merchantPrepaidRentCashInflow"])
+    milestone_event_dates = {row["date"]: set(row.get("eventDates", [])) for row in plan if row.get("eventDates")}
+    for event_date in ("2027-10-01", "2028-01-01", "2028-07-01"):
+        assert any(event_date in dates for dates in milestone_event_dates.values()), f"monthly plan lacks dated leasing cash event {event_date}"
     assert sum(row["prepaidRentAmortization"] for row in plan) <= sum(row["prepaidRentInflow"] for row in plan) + 1e-6
     preopening_events = -sum(event["amount"] for event in result["keyCashEvents"] if event["category"] == "筹备支出")
     management_costs = sum(row["preopeningManagementOutflow"] for row in plan)
@@ -604,6 +608,8 @@ def audit_unified_rate_policy() -> None:
     assert "项目默认" not in backend
     require_text(app, "铺位租金自动跟随所属楼层租金单价", "shop rent follows floor rate")
     require_text(app, "全项目统一使用本页录入的商业管理费单价核算", "project-wide commercial fee rate")
+    require_text(app, "招商现金流已计入项目时间轴", "leasing cash reconciliation notice")
+    require_text(app, "招商签约流入（万元）", "dedicated leasing cash column")
 
 
 def main() -> None:

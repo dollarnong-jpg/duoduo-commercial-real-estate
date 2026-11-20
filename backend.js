@@ -470,7 +470,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-strictuniform2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-strictcashflow1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3201,14 +3201,16 @@ async function exportExcel(result) {
     ['阶段', '项目净现金流（万元）', '资本金净现金流（万元）'],
     ...(result.phaseCashFlowSummary || []).map(x => [x.phase, x.projectCashFlow, x.equityCashFlow]),
     [''],
-    ['月份', '日期', '阶段', '经营流入（万元）', '其中：预付租金（万元）', '经营及税费支出（不含业主租金，万元）', '其中：商管进场成本（万元）', '业主租金（万元）', '建设/筹备支出（万元）', '融资流入（万元）', '还本付息（万元）', '项目净现金流（万元）', '项目累计现金流（万元）', '资本金净现金流（万元）', '资本金累计/缺口（万元）'],
+    ['月份', '月份起始日', '关键事件日期', '阶段', '商户经营流入（万元）', '招商签约流入（万元）', '其中：租赁保证金（万元）', '其中：预付租金（万元）', '经营及税费支出（不含业主租金，万元）', '其中：商管进场成本（万元）', '业主租金（万元）', '建设/筹备支出（万元）', '融资流入（万元）', '还本付息（万元）', '项目净现金流（万元）', '项目累计现金流（万元）', '资本金净现金流（万元）', '资本金累计/缺口（万元）'],
     ...(result.monthlyFundingPlan || []).map(x => {
-      const operatingIn = Number(x.operatingInflow || 0) + Number(x.depositInflow || 0);
+      const depositInflow = Number(x.tenantDepositInflow || 0);
+      const prepaidRentInflow = Number(x.prepaidRentInflow || 0);
+      const operatingIn = Math.max(0, Number(x.operatingInflow || 0) - prepaidRentInflow);
       const operatingOut = Number(x.operatingOutflow || 0) + Number(x.depositOutflow || 0) + Number(x.taxOutflow || 0);
       const debtService = Number(x.loanInterest || 0) + Number(x.loanPrincipal || 0);
-      return [x.month, x.date || '', x.phase, operatingIn, x.prepaidRentInflow || 0, operatingOut, x.preopeningManagementOutflow || 0, x.ownerRentOutflow || 0, x.capexOutflow || 0, x.loanDraw || 0, debtService, x.projectCashFlow, x.cumulativeProjectCashFlow, x.equityCashFlow, x.cumulativeEquityCashFlow];
+      return [x.month, x.date || '', (x.eventDates || []).join('、'), x.phase, operatingIn, depositInflow + prepaidRentInflow, depositInflow, prepaidRentInflow, operatingOut, x.preopeningManagementOutflow || 0, x.ownerRentOutflow || 0, x.capexOutflow || 0, x.loanDraw || 0, debtService, x.projectCashFlow, x.cumulativeProjectCashFlow, x.equityCashFlow, x.cumulativeEquityCashFlow];
     }),
-  ], [20, 18, 24, 22, 24, 30, 26, 18, 26, 22, 22, 26, 28, 28, 30]);
+  ], [14, 18, 34, 24, 22, 24, 26, 24, 30, 26, 18, 26, 22, 22, 26, 28, 28, 30]);
   addSheet(wb, '资金用途明细', [
     ['资金阶段', '用途项目', '说明', '金额（万元）'],
     ...(result.fundingUseBreakdown || []).map(x => [x.phase, x.item, x.note, x.amount]),
