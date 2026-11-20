@@ -503,7 +503,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptstyle1', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptstyle2', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -3561,6 +3561,7 @@ function addSlideTitle(slide, title, subtitle = '', options = {}) {
 async function exportPPT(result) {
   const pptx = new PptxGenJS();
   const s = result.summary;
+  const settlementPresetLabels = { shopping: '购物中心行业常规', department: '百货商场行业常规', outlet: '奥特莱斯行业常规', street: '街区商业行业常规', community: '社区商业行业常规', community_base: '社区底商行业常规' };
   pptx.layout = 'LAYOUT_WIDE';
   pptx.author = '多多 · 商业地产';
   pptx.subject = '商业地产投资测算汇报';
