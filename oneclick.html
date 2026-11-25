@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>一次性恢复登录 · 多多商业地产</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 80% 10%,rgba(214,168,75,.18),transparent 30%),linear-gradient(135deg,#0d342d,#1b5b4b);color:#fff;font-family:"Hiragino Sans GB","PingFang SC","Microsoft YaHei",sans-serif}.card{width:min(560px,100%);padding:36px;border:1px solid rgba(255,255,255,.18);border-radius:24px;background:rgba(255,255,255,.08);box-shadow:0 30px 80px rgba(0,0,0,.28);backdrop-filter:blur(12px)}.brand{display:flex;align-items:center;gap:12px;font-weight:700}.mark{width:46px;height:46px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.3);border-radius:14px;color:#d6a84b;font-size:22px}.eyebrow{margin-top:28px;color:#d6a84b;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:10px 0 12px;font-size:28px;line-height:1.35}p{margin:0;color:#c8d8d3;font-size:14px;line-height:1.8}.status{margin-top:24px;padding:16px;border-radius:13px;background:rgba(0,0,0,.16);color:#d7e5e1;font-size:13px;line-height:1.7}.spinner{display:inline-block;width:15px;height:15px;margin-right:8px;border:2px solid rgba(255,255,255,.3);border-top-color:#d6a84b;border-radius:50%;vertical-align:-3px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}button,.button{display:flex;justify-content:center;align-items:center;width:100%;min-height:50px;margin-top:14px;border:0;border-radius:13px;background:#d6a84b;color:#17362f;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}small{display:block;margin-top:16px;color:#8da9a0;font-size:11px;line-height:1.7}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><div class="mark">多</div><span>多多 · 商业地产</span></div>
+    <div class="eyebrow">One-click recovery</div>
+    <h1>正在自动恢复登录</h1>
+    <p>这是你账号的一次性恢复入口。恢复完成后会自动清理旧缓存并进入最新版，不需要输入用户名或密码。</p>
+    <div class="status" id="status"><span class="spinner"></span>正在连接云端账号…</div>
+    <a class="button" id="fallback" href="./update.html?x=20261125-final" style="display:none">打开手动恢复页</a>
+    <small>恢复凭证只保存在当前链接的井号后面，不会发送给 GitHub。使用后即完成会话更新。</small>
+  </main>
+  <script>
+    const CLOUD_URL = 'https://hqsrjxcujjqqekyvqrvy.supabase.co';
+    const CLOUD_BASES = ['https://duoduo-cloud-relay.netlify.app/api/cloud', CLOUD_URL];
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhxc3JqeGN1ampxcWVreXZxcnZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM4MDYxNDcsImV4cCI6MjEwOTM4MjE0N30.Zl-dNPJrkNzWyIf4e200-9YcImRV7bINQeZjSeKKhWs';
+    const CACHE_MARKER = '20261125-loginfix3';
+    const statusEl = document.getElementById('status');
+    const fallback = document.getElementById('fallback');
+    const setStatus = text => { statusEl.innerHTML = text; };
+    async function clearCaches() {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
+        await Promise.all(regs.map(r => r.unregister().catch(() => false)));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys().catch(() => []);
+        await Promise.all(keys.map(k => caches.delete(k).catch(() => false)));
+      }
+    }
+    async function refresh(base, token) {
+      const c = new AbortController();
+      const timer = setTimeout(() => c.abort(), 16000);
+      try {
+        const r = await fetch(base + '/auth/v1/token?grant_type=refresh_token', {
+          method: 'POST', headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: token }), cache: 'no-store', signal: c.signal,
+        });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error_description || p.msg || p.message || `HTTP ${r.status}`);
+        return p;
+      } finally { clearTimeout(timer); }
+    }
+    async function profile(base, accessToken, userId) {
+      const r = await fetch(base + `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,username,display_name,status,role`, {
+        headers: { apikey: ANON_KEY, Authorization: `Bearer ${accessToken}` }, cache: 'no-store',
+      });
+      const p = await r.json().catch(() => []);
+      if (!r.ok || !Array.isArray(p) || !p[0]) throw new Error('读取账号资料失败');
+      return p[0];
+    }
+    (async () => {
+      const params = new URLSearchParams(location.hash.slice(1));
+      const recoveryToken = params.get('t');
+      if (!recoveryToken) throw new Error('恢复凭证缺失，请重新获取一次性链接');
+      setStatus('<span class="spinner"></span>正在恢复账号会话…');
+      let auth, lastError;
+      for (const base of CLOUD_BASES) {
+        try { auth = await refresh(base, recoveryToken); break; } catch (e) { lastError = e; }
+      }
+      if (!auth?.access_token || !auth?.user?.id) throw lastError || new Error('账号会话恢复失败');
+      setStatus('<span class="spinner"></span>正在写入登录信息…');
+      let user, profileError;
+      for (const base of CLOUD_BASES) {
+        try { user = await profile(base, auth.access_token, auth.user.id); break; } catch (e) { profileError = e; }
+      }
+      if (!user) throw profileError || new Error('账号资料读取失败');
+      if (user.status !== 'approved') throw new Error(`账号状态为 ${user.status}，请联系超级管理员`);
+      const expiresIn = Number(auth.expires_in || 3600);
+      localStorage.setItem('duoduo_cloud_session_v1', JSON.stringify({
+        accessToken: auth.access_token, refreshToken: auth.refresh_token || recoveryToken,
+        expiresAt: Date.now() + Math.max(60, expiresIn - 30) * 1000,
+        userId: auth.user.id, email: auth.user.email || '', username: user.username,
+        displayName: user.display_name || user.username,
+      }));
+      localStorage.setItem('cr_token', auth.access_token);
+      localStorage.setItem('cr_user', JSON.stringify({
+        id: user.id, username: user.username, displayName: user.display_name || user.username,
+        role: user.role === 'super_admin' ? 'super_admin' : 'user', status: user.status, isCloud: true,
+      }));
+      setStatus('<span class="spinner"></span>登录成功，正在清理旧版缓存并打开最新版…');
+      history.replaceState(null, '', location.pathname + location.search);
+      await clearCaches();
+      const target = new URL('./', location.href);
+      target.search = ''; target.searchParams.set('v', CACHE_MARKER); target.searchParams.set('restored', Date.now().toString());
+      location.replace(target.href);
+    })().catch(error => {
+      setStatus('恢复失败：' + (error.message || '请重新获取链接'));
+      fallback.style.display = 'flex';
+    });
+  </script>
+</body>
+</html>

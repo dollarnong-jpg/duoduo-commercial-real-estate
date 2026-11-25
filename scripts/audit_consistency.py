@@ -133,6 +133,9 @@ def audit_defaults_and_units() -> None:
     require_text(recovery, "duoduo_cloud_session_v1", "recovery page reads the saved cloud session")
     require_text(recovery, "/auth/v1/token?grant_type=refresh_token", "recovery page refreshes the saved login")
     require_text(recovery, "navigator.serviceWorker.getRegistrations", "recovery page removes stale service workers")
+    oneclick = read("oneclick.html")
+    require_text(oneclick, "One-click recovery", "one-click recovery page exists")
+    require_text(oneclick, "location.hash", "one-click recovery keeps the credential in the URL fragment")
     require_text(backend, "/api/account/password", "authenticated users can change their password")
     require_text(app, "change-password-btn", "password change control is available after login")
     assert backend.count("pptTable(slide,") >= 10, "PPT tables should use the shared styled table helper"
