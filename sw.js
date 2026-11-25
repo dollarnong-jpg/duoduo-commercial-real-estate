@@ -1,7 +1,7 @@
-const CACHE_NAME = 'duoduo-cre-v203-20261120';
+const CACHE_NAME = 'duoduo-cre-v204-20261125';
 const CORE = [
-  './', './index.html', './styles.css?v=20261120-pptpolish4', './app.js?v=20261120-pptpolish4',
-  './backend.js?v=20261120-pptpolish4', './cloud-config.js?v=20261120-pptpolish4', './pyodide-loader.js?v=20261120-pptpolish4', './engine.py?v=20261120-pptpolish4',
+  './', './index.html', './styles.css?v=20261125-loginfix1', './app.js?v=20261125-loginfix1',
+  './backend.js?v=20261125-loginfix1', './cloud-config.js?v=20261125-loginfix1', './pyodide-loader.js?v=20261125-loginfix1', './engine.py?v=20261125-loginfix1',
   './pyodide/pyodide.mjs', './pyodide/pyodide.asm.js', './pyodide/pyodide-lock.json', './pyodide/chunk-manifest.json',
   './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'
 ];
@@ -107,6 +107,10 @@ self.addEventListener('fetch', event => {
   // Never cache cross-origin API responses. Authenticated Supabase responses
   // must not be shared between accounts by the Cache API.
   if (requestUrl.origin !== self.location.origin) return;
+  if (requestUrl.pathname.endsWith('/VERSION')) {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }));
+    return;
+  }
   if (requestUrl.pathname.endsWith('/pyodide/pyodide.asm.wasm')) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
@@ -142,7 +146,7 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).then(response => {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }).then(response => {
       if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
       return response;
     }).catch(() => caches.match(new URL('./index.html', self.registration.scope).href)));

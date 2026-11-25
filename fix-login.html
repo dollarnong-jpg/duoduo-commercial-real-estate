@@ -7,23 +7,24 @@
   <title>修复登录页 · 多多商业地产</title>
   <style>
     :root{--font-scale:1}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 80% 10%,rgba(214,168,75,.18),transparent 30%),linear-gradient(135deg,#0d342d,#1b5b4b);color:#fff;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif}.card{width:min(480px,100%);padding:34px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(255,255,255,.08);box-shadow:0 30px 80px rgba(0,0,0,.25);backdrop-filter:blur(12px)}.brand{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.08em}.mark{width:44px;height:44px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.3);border-radius:13px;color:#d6a84b;font-size:calc(21px * var(--font-scale))}.eyebrow{margin-top:30px;color:#d6a84b;font-size:calc(12px * var(--font-scale));font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:10px 0 12px;font-size:calc(30px * var(--font-scale));line-height:1.25}p{margin:0;color:#c8d8d3;font-size:calc(14px * var(--font-scale));line-height:1.8}.steps{margin:24px 0;padding:16px;border-radius:13px;background:rgba(0,0,0,.13)}.step{display:flex;gap:10px;align-items:center;padding:6px 0;color:#bfd0cb;font-size:calc(12px * var(--font-scale))}.dot{width:8px;height:8px;border-radius:50%;background:#d6a84b;flex:0 0 auto}button,.button{display:flex;justify-content:center;align-items:center;width:100%;min-height:48px;border:0;border-radius:12px;background:#d6a84b;color:#17362f;font-weight:700;font-size:calc(14px * var(--font-scale));line-height:1.4;text-decoration:none;cursor:pointer}.status{margin-top:15px;text-align:center;color:#9eb8b0;font-size:calc(11px * var(--font-scale));min-height:18px}small{display:block;margin-top:18px;color:#8da9a0;font-size:calc(10px * var(--font-scale));line-height:1.7}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 80% 10%,rgba(214,168,75,.18),transparent 30%),linear-gradient(135deg,#0d342d,#1b5b4b);color:#fff;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif}.card{width:min(480px,100%);padding:34px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(255,255,255,.08);box-shadow:0 30px 80px rgba(0,0,0,.25);backdrop-filter:blur(12px)}.brand{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.08em}.mark{width:44px;height:44px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.3);border-radius:13px;color:#d6a84b;font-size:calc(21px * var(--font-scale))}.eyebrow{margin-top:30px;color:#d6a84b;font-size:calc(12px * var(--font-scale));font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:10px 0 12px;font-size:calc(30px * var(--font-scale));line-height:1.25}p{margin:0;color:#c8d8d3;font-size:calc(14px * var(--font-scale));line-height:1.8}.steps{margin:24px 0;padding:16px;border-radius:13px;background:rgba(0,0,0,.13)}.step{display:flex;gap:10px;align-items:center;padding:6px 0;color:#bfd0cb;font-size:calc(12px * var(--font-scale))}.dot{width:8px;height:8px;border-radius:50%;background:#d6a84b;flex:0 0 auto}button,.button{display:flex;justify-content:center;align-items:center;width:100%;min-height:48px;border:0;border-radius:12px;background:#d6a84b;color:#17362f;font-weight:700;font-size:calc(14px * var(--font-scale));line-height:1.4;text-decoration:none;cursor:pointer}.button-secondary{margin-top:10px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#dbe7e3;font-size:calc(12px * var(--font-scale))}.button-secondary:hover{background:rgba(255,255,255,.08)}.status{margin-top:15px;text-align:center;color:#9eb8b0;font-size:calc(11px * var(--font-scale));min-height:18px}small{display:block;margin-top:18px;color:#8da9a0;font-size:calc(10px * var(--font-scale));line-height:1.7}
   </style>
 </head>
 <body>
   <main class="card">
     <div class="brand"><div class="mark">多</div><span>多多 · 商业地产</span></div>
     <div class="eyebrow">Login recovery</div>
-    <h1>正在修复旧缓存并进入登录页</h1>
-    <p>这个页面会清除旧版网页缓存和过期登录状态，但不会删除你浏览器中的 demo 项目或测算内容。</p>
+    <h1>正在清理旧版缓存并进入登录页</h1>
+    <p>这个页面只清理旧版网页缓存，不会删除项目，也不会退出当前有效登录。若账号仍无法登录，再使用下方“清除登录状态并重试”。</p>
     <div class="steps">
       <div class="step"><span class="dot"></span>清理旧 Service Worker 与网页缓存</div>
-      <div class="step"><span class="dot"></span>清除过期登录凭证</div>
-      <div class="step"><span class="dot"></span>自动打开 v1.28.62 正式登录页</div>
+      <div class="step"><span class="dot"></span>保留有效登录状态和云端项目</div>
+      <div class="step"><span class="dot"></span>自动打开 v1.28.67 正式页面</div>
     </div>
-    <a class="button" id="go" href="./?v=20261120-pptpolish4">立即进入登录页</a>
+    <a class="button" id="go" href="./?v=20261125-loginfix1">立即进入新版工作台</a>
+    <button class="button-secondary" id="clear-login" type="button">清除登录状态并重试</button>
     <div class="status" id="status">准备清理…</div>
-    <small>如果页面没有自动跳转，请点击上方按钮。正式账号首次使用时请选择“注册”，第一个正式账号会自动成为超级管理员。</small>
+    <small>如果页面没有自动跳转，请点击上方按钮。登录用户名可带或不带 @。如果忘记密码，请联系超级管理员重置，不要重复注册同名账号。</small>
   </main>
   <script>
     (function () {
@@ -44,18 +45,25 @@
           const keys = await caches.keys();
           await Promise.all(keys.map(key => caches.delete(key)));
         }
-        localStorage.removeItem('cr_token');
-        localStorage.removeItem('cr_user');
-        localStorage.removeItem('duoduo_cloud_session_v1');
-        status.textContent = '修复完成，正在打开登录页…';
+        status.textContent = '缓存修复完成，正在打开新版工作台…';
         const target = new URL('./', location.href);
-        target.searchParams.set('v', '20261120-pptpolish4');
+        target.searchParams.set('v', '20261125-loginfix1');
         target.searchParams.set('fixed', Date.now().toString());
         setTimeout(() => location.replace(target.href), 900);
       } catch (error) {
-        status.textContent = '自动清理未完成，请点击按钮进入新版登录页。';
+        status.textContent = '自动清理未完成，请点击按钮进入新版工作台。';
       }
     })();
+    document.getElementById('clear-login').addEventListener('click', async () => {
+      if (!confirm('确认清除当前浏览器登录状态？项目不会删除，但需要重新输入账号密码。')) return;
+      localStorage.removeItem('cr_token');
+      localStorage.removeItem('cr_user');
+      localStorage.removeItem('duoduo_cloud_session_v1');
+      const target = new URL('./', location.href);
+      target.searchParams.set('v', '20261125-loginfix1');
+      target.searchParams.set('cleared', Date.now().toString());
+      location.replace(target.href);
+    });
   </script>
 </body>
 </html>

@@ -271,8 +271,16 @@ async function cloudJSON(path, options = {}) {
   return payload;
 }
 
+function normalizeUsername(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/^@+/, '')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
 async function usernameEmail(username) {
-  const digest = await sha256(String(username).trim().toLowerCase());
+  const digest = await sha256(normalizeUsername(username));
   const hex = digest.replace(/^sha256\|/, '').slice(0, 32);
   return `u_${hex}@duoduo.app`;
 }
@@ -503,7 +511,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261120-pptpolish4', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261125-loginfix1', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -4232,7 +4240,7 @@ async function handleApi(path, init) {
 
   if (pathname.endsWith('/api/login') && method === 'POST') {
     const body = await requestJSON(init);
-    const username = String(body.username || '').trim().toLowerCase();
+    const username = normalizeUsername(body.username);
     const password = String(body.password || '');
     if (!CLOUD_ENABLED) return jsonResponse({ error: '云端账号服务尚未配置' }, 503);
     try {
@@ -4288,7 +4296,7 @@ async function handleApi(path, init) {
 
   if (pathname.endsWith('/api/register') && method === 'POST') {
     const body = await requestJSON(init);
-    const username = String(body.username || '').trim().toLowerCase();
+    const username = normalizeUsername(body.username);
     const password = String(body.password || '');
     const displayName = String(body.displayName || username).trim();
     if (!/^[a-z0-9_\u4e00-\u9fa5-]{3,24}$/i.test(username)) return jsonResponse({ error: '用户名需为3–24位，可使用中文、字母、数字、下划线或短横线' }, 400);

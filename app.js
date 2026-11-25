@@ -1,7 +1,7 @@
-import './backend.js?v=20261120-pptpolish4';
+import './backend.js?v=20261125-loginfix1';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.66';
+const APP_VERSION = '1.28.67';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1243,6 +1243,47 @@ function toast(message, type = '') {
   setTimeout(() => node.remove(), 3400);
 }
 
+function compareAppVersions(left, right) {
+  const a = String(left || '').split('.').map(x => Number(x) || 0);
+  const b = String(right || '').split('.').map(x => Number(x) || 0);
+  const length = Math.max(a.length, b.length, 3);
+  for (let i = 0; i < length; i += 1) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0) ? 1 : -1;
+  }
+  return 0;
+}
+
+async function clearClientAssetCaches() {
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations().catch(() => []);
+    await Promise.all(registrations.map(registration => registration.unregister().catch(() => false)));
+  }
+  if ('caches' in window) {
+    const keys = await caches.keys().catch(() => []);
+    await Promise.all(keys.map(key => caches.delete(key).catch(() => false)));
+  }
+}
+
+async function enforceLatestClientVersion() {
+  const guardKey = `duoduo_version_guard_${APP_VERSION}`;
+  try {
+    const response = await fetch(`./VERSION?ts=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) return false;
+    const remoteVersion = String(await response.text()).trim();
+    if (!remoteVersion || compareAppVersions(remoteVersion, APP_VERSION) <= 0) return false;
+    if (sessionStorage.getItem(guardKey) === remoteVersion) return false;
+    sessionStorage.setItem(guardKey, remoteVersion);
+    await clearClientAssetCaches();
+    const target = new URL('./', location.href);
+    target.search = '';
+    target.searchParams.set('v', `${remoteVersion}-${Date.now()}`);
+    location.replace(target.href);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function setBusy(value) {
   state.busy = value;
   let overlay = document.querySelector('.loading-overlay');
@@ -1397,6 +1438,7 @@ async function logout(render = true) {
 }
 
 async function boot() {
+  if (await enforceLatestClientVersion()) return;
   if (!state.token) return renderAuth('login');
   renderWorkspaceLoading('正在恢复登录状态并同步项目数据…');
   try {
@@ -1532,11 +1574,11 @@ function renderAuth(mode = 'login') {
           <div class="auth-alert" id="auth-alert"></div>
           <form id="auth-form">
             ${!isLogin ? '<div class="field"><label>姓名 / 称呼</label><input class="input" name="displayName" autocomplete="name" placeholder="例如：王经理"></div>' : ''}
-            <div class="field"><label>用户名</label><input class="input" name="username" autocomplete="username" required placeholder="输入用户名"></div>
+            <div class="field"><label>用户名</label><input class="input" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="输入用户名，无需输入 @"></div>
             <div class="field"><label>密码 <small>至少6位</small></label><input class="input" type="password" name="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" required placeholder="输入密码"></div>
             <button class="auth-submit" type="submit">${isLogin ? '进入工作台' : '提交注册申请'}</button>
           </form>
-          ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>云端演示账号：<strong>demo</strong> / <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button></div>` : ''}
+          ${isLogin ? `<div class="auth-demo"><span class="version-badge">v${APP_VERSION}</span>云端演示账号：<strong>demo</strong> / <strong>demo1234</strong>。<button type="button" id="fill-demo">一键填入</button><br><button type="button" id="repair-client-version">版本异常或仍显示旧版？清理缓存并刷新</button></div>` : ''}
           <div class="auth-font-setting">
             <span>界面字号</span>
             <div class="auth-font-options" role="group" aria-label="界面字号调整">
@@ -1554,6 +1596,21 @@ function renderAuth(mode = 'login') {
     const form = document.getElementById('auth-form');
     form.username.value = 'demo';
     form.password.value = 'demo1234';
+  });
+  document.getElementById('repair-client-version')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = '正在清理旧缓存…';
+    try {
+      await clearClientAssetCaches();
+      const target = new URL('./', location.href);
+      target.search = '';
+      target.searchParams.set('v', `repair-${Date.now()}`);
+      location.replace(target.href);
+    } catch {
+      button.disabled = false;
+      button.textContent = '清理失败，请关闭页面后重新打开';
+    }
   });
   document.getElementById('auth-form').addEventListener('submit', async event => {
     event.preventDefault();

@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#103b33">
+  <meta name="duoduo-build-version" content="1.28.67">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="./manifest.webmanifest">
@@ -18,8 +19,41 @@
         if (['1', '1.1', '1.2'].includes(savedScale)) document.documentElement.style.setProperty('--font-scale', savedScale);
       } catch (_) {}
     })();
+    (async function enforceLatestBuild() {
+      var current = document.querySelector('meta[name="duoduo-build-version"]')?.content || '';
+      if (!current) return;
+      var compare = function (left, right) {
+        var a = String(left || '').split('.').map(Number);
+        var b = String(right || '').split('.').map(Number);
+        for (var i = 0; i < Math.max(a.length, b.length, 3); i += 1) {
+          if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0) ? 1 : -1;
+        }
+        return 0;
+      };
+      try {
+        var response = await fetch('./VERSION?ts=' + Date.now(), { cache: 'no-store' });
+        if (!response.ok) return;
+        var remote = (await response.text()).trim();
+        if (!remote || compare(remote, current) <= 0) return;
+        var guard = 'duoduo_index_version_guard_' + current;
+        if (sessionStorage.getItem(guard) === remote) return;
+        sessionStorage.setItem(guard, remote);
+        if ('serviceWorker' in navigator) {
+          var regs = await navigator.serviceWorker.getRegistrations().catch(function () { return []; });
+          await Promise.all(regs.map(function (registration) { return registration.unregister().catch(function () {}); }));
+        }
+        if ('caches' in window) {
+          var keys = await caches.keys().catch(function () { return []; });
+          await Promise.all(keys.map(function (key) { return caches.delete(key).catch(function () {}); }));
+        }
+        var target = new URL('./', location.href);
+        target.search = '';
+        target.searchParams.set('v', remote + '-' + Date.now());
+        location.replace(target.href);
+      } catch (_) {}
+    })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=20261120-pptpolish4">
+  <link rel="stylesheet" href="./styles.css?v=20261125-loginfix1">
 </head>
 <body>
   <div id="app" class="app-root">
@@ -31,8 +65,8 @@
   </div>
   <div id="toast-region" class="toast-region" aria-live="polite"></div>
   <div id="modal-region"></div>
-  <script src="./pyodide-loader.js?v=20261120-pptpolish4"></script>
-  <script src="./cloud-config.js?v=20261120-pptpolish4"></script>
-  <script type="module" src="./app.js?v=20261120-pptpolish4"></script>
+  <script src="./pyodide-loader.js?v=20261125-loginfix1"></script>
+  <script src="./cloud-config.js?v=20261125-loginfix1"></script>
+  <script type="module" src="./app.js?v=20261125-loginfix1"></script>
 </body>
 </html>

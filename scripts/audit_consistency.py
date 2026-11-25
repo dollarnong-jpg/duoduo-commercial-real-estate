@@ -125,6 +125,10 @@ def audit_defaults_and_units() -> None:
     require_text(function_segment(backend, "exportPPT"), "const marketRentText = value =>", "PPT handles empty market samples")
     require_text(backend, "function pptTable(slide, rows, options = {})", "PPT tables share one styled component")
     require_text(backend, "slide.background = { color: PPT_THEME.paper };", "PPT content slides share a unified background")
+    require_text(backend, "function normalizeUsername(value)", "login accepts username with optional @ prefix")
+    require_text(app, "async function enforceLatestClientVersion()", "client detects stale cached versions")
+    require_text(app, "clearClientAssetCaches", "client can repair stale service-worker caches")
+    require_text(read("index.html"), "duoduo-build-version", "index exposes the expected build version")
     assert backend.count("pptTable(slide,") >= 10, "PPT tables should use the shared styled table helper"
     require_text(app, "cloudShareBaseUrl", "share messages use cloud relay")
     require_text(app, "config.shareUrl", "share relay configuration")
