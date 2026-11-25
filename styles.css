@@ -176,7 +176,8 @@ a { color: inherit; }
 .user-box { margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.12); padding: 18px 4px 0; }
 .user-box strong { display: block; color: #fff; font-size: var(--fs-13); }
 .user-box span { display: block; color: #78978f; font-size: var(--fs-11); margin-top: 4px; }
-.user-box #logout-btn { margin-top: 12px; border: 0; background: transparent; color: #91aaa4; padding: 0; font-size: var(--fs-11); }
+.user-box #logout-btn, .user-box #change-password-btn { margin-top: 12px; border: 0; background: transparent; color: #91aaa4; padding: 0; font-size: var(--fs-11); }
+.user-box #change-password-btn { margin-right: 14px; }
 .user-box .sidebar-build { display:inline-block; margin-top:9px; padding:3px 7px; border:1px solid rgba(255,255,255,.14); border-radius:999px; color:#c3d7d1; font-size:var(--fs-8); letter-spacing:.02em; }
 .font-size-setting { margin-top: 16px; padding-top: 13px; border-top: 1px solid rgba(255,255,255,.10); }
 .font-size-setting .font-size-setting-title { display: block; color: #91aaa4; font-size: var(--fs-10); margin: 0 0 8px; }

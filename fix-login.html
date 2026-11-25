@@ -19,9 +19,9 @@
     <div class="steps">
       <div class="step"><span class="dot"></span>清理旧 Service Worker 与网页缓存</div>
       <div class="step"><span class="dot"></span>保留有效登录状态和云端项目</div>
-      <div class="step"><span class="dot"></span>自动打开 v1.28.68 正式页面</div>
+      <div class="step"><span class="dot"></span>自动打开 v1.28.69 正式页面</div>
     </div>
-    <a class="button" id="go" href="./?v=20261125-loginfix2">立即进入新版工作台</a>
+    <a class="button" id="go" href="./?v=20261125-loginfix3">立即进入新版工作台</a>
     <button class="button-secondary" id="clear-login" type="button">清除登录状态并重试</button>
     <div class="status" id="status">准备清理…</div>
     <small>如果页面没有自动跳转，请点击上方按钮。登录用户名可带或不带 @。如果忘记密码，请联系超级管理员重置，不要重复注册同名账号。</small>
@@ -47,7 +47,7 @@
         }
         status.textContent = '缓存修复完成，正在打开新版工作台…';
         const target = new URL('./', location.href);
-        target.searchParams.set('v', '20261125-loginfix2');
+        target.searchParams.set('v', '20261125-loginfix3');
         target.searchParams.set('fixed', Date.now().toString());
         setTimeout(() => location.replace(target.href), 900);
       } catch (error) {
@@ -60,7 +60,7 @@
       localStorage.removeItem('cr_user');
       localStorage.removeItem('duoduo_cloud_session_v1');
       const target = new URL('./', location.href);
-      target.searchParams.set('v', '20261125-loginfix2');
+      target.searchParams.set('v', '20261125-loginfix3');
       target.searchParams.set('cleared', Date.now().toString());
       location.replace(target.href);
     });

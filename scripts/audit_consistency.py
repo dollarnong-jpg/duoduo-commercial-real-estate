@@ -133,6 +133,8 @@ def audit_defaults_and_units() -> None:
     require_text(recovery, "duoduo_cloud_session_v1", "recovery page reads the saved cloud session")
     require_text(recovery, "/auth/v1/token?grant_type=refresh_token", "recovery page refreshes the saved login")
     require_text(recovery, "navigator.serviceWorker.getRegistrations", "recovery page removes stale service workers")
+    require_text(backend, "/api/account/password", "authenticated users can change their password")
+    require_text(app, "change-password-btn", "password change control is available after login")
     assert backend.count("pptTable(slide,") >= 10, "PPT tables should use the shared styled table helper"
     require_text(app, "cloudShareBaseUrl", "share messages use cloud relay")
     require_text(app, "config.shareUrl", "share relay configuration")

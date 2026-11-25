@@ -511,7 +511,7 @@ function loadPyodideEngine() {
       const { loadPyodide } = await import(indexURL + 'pyodide.mjs');
       const pyodide = await loadPyodide({ indexURL });
       setBootText('正在初始化投资测算公式…');
-      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261125-loginfix2', import.meta.url))).text();
+      const engineCode = await (await nativeFetch(new URL('./engine.py?v=20261125-loginfix3', import.meta.url))).text();
       pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
       await pyodide.runPythonAsync(`
 import json
@@ -4345,6 +4345,22 @@ async function handleApi(path, init) {
       }
       return jsonResponse({ error: `注册失败：${detail}` }, error.status || 400);
     }
+  }
+
+  if (pathname.endsWith('/api/account/password') && method === 'POST') {
+    if (!CLOUD_ENABLED) return jsonResponse({ error: '密码修改仅在云端模式可用' }, 503);
+    const body = await requestJSON(init);
+    const newPassword = String(body.newPassword || '');
+    if (newPassword.length < 8) return jsonResponse({ error: '新密码至少8个字符' }, 400);
+    const token = await cloudAccessToken();
+    await cloudJSON('/auth/v1/user', {
+      method: 'PUT',
+      body: { password: newPassword },
+      token,
+      timeoutMs: 30000,
+      retries: 3,
+    });
+    return jsonResponse({ ok: true });
   }
 
   if (pathname.endsWith('/api/logout') && method === 'POST') {

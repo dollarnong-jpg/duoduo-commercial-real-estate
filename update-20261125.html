@@ -22,7 +22,7 @@
 </head>
 <body>
   <main class="card">
-    <div class="brand"><div class="mark">多</div><span>多多 · 商业地产</span><span class="version" id="version">v1.28.68</span></div>
+    <div class="brand"><div class="mark">多</div><span>多多 · 商业地产</span><span class="version" id="version">v1.28.69</span></div>
     <div class="eyebrow">Account & build recovery</div>
     <h1>正在恢复账号并升级到最新版</h1>
     <p>这个入口使用全新文件名，不会命中旧版网页缓存。它会清理旧 Service Worker，并使用当前浏览器中仍有效的账号会话恢复登录。</p>
@@ -30,7 +30,7 @@
       <div class="step" id="step-cache"><span class="dot"></span><span>清理旧版网页缓存</span></div>
       <div class="step" id="step-session"><span class="dot"></span><span>恢复 <strong>dollarnong</strong> 账号会话</span></div>
       <div class="step" id="step-login"><span class="dot"></span><span>写入最新版登录状态</span></div>
-      <div class="step" id="step-open"><span class="dot"></span><span>打开 v1.28.68 云端工作台</span></div>
+      <div class="step" id="step-open"><span class="dot"></span><span>打开 v1.28.69 云端工作台</span></div>
     </div>
     <button class="button" id="go" type="button">立即恢复并进入最新版</button>
     <button class="button-secondary" id="manual" type="button">恢复失败？清除登录状态后手动登录</button>
@@ -41,8 +41,8 @@
     const CLOUD_URL = 'https://hqsrjxcujjqqekyvqrvy.supabase.co';
     const CLOUD_BASES = ['https://duoduo-cloud-relay.netlify.app/api/cloud', CLOUD_URL];
     const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhxc3JqeGN1ampxcWVreXZxcnZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM4MDYxNDcsImV4cCI6MjEwOTM4MjE0N30.Zl-dNPJrkNzWyIf4e200-9YcImRV7bINQeZjSeKKhWs';
-    const TARGET_VERSION = '1.28.68';
-    const CACHE_MARKER = '20261125-loginfix2';
+    const TARGET_VERSION = '1.28.69';
+    const CACHE_MARKER = '20261125-loginfix3';
     const $ = id => document.getElementById(id);
     const setStep = (id, state) => { const el=$(id); if(el) el.className='step '+state; };
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));

@@ -1,7 +1,7 @@
-import './backend.js?v=20261125-loginfix2';
+import './backend.js?v=20261125-loginfix3';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.68';
+const APP_VERSION = '1.28.69';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
@@ -1685,6 +1685,7 @@ function sidebar(active = 'projects') {
             <button type="button" data-font-scale="1.2" class="${state.fontScale === '1.2' ? 'active' : ''}">特大</button>
           </div>
         </div>
+        ${state.user?.username === 'demo' ? '' : '<button type="button" id="change-password-btn">修改密码</button>'}
         <button type="button" id="logout-btn">退出登录</button>
         <span class="sidebar-build">当前版本 v${APP_VERSION}</span>
       </div>
@@ -8602,7 +8603,24 @@ window.addEventListener('resize', () => {
   if (state.step === 6 && state.current) renderResultCharts();
 });
 
-document.addEventListener('click', event => {
+document.addEventListener('click', async event => {
+  const passwordButton = event.target.closest('#change-password-btn');
+  if (passwordButton) {
+    event.preventDefault();
+    const first = prompt('请输入新密码（至少8位）');
+    if (first == null) return;
+    if (first.length < 8) return toast('新密码至少8个字符', 'error');
+    const second = prompt('请再次输入新密码');
+    if (second == null) return;
+    if (first !== second) return toast('两次输入的密码不一致', 'error');
+    try {
+      await api('/api/account/password', { method: 'POST', body: { newPassword: first } });
+      toast('密码已更新，请使用新密码登录', 'success');
+    } catch (error) {
+      toast(error.message || '密码修改失败', 'error');
+    }
+    return;
+  }
   const functionButton = event.target.closest('[data-function]');
   if (functionButton) {
     event.preventDefault();
