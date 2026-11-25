@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#103b33">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>账号与版本修复 · 多多商业地产</title>
+  <style>
+    :root{--green:#103b33;--green2:#1d6b57;--gold:#d6a84b;--paper:#fffdf9;--line:#dce5e1;--muted:#66736f}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 82% 8%,rgba(214,168,75,.2),transparent 30%),linear-gradient(135deg,#0d342d,#1b5b4b);color:#fff;font-family:"Hiragino Sans GB","PingFang SC","Microsoft YaHei",sans-serif}
+    .card{width:min(620px,100%);padding:36px;border:1px solid rgba(255,255,255,.18);border-radius:24px;background:rgba(255,255,255,.08);box-shadow:0 30px 80px rgba(0,0,0,.28);backdrop-filter:blur(12px)}
+    .brand{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.08em}.mark{width:46px;height:46px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.3);border-radius:14px;color:var(--gold);font-size:22px}
+    .eyebrow{margin-top:30px;color:var(--gold);font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:10px 0 12px;font-size:30px;line-height:1.3}p{margin:0;color:#c8d8d3;font-size:14px;line-height:1.8}
+    .steps{margin:24px 0;padding:16px;border-radius:14px;background:rgba(0,0,0,.14)}.step{display:flex;gap:10px;align-items:center;padding:7px 0;color:#bfd0cb;font-size:13px}.dot{width:9px;height:9px;border-radius:50%;background:var(--gold);flex:0 0 auto}.step.done .dot{background:#8fd0ad}.step.error .dot{background:#e47772}
+    button,.button{display:flex;justify-content:center;align-items:center;width:100%;min-height:50px;border:0;border-radius:13px;background:var(--gold);color:#17362f;font:inherit;font-weight:700;font-size:14px;line-height:1.4;text-decoration:none;cursor:pointer}
+    .button-secondary{margin-top:10px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#dbe7e3;font-size:12px}.button-secondary:hover{background:rgba(255,255,255,.08)}
+    .status{margin-top:15px;text-align:center;color:#b9cec7;font-size:12px;min-height:20px}small{display:block;margin-top:18px;color:#8da9a0;font-size:11px;line-height:1.7}.version{margin-left:auto;padding:4px 9px;border-radius:999px;background:rgba(214,168,75,.18);color:#efd79f;font-size:11px;font-weight:700}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><div class="mark">多</div><span>多多 · 商业地产</span><span class="version" id="version">v1.28.68</span></div>
+    <div class="eyebrow">Account & build recovery</div>
+    <h1>正在恢复账号并升级到最新版</h1>
+    <p>这个入口使用全新文件名，不会命中旧版网页缓存。它会清理旧 Service Worker，并使用当前浏览器中仍有效的账号会话恢复登录。</p>
+    <div class="steps">
+      <div class="step" id="step-cache"><span class="dot"></span><span>清理旧版网页缓存</span></div>
+      <div class="step" id="step-session"><span class="dot"></span><span>恢复 <strong>dollarnong</strong> 账号会话</span></div>
+      <div class="step" id="step-login"><span class="dot"></span><span>写入最新版登录状态</span></div>
+      <div class="step" id="step-open"><span class="dot"></span><span>打开 v1.28.68 云端工作台</span></div>
+    </div>
+    <button class="button" id="go" type="button">立即恢复并进入最新版</button>
+    <button class="button-secondary" id="manual" type="button">恢复失败？清除登录状态后手动登录</button>
+    <div class="status" id="status">准备开始…</div>
+    <small>该页面不会删除项目。账号资料已核实为已通过审核状态。若会话已过期，请使用手动登录；用户名输入 dollarnong，带不带 @ 均可。</small>
+  </main>
+  <script>
+    const CLOUD_URL = 'https://hqsrjxcujjqqekyvqrvy.supabase.co';
+    const CLOUD_BASES = ['https://duoduo-cloud-relay.netlify.app/api/cloud', CLOUD_URL];
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhxc3JqeGN1ampxcWVreXZxcnZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM4MDYxNDcsImV4cCI6MjEwOTM4MjE0N30.Zl-dNPJrkNzWyIf4e200-9YcImRV7bINQeZjSeKKhWs';
+    const TARGET_VERSION = '1.28.68';
+    const CACHE_MARKER = '20261125-loginfix2';
+    const $ = id => document.getElementById(id);
+    const setStep = (id, state) => { const el=$(id); if(el) el.className='step '+state; };
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    async function clearCaches() {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations().catch(() => []);
+        await Promise.all(registrations.map(registration => registration.unregister().catch(() => false)));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys().catch(() => []);
+        await Promise.all(keys.map(key => caches.delete(key).catch(() => false)));
+      }
+    }
+    async function requestAuth(base, refreshToken) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 16000);
+      try {
+        const response = await fetch(base + '/auth/v1/token?grant_type=refresh_token', {
+          method: 'POST',
+          headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error_description || payload.msg || payload.message || `HTTP ${response.status}`);
+        return payload;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    async function requestProfile(base, accessToken, userId) {
+      const response = await fetch(base + `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,username,display_name,status,role`, {
+        headers: { apikey: ANON_KEY, Authorization: `Bearer ${accessToken}` },
+        cache: 'no-store',
+      });
+      const rows = await response.json().catch(() => []);
+      if (!response.ok || !Array.isArray(rows) || !rows[0]) throw new Error('账号资料读取失败');
+      return rows[0];
+    }
+    async function recover() {
+      $('go').disabled = true;
+      $('go').textContent = '正在恢复…';
+      $('status').textContent = '正在清理旧版缓存…';
+      setStep('step-cache','done');
+      await clearCaches();
+      $('status').textContent = '正在恢复账号会话…';
+      let session;
+      try {
+        session = JSON.parse(localStorage.getItem('duoduo_cloud_session_v1') || 'null');
+      } catch (_) {
+        session = null;
+      }
+      if (!session?.refreshToken) throw new Error('浏览器中没有可用的账号恢复令牌，请手动登录');
+      let auth = null;
+      let lastError = null;
+      for (const base of CLOUD_BASES) {
+        try {
+          auth = await requestAuth(base, session.refreshToken);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!auth?.access_token || !auth?.user?.id) throw lastError || new Error('账号会话恢复失败');
+      setStep('step-session','done');
+      $('status').textContent = '正在读取账号资料…';
+      let profile = null;
+      for (const base of CLOUD_BASES) {
+        try {
+          profile = await requestProfile(base, auth.access_token, auth.user.id);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!profile) throw lastError || new Error('账号资料读取失败');
+      if (profile.status !== 'approved') throw new Error(`账号状态为 ${profile.status}，请联系超级管理员`);
+      const expiresIn = Number(auth.expires_in || 3600);
+      localStorage.setItem('duoduo_cloud_session_v1', JSON.stringify({
+        accessToken: auth.access_token,
+        refreshToken: auth.refresh_token || session.refreshToken,
+        expiresAt: Date.now() + Math.max(60, expiresIn - 30) * 1000,
+        userId: auth.user.id,
+        email: auth.user.email || session.email || '',
+        username: profile.username,
+        displayName: profile.display_name || profile.username,
+      }));
+      localStorage.setItem('cr_token', auth.access_token);
+      localStorage.setItem('cr_user', JSON.stringify({
+        id: profile.id,
+        username: profile.username,
+        displayName: profile.display_name || profile.username,
+        role: profile.role === 'super_admin' ? 'super_admin' : 'user',
+        status: profile.status,
+        isCloud: true,
+      }));
+      setStep('step-login','done');
+      $('status').textContent = `账号 ${profile.username} 已恢复，正在打开最新版…`;
+      await wait(700);
+      const target = new URL('./', location.href);
+      target.search = '';
+      target.searchParams.set('v', CACHE_MARKER);
+      target.searchParams.set('restored', Date.now().toString());
+      setStep('step-open','done');
+      location.replace(target.href);
+    }
+    $('go').addEventListener('click', () => recover().catch(error => {
+      $('go').disabled = false;
+      $('go').textContent = '重试恢复';
+      $('status').textContent = error.message || '恢复失败，请手动登录';
+      setStep('step-session','error');
+    }));
+    $('manual').addEventListener('click', async () => {
+      if (!confirm('确认清除当前浏览器登录状态并手动登录？项目不会删除。')) return;
+      localStorage.removeItem('cr_token');
+      localStorage.removeItem('cr_user');
+      localStorage.removeItem('duoduo_cloud_session_v1');
+      await clearCaches();
+      const target = new URL('./', location.href);
+      target.search = '';
+      target.searchParams.set('v', CACHE_MARKER);
+      target.searchParams.set('manual', Date.now().toString());
+      location.replace(target.href);
+    });
+    recover().catch(error => {
+      $('go').disabled = false;
+      $('go').textContent = '重试恢复';
+      $('status').textContent = error.message || '自动恢复失败，请点击手动登录';
+      setStep('step-session','error');
+    });
+  </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
-import './backend.js?v=20261125-loginfix1';
+import './backend.js?v=20261125-loginfix2';
 await window.__duoduoBackendReady;
 
-const APP_VERSION = '1.28.67';
+const APP_VERSION = '1.28.68';
 const app = document.getElementById('app');
 const toastRegion = document.getElementById('toast-region');
 const modalRegion = document.getElementById('modal-region');
